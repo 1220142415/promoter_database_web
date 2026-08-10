@@ -3,6 +3,7 @@
 *.fa
 *.fasta
 *.zip
+*.tar.gz
 
 # Nested application repositories and generated dependencies
 SeqEdge/
@@ -15,4 +16,3 @@ SeqEdge-preview/
 node_modules/
 dist/
 build/
-

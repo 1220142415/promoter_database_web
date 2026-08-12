@@ -398,12 +398,16 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
     throw new GenomeCatalogUnavailableError(accession + ': reference files are missing.');
   }
   const promoterStorage = parseJson<Record<string, unknown>>(row.promoter_storage_json, {});
+  const annotationStorage = parseJson<Record<string, unknown>>(row.annotation_storage_json, {});
   const packedAssets = {
     ...(referenceStorage.assets && typeof referenceStorage.assets === 'object' && !Array.isArray(referenceStorage.assets)
       ? referenceStorage.assets as Record<string, unknown>
       : {}),
     ...(promoterStorage.assets && typeof promoterStorage.assets === 'object' && !Array.isArray(promoterStorage.assets)
       ? promoterStorage.assets as Record<string, unknown>
+      : {}),
+    ...(annotationStorage.assets && typeof annotationStorage.assets === 'object' && !Array.isArray(annotationStorage.assets)
+      ? annotationStorage.assets as Record<string, unknown>
       : {}),
   };
   const storage = parseD1Storage({
@@ -470,7 +474,7 @@ const D1_GENOME_SELECT = [
   ', p.feature_count AS predicted_promoter_count, p.status AS promoter_status',
   ', p.data_path AS promoter_data_path, p.index_path AS promoter_index_path, p.storage_json AS promoter_storage_json',
   ', a.feature_count AS annotation_feature_count, a.status AS annotation_status',
-  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path',
+  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path, a.storage_json AS annotation_storage_json',
   'FROM genomes g',
   D1_FEATURE_JOINS,
 ].join(' ');
@@ -588,6 +592,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
   async getActiveRelease(): Promise<ActiveReleaseSummary> {
     const row = await activeD1Release(this.database);
     const releaseId = String(row.release_id);
+    const summary = parseJson<Record<string, unknown>>(row.feature_summary_json, {});
     const aggregates = await this.database.prepare(
       'SELECT feature_type, status, COUNT(*) AS genome_count, SUM(feature_count) AS feature_count FROM feature_sets WHERE release_id = ? GROUP BY feature_type, status',
     ).bind(releaseId).all<D1FeatureAggregateRow>();
@@ -603,8 +608,10 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
       totalDownloadedAnnotations: Number(annotationReady?.genome_count || 0) + Number(annotationFailed?.genome_count || 0),
       totalMissingAnnotations: Number(annotationMissing?.genome_count || 0),
       totalIncompatibleAnnotations: Number(annotationFailed?.genome_count || 0), totalUsableAnnotations: Number(annotationReady?.genome_count || 0),
-      totalCircularOriginSplitFeatures: 0, totalCircularOriginSplitGenomes: 0,
-      totalExperimentalTss: 0, topPhyla: [],
+      totalCircularOriginSplitFeatures: Number(summary.totalCircularOriginSplitFeatures || 0),
+      totalCircularOriginSplitGenomes: Number(summary.totalCircularOriginSplitGenomes || 0),
+      totalExperimentalTss: Number(summary.totalExperimentalTss || 0),
+      topPhyla: Array.isArray(summary.topPhyla) ? summary.topPhyla as ActiveReleaseSummary['topPhyla'] : [],
       releaseAssetBaseUrl: row.release_asset_base_url as string | null, manifestIndexPath: row.manifest_index_path as string | null,
     };
   }

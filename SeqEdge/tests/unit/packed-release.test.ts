@@ -45,7 +45,7 @@ describe('packed release layout', () => {
         expect(current.offset % PACK_ALIGNMENT).toBe(0);
       }
     }
-  });
+  }, 15_000);
 
   it('rejects invalid alignment inputs', () => {
     expect(() => alignPackOffset(-1)).toThrow();

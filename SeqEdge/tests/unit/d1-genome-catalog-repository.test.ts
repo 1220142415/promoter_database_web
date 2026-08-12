@@ -13,7 +13,7 @@ const releaseRow = {
   release_asset_base_url: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07',
   manifest_index_path: null,
   total_genomes: 2,
-  feature_summary_json: '{"promoter":{"genomeCount":2,"featureCount":30}}',
+  feature_summary_json: '{"promoter":{"genomeCount":2,"featureCount":30},"totalCircularOriginSplitFeatures":4,"totalCircularOriginSplitGenomes":2,"totalExperimentalTss":3,"topPhyla":[{"name":"Bacillota","count":2}]}',
 };
 
 function genomeRow(accession: string, size: number | null, promoters: number) {
@@ -55,6 +55,7 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
     annotation_feature_count: accession.endsWith('1.1') ? 120 : null,
     annotation_data_path: accession.endsWith('1.1') ? `objects/${accession}/ncbi-annotations.gff3.gz` : null,
     annotation_index_path: accession.endsWith('1.1') ? `objects/${accession}/ncbi-annotations.gff3.gz.tbi` : null,
+    annotation_storage_json: '{}',
   };
 }
 
@@ -163,6 +164,10 @@ describe('D1 genome catalog repository', () => {
       totalPredictedPromoters: 30,
       totalAnnotatedGenomes: 1,
       totalMissingAnnotations: 1,
+      totalCircularOriginSplitFeatures: 4,
+      totalCircularOriginSplitGenomes: 2,
+      totalExperimentalTss: 3,
+      topPhyla: [{ name: 'Bacillota', count: 2 }],
     });
 
     const match = await repository.getByAccession('GCA_000000001.1');

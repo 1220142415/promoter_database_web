@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { copyFile, link, mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -164,19 +162,61 @@ function remapGenomeAssets(genome) {
   ]));
 }
 
-function genomeInsert(releaseId, genome) {
+function packedStorageForFiles(storage, files) {
+  return {
+    layout: 'packed-v1',
+    logicalObjectPrefix: storage.logicalObjectPrefix,
+    assets: Object.fromEntries(files
+      .filter((file) => storage.assets[file])
+      .map((file) => [file, storage.assets[file]])),
+  };
+}
+
+function logicalAssetPath(genome, file) {
+  return genome.storage.assets[file] ? genome.accession + '/' + file : null;
+}
+
+function genomeStatements(releaseId, genome) {
+  const referenceStorage = {
+    ...packedStorageForFiles(genome.storage, ['reference.fa.gz', 'reference.fa.gz.fai', 'reference.fa.gz.gzi', 'metadata.json']),
+    files: {
+      fasta: logicalAssetPath(genome, 'reference.fa.gz'),
+      fai: logicalAssetPath(genome, 'reference.fa.gz.fai'),
+      gzi: logicalAssetPath(genome, 'reference.fa.gz.gzi'),
+      metadata: logicalAssetPath(genome, 'metadata.json'),
+    },
+  };
   const values = [
     sqlString(releaseId), sqlString(genome.accession), sqlString(genome.organismName), sqlString(genome.strain),
     sqlString(genome.domain), sqlString(genome.phylum), sqlString(genome.className), sqlString(genome.orderName || genome.order),
     sqlString(genome.family), sqlString(genome.genus), sqlString(genome.genomeSource), sqlString(genome.assemblyLevel),
     sqlNumber(genome.genomeSizeBp), sqlNumber(genome.gcContent), sqlNumber(genome.contigCount), sqlNumber(genome.completeness),
-    sqlNumber(genome.contamination), sqlNumber(genome.predictedPromoterCount), sqlString(genome.annotationStatus),
-    sqlNumber(genome.annotationFeatureCount), sqlNumber(genome.annotationCircularOriginSplitCount || 0),
-    sqlNumber(genome.experimentalTssCount || 0), genome.hasExperimentalTss ? '1' : '0', sqlString(genome.defaultLocus),
-    sqlString(genome.primarySequence), sqlString(genome.storage.logicalObjectPrefix), sqlString(JSON.stringify(genome.storage.assets)),
-    sqlString(JSON.stringify(genome.storage)),
+    sqlNumber(genome.contamination), sqlString(genome.defaultLocus), sqlString(genome.primarySequence),
+    sqlString(JSON.stringify(referenceStorage)),
   ];
-  return 'INSERT INTO genomes (release_id, accession, organism_name, strain, domain, phylum, class_name, order_name, family, genus, genome_source, assembly_level, genome_size_bp, gc_content, contig_count, completeness, contamination, predicted_promoter_count, annotation_status, annotation_feature_count, annotation_circular_origin_split_count, experimental_tss_count, has_experimental_tss, default_locus, primary_sequence, logical_object_prefix, assets_json, storage_json) VALUES (' + values.join(', ') + ');';
+  const statements = [
+    'INSERT INTO genomes (release_id, accession, organism_name, strain, domain, phylum, class_name, order_name, family, genus, genome_source, assembly_level, genome_size_bp, gc_content, contig_count, completeness, contamination, default_locus, primary_sequence, reference_storage_json) VALUES (' + values.join(', ') + ');',
+  ];
+  const promoterPath = logicalAssetPath(genome, 'predicted-promoters.gff3.gz');
+  const promoterReady = Boolean(promoterPath);
+  statements.push('INSERT INTO feature_sets (release_id, accession, feature_type, evidence_type, count_unit, feature_count, status, is_default, source_id, source_version, provenance_json, data_path, index_path, storage_json) VALUES (' + [
+    sqlString(releaseId), sqlString(genome.accession), "'promoter'", "'prediction'", "'peak'",
+    promoterReady ? sqlNumber(genome.predictedPromoterCount) : 'NULL', sqlString(promoterReady ? 'ready' : 'missing'), '1', "'rapptor'", "'unrecorded'", "'{}'",
+    sqlString(promoterPath), sqlString(logicalAssetPath(genome, 'predicted-promoters.gff3.gz.tbi')),
+    sqlString(JSON.stringify(packedStorageForFiles(genome.storage, ['predicted-promoters.gff3.gz', 'predicted-promoters.gff3.gz.tbi']))),
+  ].join(', ') + ');');
+  const annotationPath = logicalAssetPath(genome, 'ncbi-annotations.gff3.gz');
+  const annotationStatus = genome.annotationStatus === 'available' && annotationPath
+    ? 'ready'
+    : genome.annotationStatus === 'incompatible' ? 'failed' : 'missing';
+  statements.push('INSERT INTO feature_sets (release_id, accession, feature_type, evidence_type, count_unit, feature_count, status, is_default, source_id, source_version, provenance_json, data_path, index_path, storage_json) VALUES (' + [
+    sqlString(releaseId), sqlString(genome.accession), "'gene_annotation'", "'annotation'", "'feature'",
+    annotationStatus === 'ready' ? sqlNumber(genome.annotationFeatureCount) : 'NULL', sqlString(annotationStatus), '1', "'ncbi'", "'unrecorded'", "'{}'",
+    annotationStatus === 'ready' ? sqlString(annotationPath) : 'NULL',
+    annotationStatus === 'ready' ? sqlString(logicalAssetPath(genome, 'ncbi-annotations.gff3.gz.tbi')) : 'NULL',
+    sqlString(JSON.stringify(packedStorageForFiles(genome.storage, ['ncbi-annotations.gff3.gz', 'ncbi-annotations.gff3.gz.tbi']))),
+  ].join(', ') + ');');
+  return statements;
 }
 
 function summaryValue(summary, keys, fallback = 0) {
@@ -367,22 +407,24 @@ export async function buildPackedRelease({ projectRoot, source, release, sourceR
   const phylumCounts = new Map();
   for (const genome of genomes) if (genome.phylum) phylumCounts.set(genome.phylum, (phylumCounts.get(genome.phylum) || 0) + 1);
   const topPhyla = [...phylumCounts.entries()].map(([name, count]) => ({ name, count })).sort((left, right) => right.count - left.count || left.name.localeCompare(right.name)).slice(0, 8);
+  const featureSummary = {
+    totalCircularOriginSplitFeatures: summaryValue(summary, ['circularOriginSplitFeatures']),
+    totalCircularOriginSplitGenomes: summaryValue(summary, ['circularOriginSplitGenomes']),
+    totalExperimentalTss: summaryValue(summary, ['totalExperimentalTss']),
+    topPhyla,
+  };
   const releaseValues = [
     sqlString(release), sqlString(sourceRelease), sqlString(release), sqlString(generatedAt), sqlString(releaseJson.description || null),
     "'packed-v1'", "'liurulong/bacterial-promoter-genomes'", "'main'",
     sqlString('https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main/releases/' + release),
-    "'manifest-index.json'", String(genomes.length), String(summaryValue(summary, ['totalPredictedPromoters'])),
-    String(summaryValue(summary, ['usableAnnotationGenomes', 'annotatedGenomes'])), String(summaryValue(summary, ['downloadedAnnotationGenomes', 'annotatedGenomes'])),
-    String(summaryValue(summary, ['missingAnnotationGenomes'])), String(summaryValue(summary, ['incompatibleAnnotationGenomes'])),
-    String(summaryValue(summary, ['usableAnnotationGenomes', 'annotatedGenomes'])), String(summaryValue(summary, ['circularOriginSplitFeatures'])),
-    String(summaryValue(summary, ['circularOriginSplitGenomes'])), String(summaryValue(summary, ['totalExperimentalTss'])), sqlString(JSON.stringify(topPhyla)), "'inactive'",
+    "'manifest-index.json'", String(genomes.length), sqlString(JSON.stringify(featureSummary)),
   ];
-  const releaseSql = 'BEGIN TRANSACTION;\nINSERT INTO releases (release_id, source_release_id, release_date, generated_at, description, layout, hf_repository, hf_revision, release_asset_base_url, manifest_index_path, total_genomes, total_predicted_promoters, total_annotated_genomes, total_downloaded_annotations, total_missing_annotations, total_incompatible_annotations, total_usable_annotations, total_circular_origin_split_features, total_circular_origin_split_genomes, total_experimental_tss, top_phyla_json, state) VALUES (' + releaseValues.join(', ') + ');\nCOMMIT;\n';
+  const releaseSql = 'BEGIN TRANSACTION;\nINSERT INTO releases (release_id, source_release_id, release_date, generated_at, description, storage_layout, hf_repository, hf_revision, release_asset_base_url, manifest_index_path, total_genomes, feature_summary_json) VALUES (' + releaseValues.join(', ') + ');\nCOMMIT;\n';
   await writeFile(path.join(outputRoot, 'd1', '000-release.sql'), releaseSql);
   for (let start = 0, part = 1; start < genomes.length; start += 500, part += 1) {
     const lines = ['BEGIN TRANSACTION;'];
     for (const genome of genomes.slice(start, start + 500)) {
-      lines.push(genomeInsert(release, genome));
+      lines.push(...genomeStatements(release, genome));
       for (const token of normalizedSearchTokens(genome)) {
         lines.push('INSERT OR IGNORE INTO genome_search_terms (release_id, accession, token) VALUES (' + sqlString(release) + ', ' + sqlString(genome.accession) + ', ' + sqlString(token) + ');');
       }
@@ -408,8 +450,6 @@ export async function buildPackedRelease({ projectRoot, source, release, sourceR
   await writeFile(path.join(outputRoot, 'd1', '999-facets.sql'), facetLines.join('\n'));
   await writeFile(path.join(outputRoot, 'd1', 'activate.sql'), [
     'BEGIN TRANSACTION;',
-    "UPDATE releases SET state = 'inactive' WHERE state = 'active';",
-    "UPDATE releases SET state = 'active' WHERE release_id = " + sqlString(release) + ';',
     'INSERT INTO portal_state (singleton, active_release_id) VALUES (1, ' + sqlString(release) + ') ON CONFLICT(singleton) DO UPDATE SET active_release_id = excluded.active_release_id;',
     'COMMIT;',
     '',

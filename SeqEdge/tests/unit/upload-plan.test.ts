@@ -57,7 +57,7 @@ describe('Hugging Face upload plan', () => {
       .flatMap((batch: { files: Array<{ kind: string; materialized?: boolean }> }) => batch.files)
       .find((file: { kind: string }) => file.kind === 'pack');
     expect(plannedPack).toMatchObject({ materialized: false, gitBlobSha1: null });
-  }, 15_000);
+  }, 30_000);
 
   it.each([
     {

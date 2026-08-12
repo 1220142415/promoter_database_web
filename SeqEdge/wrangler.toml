@@ -1,0 +1,12 @@
+name = "seqedge"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+pages_build_output_dir = ".open-next"
+
+# Add the real database_id after creating seqedge-catalog.
+# [[d1_databases]]
+# binding = "SEQEDGE_DB"
+# database_name = "seqedge-catalog"
+# database_id = "<database-id>"
+# migrations_dir = "migrations"

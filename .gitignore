@@ -5,8 +5,7 @@
 *.zip
 *.tar.gz
 
-# Nested application repositories and generated dependencies
-SeqEdge/
+# Generated dependencies and disposable preview copies
 SeqEdge-preview/
 
 # Local editor and runtime files

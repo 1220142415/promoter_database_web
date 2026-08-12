@@ -1,0 +1,166 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GET, HEAD } from '@/app/api/remote-data/[accession]/[file]/route';
+
+const accession = 'GCA_000411415.1';
+const originalFetch = global.fetch;
+
+function context(file: string, selectedAccession = accession) {
+  return { params: Promise.resolve({ accession: selectedAccession, file }) };
+}
+
+afterEach(() => {
+  global.fetch = originalFetch;
+  delete process.env.HF_PILOT_ACCESSIONS;
+  delete process.env.HF_PILOT_STORAGE_BASE_URL;
+  delete process.env.HF_STORAGE_BASE_URL;
+});
+
+describe('remote pilot asset proxy', () => {
+  it('restricts accessions and file names before remote fetch', async () => {
+    process.env.HF_PILOT_ACCESSIONS = accession;
+    process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock;
+
+    expect((await GET(new Request('http://localhost/test'), context('metadata.json', 'GCA_000000001.1'))).status).toBe(404);
+    expect((await GET(new Request('http://localhost/test'), context('../secret'))).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('forwards Range and streams safe response headers', async () => {
+    process.env.HF_PILOT_ACCESSIONS = accession;
+    process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': '10', 'Accept-Ranges': 'bytes' } });
+      expect(new Headers(init?.headers).get('range')).toBe('bytes=2-5');
+      return new Response('2345', { status: 206, headers: {
+        'Accept-Ranges': 'bytes',
+        'Content-Length': '4',
+        'Content-Range': 'bytes 2-5/10',
+        'Content-Type': 'application/json',
+        ETag: 'pilot-etag',
+      } });
+    });
+    global.fetch = fetchMock;
+
+    const response = await GET(new Request('http://localhost/test', { headers: { range: 'bytes=2-5' } }), context('metadata.json'));
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-range')).toBe('bytes 2-5/10');
+    expect(response.headers.get('etag')).toBe('pilot-etag');
+    expect(await response.text()).toBe('2345');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['HEAD', 'GET']);
+  });
+
+  it('serves ranged HEAD from legacy metadata without fetching the body', async () => {
+    process.env.HF_PILOT_ACCESSIONS = accession;
+    process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe('HEAD');
+      return new Response(null, {
+        headers: {
+          'Accept-Ranges': 'bytes',
+          'Content-Length': '10',
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+    global.fetch = fetchMock;
+
+    const response = await HEAD(
+      new Request('http://localhost/test', { headers: { range: 'bytes=2-5' } }),
+      context('metadata.json'),
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-range')).toBe('bytes 2-5/10');
+    expect(response.headers.get('content-length')).toBe('4');
+    expect(response.body).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('HEAD');
+  });
+
+  it('uses HEAD upstream without returning a response body', async () => {
+    process.env.HF_PILOT_ACCESSIONS = accession;
+    process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
+    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe('HEAD');
+      return new Response(null, { headers: { 'Content-Length': '10' } });
+    });
+
+    const response = await HEAD(new Request('http://localhost/test'), context('metadata.json'));
+    expect(response.status).toBe(200);
+    expect(response.body).toBeNull();
+  });
+
+  it('allows any catalog accession when the complete release is configured', async () => {
+    process.env.HF_STORAGE_BASE_URL = 'https://example.test/objects';
+    const fetchMock = vi.fn(async () => new Response('{}'));
+    global.fetch = fetchMock;
+
+    expect((await GET(new Request('http://localhost/test'), context('metadata.json'))).status).toBe(200);
+    expect((await GET(new Request('http://localhost/test'), context('metadata.json', 'GCA_000000001.1'))).status).toBe(404);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('translates packed logical ranges and rewrites response headers', async () => {
+    process.env.HF_STORAGE_BASE_URL = 'https://example.test';
+    const packed = {
+      layout: 'packed-v1' as const,
+      logicalObjectPrefix: '7f/' + accession,
+      baseUrl: 'https://example.test',
+      assets: {
+        'metadata.json': {
+          packPath: 'releases/2026-08-11/packs/pack-7f-000.bin',
+          offset: 4096,
+          length: 10,
+          sha256: 'a'.repeat(64),
+          contentType: 'application/json',
+        },
+      },
+    };
+    const repository = await import('@/lib/genome-catalog-repository');
+    const lookup = vi.spyOn(repository.genomeCatalogRepository, 'getByAccession').mockResolvedValue({
+      releaseId: '2026-08-11',
+      assetBase: '/api/remote-data',
+      genome: {} as never,
+      storage: packed,
+    });
+    global.fetch = vi.fn(async (_url, init) => {
+      expect(new Headers(init?.headers).get('range')).toBe('bytes=4098-4101');
+      return new Response('2345', { status: 206, headers: { 'Content-Range': 'bytes 4098-4101/9999', 'Content-Length': '4' } });
+    });
+
+    const response = await GET(new Request('http://localhost/test', { headers: { range: 'bytes=2-5' } }), context('metadata.json'));
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-range')).toBe('bytes 2-5/10');
+    expect(response.headers.get('content-length')).toBe('4');
+    expect(await response.text()).toBe('2345');
+    lookup.mockRestore();
+  });
+
+  it('serves packed HEAD from metadata and rejects invalid packed ranges', async () => {
+    process.env.HF_STORAGE_BASE_URL = 'https://example.test';
+    const repository = await import('@/lib/genome-catalog-repository');
+    const lookup = vi.spyOn(repository.genomeCatalogRepository, 'getByAccession').mockResolvedValue({
+      releaseId: '2026-08-11', assetBase: '/api/remote-data', genome: {} as never,
+      storage: { layout: 'packed-v1', logicalObjectPrefix: '00/' + accession, baseUrl: 'https://example.test', assets: {
+        'metadata.json': { packPath: 'pack.bin', offset: 0, length: 10, sha256: 'b'.repeat(64), contentType: 'application/json' },
+      } },
+    });
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock;
+    const head = await HEAD(new Request('http://localhost/test'), context('metadata.json'));
+    expect(head.status).toBe(200);
+    expect(head.headers.get('content-length')).toBe('10');
+    expect(fetchMock).not.toHaveBeenCalled();
+    const rangedHead = await HEAD(new Request('http://localhost/test', { headers: { range: 'bytes=2-5' } }), context('metadata.json'));
+    expect(rangedHead.status).toBe(206);
+    expect(rangedHead.headers.get('content-range')).toBe('bytes 2-5/10');
+    for (const value of ['bytes=10-', 'bytes=0-1,4-5']) {
+      const response = await GET(new Request('http://localhost/test', { headers: { range: value } }), context('metadata.json'));
+      expect(response.status).toBe(416);
+      expect(response.headers.get('content-range')).toBe('bytes */10');
+    }
+    lookup.mockRestore();
+  });
+});

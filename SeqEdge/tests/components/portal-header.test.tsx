@@ -1,0 +1,41 @@
+// @vitest-environment jsdom
+
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import PortalHeader from '@/components/portal-header';
+
+vi.mock('next/navigation', () => ({ usePathname: () => '/genomes' }));
+vi.mock('next/link', () => ({
+  default: ({ href, children, onClick, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a
+      href={String(href)}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick?.(event);
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+}));
+
+describe('portal header', () => {
+  it('opens and closes the mobile navigation with an accessible toggle', async () => {
+    const user = userEvent.setup();
+    render(<PortalHeader />);
+
+    const open = screen.getByRole('button', { name: 'Open navigation' });
+    expect(open).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('link', { name: 'Genomes' })).toHaveClass('is-active');
+    expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
+
+    await user.click(open);
+    expect(screen.getByRole('button', { name: 'Close navigation' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toHaveClass('is-open');
+
+    await user.click(screen.getByRole('link', { name: 'Overview' }));
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'false');
+  });
+});

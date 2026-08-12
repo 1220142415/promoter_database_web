@@ -1,0 +1,17 @@
+diff --git a/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/SequenceFeatureDetails.js b/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/SequenceFeatureDetails.js
+index ea4ed66..655f285 100644
+--- a/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/SequenceFeatureDetails.js
++++ b/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/SequenceFeatureDetails.js
+@@ -56,10 +56,11 @@ const SequenceFeatureDetails = (0, mobx_react_1.observer)(function ({ model, fea
+     const [forceLoad, setForceLoad] = (0, react_1.useState)(false);
+     const session = (0, util_1.getSession)(model);
+     const assemblyName = (_b = (_a = model.view) === null || _a === void 0 ? void 0 : _a.assemblyNames) === null || _b === void 0 ? void 0 : _b[0];
++    const simpleFeature = (0, react_1.useMemo)(() => new util_1.SimpleFeature(feature), [feature]);
+     const { sequence, error } = (0, useFeatureSequence_1.useFeatureSequence)({
+         assemblyName,
+         session,
+-        feature: new util_1.SimpleFeature(feature),
++        feature: simpleFeature,
+         upDownBp,
+         forceLoad,
+     });

@@ -87,7 +87,7 @@ npm run dev
 
 接口支持 `q`、`domain`、`phylum`、`class`、`order`、`family`、`genus`、`source`、`annotation`、`sort`、`direction`、`limit` 和 `cursor`。`limit` 只能是 25、50 或 100。分页游标是不透明值，并与当前排序字段和方向绑定。`annotation=unavailable` 同时包含 NCBI 注释缺失和与 assembly 不兼容的记录。
 
-服务端通过 `GenomeCatalogRepository.search()` 和 `GenomeCatalogRepository.getByAccession()` 访问目录。当前实现读取并缓存 `src/generated/release-catalog.json`。以后可在 repository 内部替换为 Cloudflare D1 查询，同时保持 API 响应、目录页和详情页契约不变；本阶段不创建数据库、migration 或云端凭据。
+服务端通过 `GenomeCatalogRepository.search()` 和 `GenomeCatalogRepository.getByAccession()` 访问目录。本地开发读取并缓存 `src/generated/release-catalog.json`，生产环境通过 `SEQEDGE_DB` binding 查询 D1。promoter 数量和文件引用来自默认 `feature_sets` 记录，真实基因组区间仍保存在带索引的 GFF3 文件中。
 
 ## 对象存储部署
 
@@ -159,6 +159,17 @@ npm run build
 npm run test:e2e
 npm run build:cf
 ```
+
+验证通过后，用下面的命令部署到 Cloudflare Workers：
+
+```bash
+npm run deploy:cf
+```
+
+使用 Workers Builds 时，Build command 设置为 `npm run build:cf`，Deploy
+command 设置为 `npx @opennextjs/cloudflare deploy`。在 Cloudflare 构建环境中设置
+`NEXT_PUBLIC_STORAGE_BASE_URL=/api/remote-data`，并将当前 release URL 设置为
+`NEXT_PUBLIC_RELEASE_ASSET_BASE_URL`。
 
 完整数据校验会检查集合数量、accession 对应关系、feature 类型、分数和链范围、FASTA/GFF3 坐标、BGZF/Tabix 索引、manifest 以及 SHA-256。
 

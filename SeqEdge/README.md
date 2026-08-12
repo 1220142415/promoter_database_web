@@ -87,7 +87,7 @@ The genome catalog is rendered with the first 25 rows on the server. Search, tax
 
 Supported query parameters are `q`, `domain`, `phylum`, `class`, `order`, `family`, `genus`, `source`, `annotation`, `sort`, `direction`, `limit`, and `cursor`. `limit` must be 25, 50, or 100. Pagination cursors are opaque and tied to the selected sort field and direction. `annotation=unavailable` includes both missing and assembly-incompatible NCBI annotations.
 
-Server code accesses the catalog through `GenomeCatalogRepository.search()` and `GenomeCatalogRepository.getByAccession()`. The current repository reads and caches `src/generated/release-catalog.json`. A future Cloudflare D1 implementation can replace this repository internally while preserving the API response and the catalog/detail-page contracts; this phase does not create a database, migration, or cloud credential.
+Server code accesses the catalog through `GenomeCatalogRepository.search()` and `GenomeCatalogRepository.getByAccession()`. Local development reads and caches `src/generated/release-catalog.json`; production uses the `SEQEDGE_DB` D1 binding. Promoter counts and file references are joined from the default `feature_sets` row, while genomic intervals remain in indexed GFF3 files.
 
 ## Object storage
 
@@ -159,6 +159,17 @@ npm run build
 npm run test:e2e
 npm run build:cf
 ```
+
+Deploy the validated OpenNext build to Cloudflare Workers with:
+
+```bash
+npm run deploy:cf
+```
+
+For Workers Builds, use `npm run build:cf` as the build command and
+`npx @opennextjs/cloudflare deploy` as the deploy command. Configure
+`NEXT_PUBLIC_STORAGE_BASE_URL=/api/remote-data` and the active release URL as
+`NEXT_PUBLIC_RELEASE_ASSET_BASE_URL` in the Cloudflare build environment.
 
 The full data validator checks collection counts, accession identity, feature types, score and strand bounds, FASTA/GFF3 coordinate containment, BGZF and Tabix indexes, manifests, and SHA-256 digests.
 

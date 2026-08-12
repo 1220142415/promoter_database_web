@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS releases (
+CREATE TABLE releases (
   release_id TEXT PRIMARY KEY,
   source_release_id TEXT,
   release_date TEXT,
@@ -15,12 +15,12 @@ CREATE TABLE IF NOT EXISTS releases (
   feature_summary_json TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE TABLE IF NOT EXISTS portal_state (
+CREATE TABLE portal_state (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   active_release_id TEXT NOT NULL REFERENCES releases(release_id)
 );
 
-CREATE TABLE IF NOT EXISTS genomes (
+CREATE TABLE genomes (
   release_id TEXT NOT NULL REFERENCES releases(release_id) ON DELETE CASCADE,
   accession TEXT NOT NULL,
   organism_name TEXT NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS genomes (
   PRIMARY KEY (release_id, accession)
 );
 
-CREATE TABLE IF NOT EXISTS feature_sets (
+CREATE TABLE feature_sets (
   release_id TEXT NOT NULL,
   accession TEXT NOT NULL,
   feature_type TEXT NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS feature_sets (
   )
 );
 
-CREATE TABLE IF NOT EXISTS genome_search_terms (
+CREATE TABLE genome_search_terms (
   release_id TEXT NOT NULL,
   accession TEXT NOT NULL,
   token TEXT NOT NULL,
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS genome_search_terms (
     REFERENCES genomes(release_id, accession) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS facet_options (
+CREATE TABLE facet_options (
   release_id TEXT NOT NULL REFERENCES releases(release_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -89,20 +89,20 @@ CREATE TABLE IF NOT EXISTS facet_options (
   PRIMARY KEY (release_id, kind, value, domain, phylum, class_name, order_name, family)
 );
 
-CREATE INDEX IF NOT EXISTS genomes_organism_sort
+CREATE INDEX genomes_organism_sort
   ON genomes(release_id, organism_name, accession);
-CREATE INDEX IF NOT EXISTS genomes_size_sort
+CREATE INDEX genomes_size_sort
   ON genomes(release_id, genome_size_bp, accession);
-CREATE INDEX IF NOT EXISTS genomes_taxonomy
+CREATE INDEX genomes_taxonomy
   ON genomes(release_id, domain, phylum, class_name, order_name, family, genus, accession);
-CREATE UNIQUE INDEX IF NOT EXISTS feature_sets_one_default
+CREATE UNIQUE INDEX feature_sets_one_default
   ON feature_sets(release_id, accession, feature_type)
   WHERE is_default = 1;
-CREATE INDEX IF NOT EXISTS feature_sets_lookup
+CREATE INDEX feature_sets_lookup
   ON feature_sets(release_id, accession, feature_type, is_default);
-CREATE INDEX IF NOT EXISTS feature_sets_count_sort
+CREATE INDEX feature_sets_count_sort
   ON feature_sets(release_id, feature_type, is_default, feature_count, accession);
-CREATE INDEX IF NOT EXISTS genome_search_token
+CREATE INDEX genome_search_token
   ON genome_search_terms(release_id, token, accession);
-CREATE INDEX IF NOT EXISTS facet_options_lookup
+CREATE INDEX facet_options_lookup
   ON facet_options(release_id, kind, domain, phylum, class_name, order_name, family, value);

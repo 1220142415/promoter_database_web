@@ -524,11 +524,11 @@ function d1Sort(query: GenomeSearchQuery) {
 async function d1Facets(database: D1Database, releaseId: string, query: GenomeSearchQuery): Promise<GenomeSearchResponse['facets']> {
   const parents = [query.taxonomy.domain, query.taxonomy.phylum, query.taxonomy.class, query.taxonomy.order, query.taxonomy.family];
   const ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus'];
-  const selects = ["SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE release_id = ? AND kind = 'source'"];
+  const branches = ["kind = 'source'"];
   const bindings: string[] = [releaseId];
   for (let index = 0; index < ranks.length; index += 1) {
-    const clauses = ['release_id = ?', 'kind = ?'];
-    const rankBindings = [releaseId, ranks[index]];
+    const clauses = ["kind = ?"];
+    const rankBindings = [ranks[index]];
     const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'];
     for (let parent = 0; parent < index && parent < parents.length; parent += 1) {
       if (parents[parent]) {
@@ -536,11 +536,11 @@ async function d1Facets(database: D1Database, releaseId: string, query: GenomeSe
         rankBindings.push(parents[parent]);
       }
     }
-    selects.push('SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE ' + clauses.join(' AND '));
+    branches.push('(' + clauses.join(' AND ') + ')');
     bindings.push(...rankBindings);
   }
   const result = await database
-    .prepare(selects.join(' UNION ALL ') + ' ORDER BY facet_kind, value')
+    .prepare('SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE release_id = ? AND (' + branches.join(' OR ') + ') ORDER BY facet_kind, value')
     .bind(...bindings)
     .all<{ facet_kind: string; value: string }>();
   const values = Object.fromEntries(['source', ...ranks].map((kind) => [kind, [] as string[]]));

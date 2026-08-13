@@ -58,14 +58,14 @@ function edgeCache() {
 
 function cacheKey(request: Request, method: string, range: string | null) {
   const url = new URL(request.url);
-  url.searchParams.set('__seqedge_cache_version', '2');
+  url.searchParams.set('__seqedge_cache_version', '3');
   url.searchParams.set('__seqedge_cache_method', method);
   url.searchParams.set('__seqedge_cache_range', range || 'full');
   return new Request(url.toString(), { method: 'GET' });
 }
 
 function cacheControl(file: string, ranged: boolean, versioned: boolean) {
-  if (versioned && IMMUTABLE_FILES.has(file)) return 'public, max-age=31536000, s-maxage=31536000, immutable';
+  if (versioned) return 'public, max-age=31536000, s-maxage=31536000, immutable';
   if (ranged) return 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
   return 'public, max-age=300, s-maxage=3600';
 }

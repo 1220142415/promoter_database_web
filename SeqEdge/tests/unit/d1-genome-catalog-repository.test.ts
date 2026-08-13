@@ -59,7 +59,7 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
   };
 }
 
-type JoinedGenomeRow = ReturnType<typeof genomeRow>;
+type JoinedGenomeRow = ReturnType<typeof genomeRow> & { total_count?: number };
 type Recorded = { query: string; bindings: Array<string | number | null> };
 
 const D1_META: D1Meta & Record<string, unknown> = {
@@ -91,10 +91,10 @@ class FakeStatement implements D1PreparedStatement {
   async first<T>() {
     if (this.query.includes('FROM portal_state')) return this.database.release as T;
     if (this.query.startsWith('SELECT COUNT')) return { count: this.database.rows.length } as T;
-    if (this.query.startsWith('SELECT g.*')) {
+    if (this.query.includes('SELECT g.*') && !this.query.includes('AS cursor_value')) {
       return (this.database.rows.find((row) => row.accession === this.bindings[1]) || null) as T | null;
     }
-    if (this.query.includes(' AS cursor_value FROM genomes g')) {
+    if (this.query.includes(' AS cursor_value FROM filtered')) {
       const row = this.database.rows.find((candidate) => candidate.accession === this.bindings[this.bindings.length - 1]);
       if (!row) return null;
       const value = this.query.includes('genome_size_bp') ? row.genome_size_bp
@@ -113,8 +113,18 @@ class FakeStatement implements D1PreparedStatement {
     if (this.query.startsWith('SELECT feature_type')) {
       return d1Result(this.database.aggregates as T[]);
     }
+    if (this.query.includes('SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count')) {
+      return d1Result(this.database.rows.map((row) => ({ ...row, total_count: this.database.rows.length })) as T[]);
+    }
     if (this.query.startsWith('SELECT g.*')) {
       return d1Result(this.database.rows as T[]);
+    }
+    if (this.query.includes('facet_kind')) {
+      return d1Result([
+        { facet_kind: 'source', value: 'NCBI GenBank' },
+        ...['Bacteria', 'Bacillota', 'Bacilli', 'Bacillales', 'Bacillaceae', 'Bacillus']
+          .map((value, index) => ({ facet_kind: ['domain', 'phylum', 'class', 'order', 'family', 'genus'][index], value })),
+      ] as T[]);
     }
     return d1Result<T>([]);
   }
@@ -128,6 +138,7 @@ class FakeStatement implements D1PreparedStatement {
 
 class FakeD1 implements D1Database {
   recorded: Recorded[] = [];
+  preparedQueries: string[] = [];
   release = { ...releaseRow };
   rows: JoinedGenomeRow[] = [
     genomeRow('GCA_000000001.1', 2_000_000, 20),
@@ -139,7 +150,10 @@ class FakeD1 implements D1Database {
     { feature_type: 'gene_annotation', status: 'missing', genome_count: 1, feature_count: null },
   ];
 
-  prepare(query: string) { return new FakeStatement(this, query); }
+  prepare(query: string) {
+    this.preparedQueries.push(query);
+    return new FakeStatement(this, query);
+  }
 
   async exec(query: string) { void query; return { count: 0, duration: 0 }; }
   withSession(): D1DatabaseSession { throw new Error('not implemented by fake'); }
@@ -181,8 +195,8 @@ describe('D1 genome catalog repository', () => {
       annotationStatus: 'available',
       annotationFeatureCount: 120,
       assets: {
-        fasta: 'GCA_000000001.1/reference.fa.gz',
-        predictedPromoters: 'GCA_000000001.1/predicted-promoters.gff3.gz',
+        fasta: 'GCA_000000001.1/reference.fa.gz?release=2026-08-07',
+        predictedPromoters: 'GCA_000000001.1/predicted-promoters.gff3.gz?release=2026-08-07',
       },
     });
     expect(await repository.getByAccession('GCA_000000001')).toBeNull();
@@ -202,16 +216,19 @@ describe('D1 genome catalog repository', () => {
     });
     expect(result.releaseId).toBe('2026-08-07');
     expect(result.facets.taxonomy.genus).toEqual(['Bacillus']);
-    const pageQuery = database.recorded.find((entry) => entry.query.startsWith('SELECT g.*'))!;
+    const pageQuery = database.recorded.find((entry) => entry.query.includes('SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count'))!;
     expect(pageQuery.query).toContain("p.feature_type = 'promoter'");
     expect(pageQuery.query).toContain("a.feature_type = 'gene_annotation'");
     expect(pageQuery.query).toContain("COALESCE(a.status, 'missing') <> 'ready'");
-    expect(pageQuery.query).toContain('COALESCE(p.feature_count, 0) DESC');
+    expect(pageQuery.query).toContain('COALESCE(filtered.predicted_promoter_count, 0) DESC');
     expect(pageQuery.query).toContain('st.token >= ? AND st.token < ?');
     expect(pageQuery.query).not.toContain(' LIKE ');
     expect(pageQuery.bindings).toEqual(expect.arrayContaining([
       'bacillus', 'bacillus\uffff', 'subtilis', 'subtilis\uffff', 'Bacteria', 'Bacillota', 'NCBI GenBank',
     ]));
+    expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
+    expect(database.preparedQueries).toHaveLength(3);
+    expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT'))).toBe(false);
   });
 
   it('binds cursors to the active release and complete query configuration', async () => {

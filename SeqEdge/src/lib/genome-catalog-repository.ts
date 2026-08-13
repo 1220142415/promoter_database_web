@@ -503,26 +503,59 @@ function d1Where(query: GenomeSearchQuery, releaseId: string) {
 
 function d1Sort(query: GenomeSearchQuery) {
   const direction = query.direction === 'asc' ? 'ASC' : 'DESC';
-  if (query.sort === 'organism') return { expression: 'g.organism_name', order: 'g.organism_name ' + direction + ', g.accession ASC' };
-  if (query.sort === 'promoters') return { expression: 'COALESCE(p.feature_count, 0)', order: 'COALESCE(p.feature_count, 0) ' + direction + ', g.accession ASC' };
-  if (query.sort === 'genome-size') return { expression: 'g.genome_size_bp', order: 'g.genome_size_bp IS NULL ASC, g.genome_size_bp ' + direction + ', g.accession ASC' };
-  return { expression: 'g.accession', order: 'g.accession ' + direction };
+  if (query.sort === 'organism') return {
+    outerExpression: 'filtered.organism_name',
+    outerOrder: 'filtered.organism_name ' + direction + ', filtered.accession ASC',
+  };
+  if (query.sort === 'promoters') return {
+    outerExpression: 'COALESCE(filtered.predicted_promoter_count, 0)',
+    outerOrder: 'COALESCE(filtered.predicted_promoter_count, 0) ' + direction + ', filtered.accession ASC',
+  };
+  if (query.sort === 'genome-size') return {
+    outerExpression: 'filtered.genome_size_bp',
+    outerOrder: 'filtered.genome_size_bp IS NULL ASC, filtered.genome_size_bp ' + direction + ', filtered.accession ASC',
+  };
+  return {
+    outerExpression: 'filtered.accession',
+    outerOrder: 'filtered.accession ' + direction,
+  };
 }
 
 async function d1Facets(database: D1Database, releaseId: string, query: GenomeSearchQuery): Promise<GenomeSearchResponse['facets']> {
   const parents = [query.taxonomy.domain, query.taxonomy.phylum, query.taxonomy.class, query.taxonomy.order, query.taxonomy.family];
   const ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus'];
-  const statements = [database.prepare("SELECT DISTINCT value FROM facet_options WHERE release_id = ? AND kind = 'source' ORDER BY value").bind(releaseId)];
+  const selects = ["SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE release_id = ? AND kind = 'source'"];
+  const bindings: string[] = [releaseId];
   for (let index = 0; index < ranks.length; index += 1) {
     const clauses = ['release_id = ?', 'kind = ?'];
-    const bindings = [releaseId, ranks[index]];
+    const rankBindings = [releaseId, ranks[index]];
     const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'];
-    for (let parent = 0; parent < index && parent < parents.length; parent += 1) if (parents[parent]) { clauses.push(columns[parent] + ' = ?'); bindings.push(parents[parent]); }
-    statements.push(database.prepare('SELECT DISTINCT value FROM facet_options WHERE ' + clauses.join(' AND ') + ' ORDER BY value').bind(...bindings));
+    for (let parent = 0; parent < index && parent < parents.length; parent += 1) {
+      if (parents[parent]) {
+        clauses.push(columns[parent] + ' = ?');
+        rankBindings.push(parents[parent]);
+      }
+    }
+    selects.push('SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE ' + clauses.join(' AND '));
+    bindings.push(...rankBindings);
   }
-  const results = await database.batch<{ value: string }>(statements);
-  const values = results.map((result) => result.results.map((row) => row.value));
-  return { sources: values[0], taxonomy: { domain: values[1], phylum: values[2], class: values[3], order: values[4], family: values[5], genus: values[6] } };
+  const result = await database
+    .prepare(selects.join(' UNION ALL ') + ' ORDER BY facet_kind, value')
+    .bind(...bindings)
+    .all<{ facet_kind: string; value: string }>();
+  const values = Object.fromEntries(['source', ...ranks].map((kind) => [kind, [] as string[]]));
+  for (const row of result.results) values[row.facet_kind]?.push(row.value);
+  return {
+    sources: values.source,
+    taxonomy: {
+      domain: values.domain,
+      phylum: values.phylum,
+      class: values.class,
+      order: values.order,
+      family: values.family,
+      genus: values.genus,
+    },
+  };
 }
 
 export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
@@ -533,31 +566,34 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const releaseId = String(release.release_id);
     const where = d1Where(query, releaseId);
     const sort = d1Sort(query);
-    const clauses = [...where.clauses];
+    const cursorClauses: string[] = [];
     const bindings = [...where.bindings];
     if (query.cursor) {
       const cursor = decodeCursor(query.cursor, query, releaseId);
+      const filtered = D1_GENOME_SELECT + ' WHERE ' + where.clauses.join(' AND ');
       const cursorRow = await this.database
-        .prepare('SELECT ' + sort.expression + ' AS cursor_value FROM genomes g ' + D1_FEATURE_JOINS + ' WHERE ' + where.clauses.join(' AND ') + ' AND g.accession = ?')
+        .prepare('WITH filtered AS (' + filtered + ') SELECT ' + sort.outerExpression + ' AS cursor_value FROM filtered WHERE filtered.accession = ?')
         .bind(...where.bindings, cursor.accession)
         .first<{ cursor_value: SortValue }>();
       if (!cursorRow || cursorRow.cursor_value !== cursor.value) throw new InvalidGenomeCursorError('cursor does not belong to this result set');
       const comparison = query.direction === 'asc' ? '>' : '<';
       if (query.sort === 'genome-size' && cursor.value === null) {
-        clauses.push('(g.genome_size_bp IS NULL AND g.accession > ?)');
+        cursorClauses.push('(filtered.genome_size_bp IS NULL AND filtered.accession > ?)');
         bindings.push(cursor.accession);
       } else if (query.sort === 'genome-size') {
-        clauses.push('(g.genome_size_bp IS NULL OR (g.genome_size_bp IS NOT NULL AND ((g.genome_size_bp ' + comparison + ' ?) OR (g.genome_size_bp = ? AND g.accession > ?))))');
+        cursorClauses.push('(filtered.genome_size_bp IS NULL OR (filtered.genome_size_bp IS NOT NULL AND ((filtered.genome_size_bp ' + comparison + ' ?) OR (filtered.genome_size_bp = ? AND filtered.accession > ?))))');
         bindings.push(cursor.value as number, cursor.value as number, cursor.accession);
       } else {
-        clauses.push('((' + sort.expression + ' ' + comparison + ' ?) OR (' + sort.expression + ' = ? AND g.accession > ?))');
+        cursorClauses.push('((' + sort.outerExpression + ' ' + comparison + ' ?) OR (' + sort.outerExpression + ' = ? AND filtered.accession > ?))');
         bindings.push(cursor.value as string | number, cursor.value as string | number, cursor.accession);
       }
     }
-    const select = D1_GENOME_SELECT + ' WHERE ' + clauses.join(' AND ') + ' ORDER BY ' + sort.order + ' LIMIT ?';
-    const [pageResult, countResult, facets] = await Promise.all([
+    const filtered = D1_GENOME_SELECT + ' WHERE ' + where.clauses.join(' AND ');
+    const select = 'WITH filtered AS (' + filtered + ') SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count FROM filtered'
+      + (cursorClauses.length ? ' WHERE ' + cursorClauses.join(' AND ') : '')
+      + ' ORDER BY ' + sort.outerOrder + ' LIMIT ?';
+    const [pageResult, facets] = await Promise.all([
       this.database.prepare(select).bind(...bindings, query.limit + 1).all<D1GenomeRow>(),
-      this.database.prepare('SELECT COUNT(*) AS count FROM genomes g ' + D1_FEATURE_JOINS + ' WHERE ' + where.clauses.join(' AND ')).bind(...where.bindings).first<{ count: number }>(),
       d1Facets(this.database, releaseId, query),
     ]);
     const genomes = pageResult.results.map((row) => rowToGenome(row, String(release.storage_layout), releaseId));
@@ -566,7 +602,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     return {
       releaseId,
       items: page.map(toCatalogRow),
-      total: Number(countResult?.count || 0),
+      total: Number(pageResult.results[0]?.total_count || 0),
       facets,
       pageInfo: { nextCursor: hasNext && page.length ? encodeCursor(page[page.length - 1], query, releaseId) : null, hasNext },
     };
@@ -577,6 +613,20 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const row = await this.database.prepare(D1_GENOME_SELECT + ' WHERE g.release_id = ? AND g.accession = ?').bind(String(release.release_id), accession).first<D1GenomeRow>();
     if (!row) return null;
     const genome = rowToGenome(row, String(release.storage_layout), String(release.release_id));
+    const releaseVersion = encodeURIComponent(String(release.release_id));
+    const versionAsset = (path: string | null) => path
+      ? path + (path.includes('?') ? '&' : '?') + 'release=' + releaseVersion
+      : null;
+    genome.assets = {
+      fasta: versionAsset(genome.assets.fasta)!,
+      fastaFai: versionAsset(genome.assets.fastaFai)!,
+      fastaGzi: versionAsset(genome.assets.fastaGzi)!,
+      predictedPromoters: versionAsset(genome.assets.predictedPromoters)!,
+      predictedPromotersIndex: versionAsset(genome.assets.predictedPromotersIndex)!,
+      ncbiAnnotations: versionAsset(genome.assets.ncbiAnnotations),
+      ncbiAnnotationsIndex: versionAsset(genome.assets.ncbiAnnotationsIndex),
+      metadata: versionAsset(genome.assets.metadata),
+    };
     const releaseBase = String(release.release_asset_base_url || '').replace(/\/+$/, '');
     const repositoryBase = releaseBase.endsWith('/releases/' + String(release.release_id))
       ? releaseBase.slice(0, -('/releases/' + String(release.release_id)).length)

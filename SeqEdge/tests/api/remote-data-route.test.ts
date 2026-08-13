@@ -10,6 +10,7 @@ function context(file: string, selectedAccession = accession) {
 
 afterEach(() => {
   global.fetch = originalFetch;
+  Object.defineProperty(globalThis, 'caches', { value: undefined, configurable: true, writable: true });
   delete process.env.HF_PILOT_ACCESSIONS;
   delete process.env.HF_PILOT_STORAGE_BASE_URL;
   delete process.env.HF_STORAGE_BASE_URL;
@@ -50,6 +51,35 @@ describe('remote pilot asset proxy', () => {
     expect(await response.text()).toBe('2345');
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['HEAD', 'GET']);
+  });
+
+  it('caches range metadata and responses by asset and range', async () => {
+    process.env.HF_PILOT_ACCESSIONS = accession;
+    process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
+    const entries = new Map<string, Response>();
+    Object.defineProperty(globalThis, 'caches', { configurable: true, writable: true, value: {
+      default: {
+        match: async (request: Request) => entries.get(request.url),
+        put: async (request: Request, response: Response) => { entries.set(request.url, response); },
+      },
+    } });
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': '10', 'Accept-Ranges': 'bytes' } });
+      return new Response('2345', { status: 206, headers: {
+        'Accept-Ranges': 'bytes', 'Content-Length': '4', 'Content-Range': 'bytes 2-5/10', ETag: 'pilot-etag',
+      } });
+    });
+    global.fetch = fetchMock;
+
+    const request = () => new Request('http://localhost/test?release=2026-08-07', { headers: { range: 'bytes=2-5' } });
+    const first = await GET(request(), context('metadata.json'));
+    const second = await GET(request(), context('metadata.json'));
+    expect(first.status).toBe(206);
+    expect(first.headers.get('x-seqedge-cache')).toBe('MISS');
+    expect(first.headers.get('cache-control')).toContain('immutable');
+    expect(second.status).toBe(206);
+    expect(second.headers.get('x-seqedge-cache')).toBe('HIT');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('serves ranged HEAD from legacy metadata without fetching the body', async () => {

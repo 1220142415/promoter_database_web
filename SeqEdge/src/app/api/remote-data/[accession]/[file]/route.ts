@@ -58,6 +58,7 @@ function edgeCache() {
 
 function cacheKey(request: Request, method: string, range: string | null) {
   const url = new URL(request.url);
+  url.searchParams.set('__seqedge_cache_version', '2');
   url.searchParams.set('__seqedge_cache_method', method);
   url.searchParams.set('__seqedge_cache_range', range || 'full');
   return new Request(url.toString(), { method: 'GET' });
@@ -162,6 +163,8 @@ async function serveIndividual(request: Request, upstream: string, file: string,
       metadataResponse = await fetchUpstream(upstream, 'HEAD');
       if (metadataResponse?.ok) {
         const metadataHeaders = new Headers(metadataResponse.headers);
+        const upstreamLength = metadataHeaders.get('content-length');
+        if (upstreamLength) metadataHeaders.set('X-SeqEdge-Logical-Length', upstreamLength);
         metadataHeaders.set('Cache-Control', cacheControl(file, false, true));
         metadataResponse = new Response(null, { status: metadataResponse.status, headers: metadataHeaders });
         await storeResponse(metadataKey, metadataResponse);
@@ -169,7 +172,7 @@ async function serveIndividual(request: Request, upstream: string, file: string,
     }
     if (!metadataResponse) return NextResponse.json({ error: 'Remote release asset could not be reached.' }, { status: 502 });
     if (!metadataResponse.ok) return NextResponse.json({ error: 'Remote release asset is unavailable.' }, { status: metadataResponse.status === 404 ? 404 : 502 });
-    logicalSize = Number(metadataResponse.headers.get('content-length'));
+    logicalSize = Number(metadataResponse.headers.get('x-seqedge-logical-length') || metadataResponse.headers.get('content-length'));
     if (!Number.isSafeInteger(logicalSize) || logicalSize < 0) return NextResponse.json({ error: 'Remote release asset length is invalid.' }, { status: 502 });
     logicalRange = parseLogicalRange(requestedRange, logicalSize);
     if (!logicalRange) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + logicalSize } });

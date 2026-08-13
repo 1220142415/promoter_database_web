@@ -65,21 +65,27 @@ describe('remote pilot asset proxy', () => {
     } });
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': '10', 'Accept-Ranges': 'bytes' } });
-      return new Response('2345', { status: 206, headers: {
-        'Accept-Ranges': 'bytes', 'Content-Length': '4', 'Content-Range': 'bytes 2-5/10', ETag: 'pilot-etag',
+      const range = new Headers(init?.headers).get('range') || 'bytes=2-5';
+      const contentRange = range === 'bytes=6-9' ? 'bytes 6-9/10' : 'bytes 2-5/10';
+      return new Response(range === 'bytes=6-9' ? '6789' : '2345', { status: 206, headers: {
+        'Accept-Ranges': 'bytes', 'Content-Length': '4', 'Content-Range': contentRange, ETag: 'pilot-etag',
       } });
     });
     global.fetch = fetchMock;
 
-    const request = () => new Request('http://localhost/test?release=2026-08-07', { headers: { range: 'bytes=2-5' } });
+    const request = (range = 'bytes=2-5') => new Request('http://localhost/test?release=2026-08-07', { headers: { range } });
     const first = await GET(request(), context('metadata.json'));
     const second = await GET(request(), context('metadata.json'));
+    const third = await GET(request('bytes=6-9'), context('metadata.json'));
     expect(first.status).toBe(206);
     expect(first.headers.get('x-seqedge-cache')).toBe('MISS');
     expect(first.headers.get('cache-control')).toContain('immutable');
     expect(second.status).toBe(206);
     expect(second.headers.get('x-seqedge-cache')).toBe('HIT');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(third.status).toBe(206);
+    expect(third.headers.get('content-range')).toBe('bytes 6-9/10');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['HEAD', 'GET', 'GET']);
   });
 
   it('serves ranged HEAD from legacy metadata without fetching the body', async () => {

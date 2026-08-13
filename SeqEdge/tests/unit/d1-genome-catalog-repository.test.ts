@@ -14,6 +14,7 @@ const releaseRow = {
   manifest_index_path: null,
   total_genomes: 2,
   feature_summary_json: '{"promoter":{"genomeCount":2,"featureCount":30},"totalCircularOriginSplitFeatures":4,"totalCircularOriginSplitGenomes":2,"totalExperimentalTss":3,"topPhyla":[{"name":"Bacillota","count":2}]}',
+  publication_status: 'ready',
 };
 
 function genomeRow(accession: string, size: number | null, promoters: number) {
@@ -89,7 +90,10 @@ class FakeStatement implements D1PreparedStatement {
   }
 
   async first<T>() {
-    if (this.query.includes('FROM portal_state')) return this.database.release as T;
+    if (this.query.includes('FROM portal_state')) {
+      if (this.query.includes("publication_status, 'ready') = 'ready'") && this.database.release?.publication_status !== 'ready') return null;
+      return this.database.release as T;
+    }
     if (this.query.startsWith('SELECT COUNT')) return { count: this.database.rows.length } as T;
     if (this.query.includes('SELECT g.*') && !this.query.includes('AS cursor_value')) {
       return (this.database.rows.find((row) => row.accession === this.bindings[1]) || null) as T | null;
@@ -139,7 +143,7 @@ class FakeStatement implements D1PreparedStatement {
 class FakeD1 implements D1Database {
   recorded: Recorded[] = [];
   preparedQueries: string[] = [];
-  release = { ...releaseRow };
+  release: typeof releaseRow | null = { ...releaseRow };
   rows: JoinedGenomeRow[] = [
     genomeRow('GCA_000000001.1', 2_000_000, 20),
     genomeRow('GCA_000000002.1', null, 10),
@@ -222,6 +226,8 @@ describe('D1 genome catalog repository', () => {
     expect(pageQuery.query).toContain("COALESCE(a.status, 'missing') <> 'ready'");
     expect(pageQuery.query).toContain('COALESCE(filtered.predicted_promoter_count, 0) DESC');
     expect(pageQuery.query).toContain('st.token >= ? AND st.token < ?');
+    expect(pageQuery.query).toContain('g.accession IN (SELECT st.accession');
+    expect(pageQuery.query).not.toContain('EXISTS (SELECT 1 FROM genome_search_terms');
     expect(pageQuery.query).not.toContain(' LIKE ');
     expect(pageQuery.bindings).toEqual(expect.arrayContaining([
       'bacillus', 'bacillus\uffff', 'subtilis', 'subtilis\uffff', 'Bacteria', 'Bacillota', 'NCBI GenBank',
@@ -229,6 +235,13 @@ describe('D1 genome catalog repository', () => {
     expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
     expect(database.preparedQueries).toHaveLength(3);
     expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT'))).toBe(false);
+  });
+
+  it('rejects a staged release even if portal_state points at it', async () => {
+    const database = new FakeD1();
+    database.release = { ...releaseRow, publication_status: 'staged' };
+    const repository = new D1GenomeCatalogRepository(database);
+    await expect(repository.getActiveRelease()).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
   });
 
   it('binds cursors to the active release and complete query configuration', async () => {

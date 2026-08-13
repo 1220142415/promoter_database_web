@@ -459,7 +459,7 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
 }
 
 async function activeD1Release(database: D1Database) {
-  const row = await database.prepare('SELECT r.* FROM portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1').first<D1ReleaseRow>();
+  const row = await database.prepare("SELECT r.* FROM portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1 AND COALESCE(r.publication_status, 'ready') = 'ready'").first<D1ReleaseRow>();
   if (!row) throw new GenomeCatalogUnavailableError('No active SeqEdge release is configured in D1.');
   return row;
 }
@@ -489,9 +489,9 @@ function d1Where(query: GenomeSearchQuery, releaseId: string) {
   const tokens = normalizedTokens(query.q);
   if (query.q) {
     const accession = query.q.toLocaleUpperCase();
-    const tokenClauses = tokens.map(() => 'EXISTS (SELECT 1 FROM genome_search_terms st WHERE st.release_id = g.release_id AND st.accession = g.accession AND st.token >= ? AND st.token < ?)');
+    const tokenClauses = tokens.map(() => 'g.accession IN (SELECT st.accession FROM genome_search_terms st WHERE st.release_id = ? AND st.token >= ? AND st.token < ?)');
     clauses.push('(g.accession = ? OR (g.accession >= ? AND g.accession < ?) OR (' + (tokenClauses.length ? tokenClauses.join(' AND ') : '0') + '))');
-    bindings.push(accession, accession, accession + '\uffff', ...tokens.flatMap((token) => [token, token + '\uffff']));
+    bindings.push(accession, accession, accession + '\uffff', ...tokens.flatMap((token) => [releaseId, token, token + '\uffff']));
   }
   const taxonomyFields: Array<[keyof GenomeSearchQuery['taxonomy'], string]> = [['domain', 'domain'], ['phylum', 'phylum'], ['class', 'class_name'], ['order', 'order_name'], ['family', 'family'], ['genus', 'genus']];
   for (const [key, column] of taxonomyFields) if (query.taxonomy[key]) { clauses.push('g.' + column + ' = ?'); bindings.push(query.taxonomy[key]); }

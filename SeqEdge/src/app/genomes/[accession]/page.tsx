@@ -5,6 +5,7 @@ import { cache } from 'react';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import PortalBrowserPanel from '@/components/portal-browser-panel';
+import PortalOnDemandBrowserPanel from '@/components/portal-on-demand-browser-panel';
 import { genomeCatalogRepository } from '@/lib/genome-catalog-repository';
 
 function formatNumber(value: number | null, suffix = '') {
@@ -51,6 +52,8 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
             <div className="detail-section-heading"><div><p className="portal-kicker">Interactive tracks</p><h2>Genome browser</h2></div><code>{defaultLocus}</code></div>
             {browserAssembly
               ? <><PortalBrowserPanel assembly={browserAssembly} /><p className="browser-evidence-note">The promoter track contains model-predicted peaks. NCBI annotation is shown as a separate track only when it is available for this assembly.</p></>
+              : match.plannedAssets
+                ? <><PortalOnDemandBrowserPanel accession={genome.accession} releaseId={releaseId} plannedAssets={match.plannedAssets} /><p className="browser-evidence-note">Unindexed files are prepared only for this genome and cached locally by the browser.</p></>
               : <div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>The catalog metadata and feature counts are available. Reference and indexed track files will appear here after upload validation.</p></div>}
           </section>
 

@@ -54,6 +54,19 @@ describe('release JBrowse configuration', () => {
     expect(config.tracks.map((track) => track.name)).toEqual(['RAPPtor predicted promoter peaks']);
   });
 
+  it('uses whole-file adapters for a browser-prepared staged genome', () => {
+    const unindexed = { ...assembly(true), adapterMode: 'unindexed' as const };
+    unindexed.assets.ncbiAnnotationsIndex = null;
+    render(<PortalJBrowseViewer assembly={unindexed} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      assembly: { sequence: { adapter: Record<string, unknown> } };
+      tracks: ReadonlyArray<{ adapter: Record<string, unknown> }>;
+    };
+    expect(config.assembly.sequence.adapter).toMatchObject({ type: 'UnindexedFastaAdapter' });
+    expect(config.tracks).toHaveLength(2);
+    expect(config.tracks.every((track) => track.adapter.type === 'Gff3Adapter')).toBe(true);
+  });
+
   it('wires view changes to the region download controller', () => {
     const onRegionChange = vi.fn();
     render(<PortalJBrowseViewer assembly={assembly(false)} onRegionChange={onRegionChange} />);

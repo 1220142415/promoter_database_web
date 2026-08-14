@@ -170,6 +170,9 @@ For Workers Builds, use `npm run build:cf` as the build command and
 `npx @opennextjs/cloudflare deploy` as the deploy command. Configure
 `NEXT_PUBLIC_STORAGE_BASE_URL=/api/remote-data` and the active release URL as
 `NEXT_PUBLIC_RELEASE_ASSET_BASE_URL` in the Cloudflare build environment.
+The complete connection settings, first-build trigger, troubleshooting notes,
+and cost controls are recorded in
+[`docs/cloudflare-workers-builds.md`](docs/cloudflare-workers-builds.md).
 
 The full data validator checks collection counts, accession identity, feature types, score and strand bounds, FASTA/GFF3 coordinate containment, BGZF and Tabix indexes, manifests, and SHA-256 digests.
 

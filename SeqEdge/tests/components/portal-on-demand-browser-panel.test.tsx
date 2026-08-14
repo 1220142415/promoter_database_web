@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PortalOnDemandBrowserPanel from '@/components/portal-on-demand-browser-panel';
 import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/lib/on-demand-genome-assets';
@@ -52,8 +51,7 @@ describe('on-demand genome browser', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('downloads and prepares only the selected genome after the user clicks', async () => {
-    const user = userEvent.setup();
+  it('automatically prepares only the selected genome from release storage', async () => {
     render(
       <PortalOnDemandBrowserPanel
         accession="GCA_000007325.1"
@@ -61,9 +59,6 @@ describe('on-demand genome browser', () => {
         plannedAssets={plannedAssets}
       />,
     );
-
-    expect(loadCachedGenomeAsset).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Load genome browser' }));
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-locus', 'NC_000001.1:1-10000');
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');

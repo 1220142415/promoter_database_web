@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import PortalBrowserPanel from '@/components/portal-browser-panel';
 import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/lib/on-demand-genome-assets';
@@ -19,7 +19,7 @@ function objectUrl(blob: Blob, type: string) {
 
 export default function PortalOnDemandBrowserPanel({ accession, releaseId, plannedAssets }: Props) {
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [status, setStatus] = useState<'loading' | 'error'>('loading');
   const [error, setError] = useState('');
   const objectUrls = useRef<string[]>([]);
   const abortController = useRef<AbortController | null>(null);
@@ -29,7 +29,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
-  async function prepare() {
+  const prepare = useCallback(async () => {
     abortController.current?.abort();
     objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
     objectUrls.current = [];
@@ -75,25 +75,25 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
           metadata: null,
         },
       });
-      setStatus('idle');
     } catch (cause) {
       if (controller.signal.aborted) return;
       setError(cause instanceof Error ? cause.message : 'Genome files could not be prepared.');
       setStatus('error');
     }
-  }
+  }, [accession, plannedAssets.ncbiAnnotations, plannedAssets.predictedPromoters, plannedAssets.reference, releaseId]);
+
+  useEffect(() => {
+    void prepare();
+  }, [prepare]);
 
   if (assembly) return <PortalBrowserPanel assembly={assembly} />;
 
   return (
     <div className="browser-unavailable browser-on-demand">
-      <strong>Genome browser available on demand</strong>
-      <p>Only this genome will be downloaded and prepared in your browser.</p>
-      <button type="button" className="browser-load-button" onClick={() => void prepare()} disabled={status === 'loading'}>
-        <PlayArrowRoundedIcon aria-hidden="true" />
-        {status === 'loading' ? 'Preparing genome...' : 'Load genome browser'}
-      </button>
-      {status === 'error' ? <p className="browser-load-error" role="alert">{error}</p> : null}
+      <strong>{status === 'loading' ? 'Preparing genome browser' : 'Genome browser could not be loaded'}</strong>
+      {status === 'loading'
+        ? <p>Loading this genome from the local browser cache or release storage.</p>
+        : <><p className="browser-load-error" role="alert">{error}</p><button type="button" className="browser-load-button" onClick={() => void prepare()}><PlayArrowRoundedIcon aria-hidden="true" />Retry</button></>}
     </div>
   );
 }

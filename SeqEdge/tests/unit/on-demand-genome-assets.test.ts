@@ -39,7 +39,8 @@ describe('on-demand genome assets', () => {
       delete: vi.fn(),
     } as unknown as Cache;
     vi.stubGlobal('caches', { open: vi.fn().mockResolvedValue(cache) });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('downloaded genome')));
+    const fetchMock = vi.fn().mockResolvedValue(new Response('downloaded genome'));
+    vi.stubGlobal('fetch', fetchMock);
 
     await loadCachedGenomeAsset(
       'https://huggingface.co/genome.fna.gz',
@@ -48,6 +49,10 @@ describe('on-demand genome assets', () => {
     );
 
     expect(cache.put).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://huggingface.co/genome.fna.gz',
+      expect.objectContaining({ cache: 'no-cache', credentials: 'omit' }),
+    );
     expect(cache.keys).not.toHaveBeenCalled();
     expect(cache.delete).not.toHaveBeenCalled();
   });

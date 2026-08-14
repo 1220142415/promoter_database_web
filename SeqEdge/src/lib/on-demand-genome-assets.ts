@@ -28,7 +28,7 @@ export async function loadCachedGenomeAsset(url: string, cacheKey: string, signa
     }
   }
   if (!response) {
-    response = await fetch(url, { cache: 'force-cache', credentials: 'omit', signal });
+    response = await fetch(url, { cache: 'no-cache', credentials: 'omit', signal });
     if (!response.ok) throw new Error(`Genome asset is unavailable (HTTP ${response.status}).`);
     if (cache) {
       try {

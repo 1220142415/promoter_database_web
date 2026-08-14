@@ -51,7 +51,11 @@ describe('on-demand genome assets', () => {
     expect(cache.put).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledWith(
       'https://huggingface.co/genome.fna.gz',
-      expect.objectContaining({ cache: 'no-cache', credentials: 'omit' }),
+      expect.objectContaining({
+        cache: 'no-cache',
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+      }),
     );
     expect(cache.keys).not.toHaveBeenCalled();
     expect(cache.delete).not.toHaveBeenCalled();

@@ -3,6 +3,7 @@ import 'server-only';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { getReleaseCatalog, getReleaseGenome } from '@/lib/catalog-server';
+import { plannedHfBatchAssets } from '@/lib/hf-batch-assets';
 import type {
   GenomeCatalogMatch,
   GenomeCatalogRow,
@@ -707,12 +708,18 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     if (!row) return null;
     const releaseId = String(release.release_id);
     if (row.promoter_status !== 'ready') {
+      const genome = d1RowToMetadataGenome(row, releaseId);
       return {
         releaseId,
         assetBase: null,
-        genome: d1RowToMetadataGenome(row, releaseId),
+        genome,
         storage: null,
         resourceStatus: 'staged',
+        plannedAssets: plannedHfBatchAssets(
+          release.feature_summary_json,
+          genome.accession,
+          genome.annotationStatus === 'available',
+        ),
       };
     }
     const genome = rowToGenome(row, String(release.storage_layout), releaseId);

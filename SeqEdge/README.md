@@ -236,6 +236,12 @@ Production requires D1; local development defaults to the generated JSON catalog
 
 The homepage release metrics are a checked-in snapshot in `src/generated/release-summary.json`. This keeps homepage requests static and avoids a D1 read for counts that only change when a release is published. Update that snapshot as part of each release deployment, then deploy the Worker and switch the D1 active release together. Genome lists, filters, details, and biological asset routes remain dynamic and continue to use D1.
 
+For the numeric Hugging Face upload layout, generate the accession-to-batch plan from the sorted metadata TSV. The command writes an auditable `asset-links.tsv`, a compact 81-batch `asset-layout.json`, and a guarded one-row D1 update. Planned batches stay `staged` until all files and JBrowse indexes have been uploaded and verified.
+
+```bash
+npm run hf:batch-plan -- --input gtdb_genome_metadata_r214.tsv --output hf-batch-asset-plan
+```
+
 ## Coordinate contract
 
 Release GFF3 files retain 1-based, closed coordinates. RAPPtor peaks are point features with equal start and end positions. JBrowse displays user-facing 1-based locations. No BED or database coordinate conversion is performed by this release portal.

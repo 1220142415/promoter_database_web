@@ -27,6 +27,7 @@
         "hf:verify": "node scripts/verify-hf-pilot.mjs",
         "hf:upload:release": "python scripts/upload-hf-release.py",
         "hf:verify:release": "python scripts/verify-hf-release.py",
+        "hf:batch-plan": "node scripts/build-hf-batch-asset-plan.mjs",
         "test": "vitest run",
         "test:data": "node scripts/validate-gtdb-release.mjs --quick",
         "test:watch": "vitest",

@@ -1,4 +1,5 @@
 import type { GenomeStorageMap, ReleaseGenome } from '@/types/release';
+import type { PlannedGenomeAssets } from '@/lib/hf-batch-assets';
 
 export type GenomeSortField = 'accession' | 'organism' | 'genome-size' | 'promoters';
 export type GenomeSortDirection = 'asc' | 'desc';
@@ -56,4 +57,5 @@ export interface GenomeCatalogMatch {
   genome: ReleaseGenome;
   storage: GenomeStorageMap | null;
   resourceStatus?: 'ready' | 'staged';
+  plannedAssets?: PlannedGenomeAssets | null;
 }

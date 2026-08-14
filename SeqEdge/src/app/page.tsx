@@ -15,8 +15,13 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date);
 }
 
+function taxonomyReleaseLabel(value: string | null) {
+  return value ? `GTDB taxonomy ${value.replace(/^GTDB\s+/i, '')}` : 'GTDB taxonomy not reported';
+}
+
 export default function HomePage() {
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
+  const releaseLabel = `SeqEdge ${catalog.releaseDate || catalog.releaseId}`;
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
 
   return (
@@ -46,7 +51,7 @@ export default function HomePage() {
           <div><PublicRoundedIcon aria-hidden="true" /><span>Genomes</span><strong>{catalog.totalGenomes.toLocaleString()}</strong></div>
           <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{catalog.totalPredictedPromoters.toLocaleString()}</strong></div>
           <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
-          <div className="release-metric"><span>Current release</span><strong>{catalog.releaseId}</strong><small>{formatDate(catalog.releaseDate || catalog.generatedAt)}</small></div>
+          <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>
 
@@ -80,7 +85,7 @@ export default function HomePage() {
         <div className="portal-shell">
           <div className="data-access-heading">
             <div><p className="portal-kicker">Data access</p><h2>Release files</h2></div>
-            <p>Release <strong>{catalog.releaseId}</strong>, generated {formatDate(catalog.generatedAt)}. {catalog.resourceStatus === 'staged'
+            <p>Release <strong>{releaseLabel}</strong>, generated {formatDate(catalog.generatedAt)}. {catalog.resourceStatus === 'staged'
               ? 'Genome metadata and feature counts are available while indexed resources are prepared.'
               : 'Open a genome to inspect and download its reference, promoter and available annotation tracks.'}</p>
           </div>

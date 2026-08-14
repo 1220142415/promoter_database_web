@@ -234,6 +234,8 @@ D1 is bound as `SEQEDGE_DB`. Apply the migrations in order with `npx wrangler d1
 
 Production requires D1; local development defaults to the generated JSON catalog unless `SEQEDGE_CATALOG_BACKEND=d1` is explicitly set. The catalog API never exposes Pack offsets. Only the allowlisted `/api/remote-data/<accession>/<file>` proxy reads the active release mapping and rewrites a single logical Range. D1 import files contain at most 500 genomes each, and the complete 80,000-row catalog is never bundled into Next.js.
 
+The homepage release metrics are a checked-in snapshot in `src/generated/release-summary.json`. This keeps homepage requests static and avoids a D1 read for counts that only change when a release is published. Update that snapshot as part of each release deployment, then deploy the Worker and switch the D1 active release together. Genome lists, filters, details, and biological asset routes remain dynamic and continue to use D1.
+
 ## Coordinate contract
 
 Release GFF3 files retain 1-based, closed coordinates. RAPPtor peaks are point features with equal start and end positions. JBrowse displays user-facing 1-based locations. No BED or database coordinate conversion is performed by this release portal.

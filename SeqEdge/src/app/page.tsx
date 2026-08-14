@@ -4,10 +4,10 @@ import DataObjectRoundedIcon from '@mui/icons-material/DataObjectRounded';
 import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
 import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
-import { genomeCatalogRepository } from '@/lib/genome-catalog-repository';
-import PortalReleaseState from '@/components/portal-release-state';
+import releaseSummary from '@/generated/release-summary.json';
+import type { ActiveReleaseSummary } from '@/types/release';
 
-export const dynamic = 'force-dynamic';
+const catalog = releaseSummary as ActiveReleaseSummary;
 
 function formatDate(value: string | null) {
   if (!value) return 'Not reported';
@@ -15,13 +15,7 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date);
 }
 
-export default async function HomePage() {
-  let catalog;
-  try {
-    catalog = await genomeCatalogRepository.getActiveRelease();
-  } catch (cause) {
-    return <PortalReleaseState message={cause instanceof Error ? cause.message : 'The active release is unavailable.'} />;
-  }
+export default function HomePage() {
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
 

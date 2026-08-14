@@ -30,6 +30,9 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
     ? genome.assets
     : { ...genome.assets, ncbiAnnotations: null, ncbiAnnotationsIndex: null };
   const regionExportBase = process.env.NEXT_PUBLIC_REGION_EXPORT_BASE_URL || '/api/local-region';
+  const browserAssembly = match.resourceStatus !== 'staged' && assetBase && match.storage
+    ? { assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets }
+    : null;
 
   return (
     <main className="portal-page genome-detail-page">
@@ -45,8 +48,9 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
         <div className="detail-main">
           <section className="detail-section">
             <div className="detail-section-heading"><div><p className="portal-kicker">Interactive tracks</p><h2>Genome browser</h2></div><code>{defaultLocus}</code></div>
-            <PortalBrowserPanel assembly={{ assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets }} />
-            <p className="browser-evidence-note">The promoter track contains model-predicted peaks. NCBI annotation is shown as a separate track only when it is available for this assembly.</p>
+            {browserAssembly
+              ? <><PortalBrowserPanel assembly={browserAssembly} /><p className="browser-evidence-note">The promoter track contains model-predicted peaks. NCBI annotation is shown as a separate track only when it is available for this assembly.</p></>
+              : <div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>The catalog metadata and feature counts are available. Reference and indexed track files will appear here after upload validation.</p></div>}
           </section>
 
         </div>
@@ -60,7 +64,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
             <div><dt>GC content</dt><dd>{formatNumber(genome.gcContent, '%')}</dd></div>
             <div><dt>Contigs</dt><dd>{formatNumber(genome.contigCount)}</dd></div>
             <div><dt>Predicted promoters</dt><dd>{genome.predictedPromoterCount.toLocaleString()}</dd></div>
-            <div><dt>NCBI annotation</dt><dd>{genome.annotationStatus === 'available' ? `${genome.annotationFeatureCount.toLocaleString()} usable features` : 'Not available'}</dd></div>
+            <div><dt>NCBI annotation</dt><dd>{genome.annotationStatus === 'available' ? `${genome.annotationFeatureCount.toLocaleString()} ${browserAssembly ? 'usable' : 'cataloged'} features` : 'Not available'}</dd></div>
           </dl>
           <h3>Taxonomy</h3>
           <ol className="taxonomy-list">

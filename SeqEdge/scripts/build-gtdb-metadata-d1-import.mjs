@@ -262,6 +262,13 @@ const featureSummary = {
   annotationAvailable: summary.annotationAvailable,
   annotationMissing: summary.annotationMissing,
   experimentalTss: 0,
+  topPhyla: [...[...facets.values()]
+    .filter(({ row }) => row[0] === 'phylum')
+    .reduce((counts, { row, count }) => counts.set(row[1], (counts.get(row[1]) || 0) + count), new Map())
+    .entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+    .slice(0, 8),
 };
 const initSql = `PRAGMA foreign_keys = ON;
 DELETE FROM releases WHERE release_id = ${sqlText(releaseId)} AND publication_status = 'staged';

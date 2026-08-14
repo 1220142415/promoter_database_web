@@ -31,7 +31,7 @@ describe('portal home', () => {
     expect(screen.getByRole('heading', { name: 'SeqEdge' })).toBeInTheDocument();
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('1,000');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('10,000');
-    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Usable NCBI annotations656');
+    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations cataloged656');
     expect(screen.getByText('1,000 assemblies')).toBeInTheDocument();
     const downloads = screen.getByLabelText('Release downloads');
     expect(within(downloads).getByRole('link', { name: /Release metadata/ })).toHaveAttribute('href', '/api/local-release/release.json');

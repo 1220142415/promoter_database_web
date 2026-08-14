@@ -49,8 +49,8 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
     }),
     predicted_promoter_count: promoters,
     promoter_status: 'ready',
-    promoter_data_path: `objects/${accession}/predicted-promoters.gff3.gz`,
-    promoter_index_path: `objects/${accession}/predicted-promoters.gff3.gz.tbi`,
+    promoter_data_path: `objects/${accession}/predicted-promoters.gff3.gz` as string | null,
+    promoter_index_path: `objects/${accession}/predicted-promoters.gff3.gz.tbi` as string | null,
     promoter_storage_json: '{}',
     annotation_status: accession.endsWith('1.1') ? 'ready' : null,
     annotation_feature_count: accession.endsWith('1.1') ? 120 : null,
@@ -117,8 +117,11 @@ class FakeStatement implements D1PreparedStatement {
     if (this.query.startsWith('SELECT feature_type')) {
       return d1Result(this.database.aggregates as T[]);
     }
-    if (this.query.includes('SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count')) {
+    if (this.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count')) {
       return d1Result(this.database.rows.map((row) => ({ ...row, total_count: this.database.rows.length })) as T[]);
+    }
+    if (this.query.startsWith('WITH filtered AS')) {
+      return d1Result(this.database.rows as T[]);
     }
     if (this.query.startsWith('SELECT g.*')) {
       return d1Result(this.database.rows as T[]);
@@ -220,10 +223,10 @@ describe('D1 genome catalog repository', () => {
     });
     expect(result.releaseId).toBe('2026-08-07');
     expect(result.facets.taxonomy.genus).toEqual(['Bacillus']);
-    const pageQuery = database.recorded.find((entry) => entry.query.includes('SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
     expect(pageQuery.query).toContain("p.feature_type = 'promoter'");
     expect(pageQuery.query).toContain("a.feature_type = 'gene_annotation'");
-    expect(pageQuery.query).toContain("COALESCE(a.status, 'missing') <> 'ready'");
+    expect(pageQuery.query).toContain("COALESCE(a.status, 'missing') NOT IN ('ready', 'staged')");
     expect(pageQuery.query).toContain('COALESCE(filtered.predicted_promoter_count, 0) DESC');
     expect(pageQuery.query).toContain('st.token >= ? AND st.token < ?');
     expect(pageQuery.query).toContain('g.accession IN (SELECT st.accession');
@@ -235,6 +238,7 @@ describe('D1 genome catalog repository', () => {
     expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
     expect(database.preparedQueries).toHaveLength(3);
     expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT'))).toBe(false);
+    expect(database.recorded.find((entry) => entry.query.includes('facet_kind'))?.bindings).not.toContain('genus');
   });
 
   it('rejects a staged release even if portal_state points at it', async () => {
@@ -242,6 +246,62 @@ describe('D1 genome catalog repository', () => {
     database.release = { ...releaseRow, publication_status: 'staged' };
     const repository = new D1GenomeCatalogRepository(database);
     await expect(repository.getActiveRelease()).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
+  });
+
+  it('uses precomputed release counts without scanning feature sets', async () => {
+    const database = new FakeD1();
+    database.release = {
+      ...releaseRow,
+      release_asset_base_url: '',
+      feature_summary_json: JSON.stringify({
+        predictedPromoters: 1_888_109_477,
+        annotationAvailable: 53_285,
+        annotationMissing: 27_504,
+        topPhyla: [{ name: 'Pseudomonadota', count: 21_693 }],
+      }),
+    };
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await expect(repository.getActiveRelease()).resolves.toMatchObject({
+      totalPredictedPromoters: 1_888_109_477,
+      totalAnnotatedGenomes: 53_285,
+      totalMissingAnnotations: 27_504,
+      resourceStatus: 'staged',
+    });
+    expect(database.preparedQueries).toHaveLength(1);
+    expect(database.preparedQueries.some((query) => query.startsWith('SELECT feature_type'))).toBe(false);
+  });
+
+  it('serves staged genome metadata without requiring resource paths', async () => {
+    const database = new FakeD1();
+    database.rows[0].promoter_status = 'staged';
+    database.rows[0].annotation_status = 'staged';
+    database.rows[0].reference_storage_json = JSON.stringify({ layout: 'individual-v1', files: {} });
+    database.rows[0].promoter_data_path = null;
+    database.rows[0].promoter_index_path = null;
+    const repository = new D1GenomeCatalogRepository(database);
+
+    const result = await repository.search(DEFAULT_GENOME_SEARCH_QUERY);
+    expect(result.items[0]).toMatchObject({ predictedPromoterCount: 20, annotationStatus: 'available' });
+    expect(result.total).toBe(2);
+    expect(database.recorded.find((entry) => entry.query.includes('ORDER BY filtered.accession'))?.query).not.toContain('total_count');
+    expect(database.recorded.find((entry) => entry.query.includes('facet_kind'))?.bindings).toEqual(['2026-08-07', 'domain']);
+
+    const match = await repository.getByAccession('GCA_000000001.1');
+    expect(match).toMatchObject({ resourceStatus: 'staged', assetBase: null, storage: null });
+    expect(match?.genome).toMatchObject({ predictedPromoterCount: 20, annotationFeatureCount: 120 });
+  });
+
+  it('reuses active release and facet lookups within a warm repository', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await repository.search(DEFAULT_GENOME_SEARCH_QUERY);
+    await repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, sort: 'organism' });
+
+    expect(database.preparedQueries.filter((query) => query.includes('FROM portal_state'))).toHaveLength(1);
+    expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
+    expect(database.preparedQueries.filter((query) => query.startsWith('WITH filtered AS'))).toHaveLength(2);
   });
 
   it('binds cursors to the active release and complete query configuration', async () => {

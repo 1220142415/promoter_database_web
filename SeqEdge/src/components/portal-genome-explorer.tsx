@@ -233,8 +233,8 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
           <span>NCBI annotation</span>
           <select value={annotationStatus} onChange={(event) => setAnnotationStatus(event.target.value as GenomeAnnotationFilter)}>
             <option value="">Any status</option>
-            <option value="available">Available</option>
-            <option value="unavailable">Not available</option>
+            <option value="available">Cataloged</option>
+            <option value="unavailable">Not cataloged</option>
           </select>
         </label>
         <button type="button" className="catalog-reset" onClick={clearFilters} title="Clear filters" aria-label="Clear filters"><RestartAltRoundedIcon /></button>
@@ -243,10 +243,14 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
       <div className="catalog-taxonomy-panel" role="group" aria-labelledby="taxonomy-filter-heading">
         <div className="catalog-taxonomy-heading" id="taxonomy-filter-heading">Taxonomy filters</div>
         <div className="catalog-taxonomy-grid">
-          {TAXONOMY_RANKS.map((rank) => (
+          {TAXONOMY_RANKS.map((rank, index) => (
             <label key={rank.key}>
               <span>{rank.label}</span>
-              <select value={taxonomy[rank.key]} onChange={(event) => updateTaxonomy(rank.key, event.target.value)}>
+              <select
+                value={taxonomy[rank.key]}
+                disabled={index > 0 && !TAXONOMY_RANKS.slice(0, index).every((parent) => taxonomy[parent.key])}
+                onChange={(event) => updateTaxonomy(rank.key, event.target.value)}
+              >
                 <option value="">{rank.allLabel}</option>
                 {result.facets.taxonomy[rank.key].map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
@@ -281,8 +285,8 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
                 <td><span>{formatCount(genome.genomeSizeBp)} bp</span><small>{formatCount(genome.contigCount)} contigs</small></td>
                 <td className="numeric-cell">{genome.predictedPromoterCount.toLocaleString()}</td>
                 <td>{genome.annotationStatus === 'available'
-                  ? <span className="evidence-available">NCBI available</span>
-                  : <span className="evidence-muted">Not available</span>}</td>
+                  ? <span className="evidence-available">NCBI cataloged</span>
+                  : <span className="evidence-muted">Not cataloged</span>}</td>
               </tr>
             ))}
             {result.items.length === 0 && <tr><td colSpan={6} className="catalog-empty">No genomes match the current filters.</td></tr>}

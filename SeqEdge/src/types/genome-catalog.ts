@@ -52,7 +52,8 @@ export interface GenomeSearchResponse {
 
 export interface GenomeCatalogMatch {
   releaseId: string;
-  assetBase: string;
+  assetBase: string | null;
   genome: ReleaseGenome;
-  storage: GenomeStorageMap;
+  storage: GenomeStorageMap | null;
+  resourceStatus?: 'ready' | 'staged';
 }

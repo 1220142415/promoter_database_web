@@ -89,6 +89,9 @@ describe('portal genome explorer', () => {
     const user = userEvent.setup();
     render(<PortalGenomeExplorer initialResult={response()} />);
 
+    expect(screen.getByLabelText('Phylum')).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Domain'), 'Bacteria');
+    await waitFor(() => expect(screen.getByLabelText('Phylum')).toBeEnabled());
     await user.selectOptions(screen.getByLabelText('Phylum'), 'Pseudomonadota');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const lastUrl = fetchMock.mock.calls.at(-1)?.[0] as string;

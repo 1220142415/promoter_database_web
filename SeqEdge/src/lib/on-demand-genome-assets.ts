@@ -1,5 +1,4 @@
 const CACHE_NAME = 'seqedge-on-demand-genomes-v1';
-const MAX_CACHE_ENTRIES = 12;
 
 export function firstFastaRefName(text: string) {
   return /^>(\S+)/m.exec(text)?.[1] || null;
@@ -13,15 +12,6 @@ export async function maybeDecompressGzip(blob: Blob) {
   }
   const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
   return new Response(stream).blob();
-}
-
-async function prune(cache: Cache) {
-  try {
-    const keys = await cache.keys();
-    await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_CACHE_ENTRIES)).map((key) => cache.delete(key)));
-  } catch {
-    // Cache eviction is best effort; browser quota policy remains authoritative.
-  }
 }
 
 export async function loadCachedGenomeAsset(url: string, cacheKey: string, signal: AbortSignal) {
@@ -43,7 +33,6 @@ export async function loadCachedGenomeAsset(url: string, cacheKey: string, signa
     if (cache) {
       try {
         await cache.put(request, response.clone());
-        await prune(cache);
       } catch {
         // Loading must still work when private mode or quota policy disables Cache Storage.
       }

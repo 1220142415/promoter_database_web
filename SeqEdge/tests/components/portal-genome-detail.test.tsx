@@ -101,5 +101,8 @@ describe('genome detail release contract', () => {
     expect(screen.getByTestId('on-demand-browser-contract')).toHaveAttribute('data-assembly', staged.genome.accession);
     expect(screen.getByText('2,000 cataloged features')).toBeInTheDocument();
     expect(screen.queryByTestId('browser-contract')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Planned data files' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Batch 000')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link').filter((link) => link.hasAttribute('download'))).toHaveLength(0);
   });
 });

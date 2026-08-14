@@ -20,7 +20,7 @@ function resolveAsset(base: string, path: string) {
 export default function PortalJBrowseViewer({ assembly, onRegionChange }: { assembly: JBrowseReleaseAssembly; onRegionChange?: (region: BrowserRegion) => void }) {
   const viewState = useMemo(() => {
     const unindexed = assembly.adapterMode === 'unindexed';
-    const regionExportBase = assembly.regionExportBase || '/api/local-region';
+    const regionExportBase = assembly.regionExportBase || '';
     const downloadMetadata = (
       kind: TrackDownloadMetadata['kind'],
       label: string,
@@ -32,6 +32,8 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         label,
         regionExportBase,
         wholeAssetUrl,
+        downloadMode: unindexed ? 'browser' : 'remote',
+        visibleRegionDownload: unindexed || Boolean(regionExportBase),
       },
     });
     const predictedTrackId = `${assembly.assemblyName}-predicted-promoters`;

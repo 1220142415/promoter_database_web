@@ -16,8 +16,10 @@ import {
   TextField,
 } from '@mui/material';
 import {
+  browserTrackDownloadBlob,
   defaultTrackDownloadFilename,
   normalizeDownloadFilename,
+  requiredTrackDownloadExtension,
   regionTrackDownloadUrl,
   trackDownloadSettings,
   wholeTrackDownloadUrl,
@@ -42,8 +44,10 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
   const initialScope: TrackDownloadScope = visibleRegion ? 'visible' : 'whole';
   const [scope, setScope] = useState<TrackDownloadScope>(initialScope);
   const [filename, setFilename] = useState(() => defaultTrackDownloadFilename(metadata, initialScope, visibleRegion));
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
   const settings = trackDownloadSettings(metadata.kind);
-  const requiredExtension = scope === 'visible' ? settings.regionExtension : settings.wholeExtension;
+  const requiredExtension = requiredTrackDownloadExtension(metadata, scope);
   const fallbackFilename = useMemo(
     () => defaultTrackDownloadFilename(metadata, scope, visibleRegion),
     [metadata, scope, visibleRegion],
@@ -55,19 +59,31 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
     setFilename(defaultTrackDownloadFilename(metadata, nextScope, visibleRegion));
   };
 
-  const download = () => {
+  const download = async () => {
     const safeFilename = normalizeDownloadFilename(filename, requiredExtension, fallbackFilename);
-    const url = scope === 'visible' && visibleRegion
-      ? regionTrackDownloadUrl(metadata, visibleRegion, safeFilename)
-      : wholeTrackDownloadUrl(metadata, safeFilename);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = safeFilename;
-    anchor.style.display = 'none';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    handleClose();
+    setDownloading(true);
+    setDownloadError('');
+    let objectUrl: string | null = null;
+    try {
+      const url = metadata.downloadMode === 'browser'
+        ? (objectUrl = URL.createObjectURL(await browserTrackDownloadBlob(metadata, scope, visibleRegion)))
+        : scope === 'visible' && visibleRegion
+          ? regionTrackDownloadUrl(metadata, visibleRegion, safeFilename)
+          : wholeTrackDownloadUrl(metadata, safeFilename);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = safeFilename;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl!), 0);
+      handleClose();
+    } catch (cause) {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setDownloadError(cause instanceof Error ? cause.message : 'Track data could not be downloaded.');
+      setDownloading(false);
+    }
   };
 
   return (
@@ -109,10 +125,11 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
           helperText={`The downloaded file will use ${requiredExtension}. Unsupported characters are replaced.`}
           inputProps={{ maxLength: 220 }}
         />
+        {downloadError ? <p className="browser-load-error" role="alert">{downloadError}</p> : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} color="inherit">Cancel</Button>
-        <Button onClick={download} variant="contained" startIcon={<DownloadRoundedIcon />}>Download</Button>
+        <Button onClick={() => void download()} disabled={downloading} variant="contained" startIcon={<DownloadRoundedIcon />}>{downloading ? 'Preparing' : 'Download'}</Button>
       </DialogActions>
     </Dialog>
   );

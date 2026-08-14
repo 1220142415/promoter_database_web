@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  browserTrackDownloadBlob,
   defaultTrackDownloadFilename,
   normalizeDownloadFilename,
   regionTrackDownloadUrl,
@@ -7,6 +8,8 @@ import {
   wholeTrackDownloadUrl,
   type TrackDownloadMetadata,
 } from '@/lib/track-download';
+
+afterEach(() => vi.unstubAllGlobals());
 
 const metadata: TrackDownloadMetadata = {
   kind: 'promoters',
@@ -54,5 +57,33 @@ describe('track download helpers', () => {
     expect(wholeTrackDownloadUrl(metadata, 'custom.gff3.gz')).toBe(
       '/api/local-data/GCA_000411415.1/predicted-promoters.gff3.gz?filename=custom.gff3.gz',
     );
+  });
+
+  it('exports a visible FASTA interval from a browser-prepared assembly', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      '>contig_1 first\nAACCGGTT\n>contig_2\nTTTT\n',
+    )));
+    const blob = await browserTrackDownloadBlob({
+      ...metadata,
+      kind: 'reference',
+      wholeAssetUrl: 'blob:reference',
+      downloadMode: 'browser',
+    }, 'visible', { refName: 'contig_1', start: 3, end: 6 });
+    expect(await blob.text()).toBe('>contig_1:3-6\nCCGG\n');
+  });
+
+  it('exports overlapping GFF3 features from browser-prepared data', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      '##gff-version 3',
+      'contig_1\tRAPPtor\tpromoter\t5\t5\t.\t+\t.\tID=p1',
+      'contig_1\tRAPPtor\tpromoter\t50\t50\t.\t+\t.\tID=p2',
+      'contig_2\tRAPPtor\tpromoter\t7\t7\t.\t+\t.\tID=p3',
+    ].join('\n'))));
+    const blob = await browserTrackDownloadBlob({
+      ...metadata,
+      wholeAssetUrl: 'blob:promoters',
+      downloadMode: 'browser',
+    }, 'visible', { refName: 'contig_1', start: 1, end: 10 });
+    expect(await blob.text()).toBe('##gff-version 3\ncontig_1\tRAPPtor\tpromoter\t5\t5\t.\t+\t.\tID=p1\n');
   });
 });

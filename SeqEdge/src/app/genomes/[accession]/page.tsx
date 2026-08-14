@@ -30,7 +30,8 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
   const browserAssets = genome.annotationStatus === 'available'
     ? genome.assets
     : { ...genome.assets, ncbiAnnotations: null, ncbiAnnotationsIndex: null };
-  const regionExportBase = process.env.NEXT_PUBLIC_REGION_EXPORT_BASE_URL || '/api/local-region';
+  const regionExportBase = process.env.NEXT_PUBLIC_REGION_EXPORT_BASE_URL
+    || (process.env.NODE_ENV === 'production' ? undefined : '/api/local-region');
   const browserAssembly = match.resourceStatus !== 'staged' && assetBase && match.storage
     ? { assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets }
     : null;

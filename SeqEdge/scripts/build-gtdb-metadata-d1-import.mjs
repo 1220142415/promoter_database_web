@@ -38,6 +38,12 @@ function normalizedTokens(record) {
     record.strain,
     record.species,
     record.assemblyName,
+    record.domain,
+    record.phylum,
+    record.className,
+    record.orderName,
+    record.family,
+    record.genus,
   ];
   const tokens = new Set();
   for (const raw of exactValues) {

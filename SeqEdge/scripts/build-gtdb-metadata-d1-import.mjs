@@ -196,7 +196,11 @@ for await (const line of lines) {
     sqlText(record.phylum), sqlText(record.className), sqlText(record.orderName), sqlText(record.family), sqlText(record.genus),
     sqlText(record.genomeSource), sqlText(record.assemblyLevel), sqlNumber(record.genomeSizeBp), sqlNumber(record.gcContent),
     sqlNumber(record.contigCount), sqlNumber(record.completeness), sqlNumber(record.contamination), 'NULL', 'NULL',
-    sqlText(JSON.stringify({ layout: 'individual-v1', files: {} })), sqlText(record.ncbiOrganismName), sqlNumber(record.ncbiTaxId),
+    sqlText(JSON.stringify({
+      layout: 'individual-v1',
+      files: {},
+      checksums: { fasta: checksum(record.checksums?.fasta) },
+    })), sqlText(record.ncbiOrganismName), sqlNumber(record.ncbiTaxId),
     sqlText(record.assemblyName), sqlText(record.genbankAssemblyAccession), sqlText(record.refseqAssemblyAccession),
     sqlText(record.taxonomy), sqlText(record.species), sqlText(record.taxonomySource), sqlBoolean(record.gtdbRepresentative),
     sqlText(record.gtdbGenomeRepresentative), sqlNumber(record.contigN50), sqlNumber(record.longestContigBp),

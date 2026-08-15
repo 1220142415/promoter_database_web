@@ -17,6 +17,10 @@ function objectUrl(blob: Blob, type: string) {
   return URL.createObjectURL(new Blob([blob], { type }));
 }
 
+function assetCacheKey(prefix: string, kind: string, url: string, version: string | null) {
+  return `${prefix}/${kind}/${version || url}`;
+}
+
 export default function PortalOnDemandBrowserPanel({ accession, releaseId, plannedAssets }: Props) {
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
@@ -40,10 +44,10 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     try {
       const cachePrefix = `${releaseId}/${accession}`;
       const [compressedReference, promoters, annotation] = await Promise.all([
-        loadCachedGenomeAsset(plannedAssets.reference, `${cachePrefix}/reference`, controller.signal),
-        loadCachedGenomeAsset(plannedAssets.predictedPromoters, `${cachePrefix}/promoters`, controller.signal),
+        loadCachedGenomeAsset(plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference), controller.signal),
+        loadCachedGenomeAsset(plannedAssets.predictedPromoters, assetCacheKey(cachePrefix, 'promoters', plannedAssets.predictedPromoters, plannedAssets.cacheVersions.predictedPromoters), controller.signal),
         plannedAssets.ncbiAnnotations
-          ? loadCachedGenomeAsset(plannedAssets.ncbiAnnotations, `${cachePrefix}/ncbi`, controller.signal).catch(() => null)
+          ? loadCachedGenomeAsset(plannedAssets.ncbiAnnotations, assetCacheKey(cachePrefix, 'ncbi', plannedAssets.ncbiAnnotations, plannedAssets.cacheVersions.ncbiAnnotations), controller.signal).catch(() => null)
           : Promise.resolve(null),
       ]);
       const [reference, promoterGff, annotationGff] = await Promise.all([
@@ -80,7 +84,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       setError(cause instanceof Error ? cause.message : 'Genome files could not be prepared.');
       setStatus('error');
     }
-  }, [accession, plannedAssets.ncbiAnnotations, plannedAssets.predictedPromoters, plannedAssets.reference, releaseId]);
+  }, [accession, plannedAssets, releaseId]);
 
   useEffect(() => {
     void prepare();

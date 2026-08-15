@@ -46,16 +46,19 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
         gzi: `objects/${accession}/reference.fa.gz.gzi`,
         metadata: `objects/${accession}/metadata.json`,
       },
+      checksums: { fasta: 'a'.repeat(64) },
     }),
     predicted_promoter_count: promoters,
     promoter_status: 'ready',
     promoter_data_path: `objects/${accession}/predicted-promoters.gff3.gz` as string | null,
     promoter_index_path: `objects/${accession}/predicted-promoters.gff3.gz.tbi` as string | null,
+    promoter_data_sha256: 'b'.repeat(64) as string | null,
     promoter_storage_json: '{}',
     annotation_status: accession.endsWith('1.1') ? 'ready' : null,
     annotation_feature_count: accession.endsWith('1.1') ? 120 : null,
     annotation_data_path: accession.endsWith('1.1') ? `objects/${accession}/ncbi-annotations.gff3.gz` : null,
     annotation_index_path: accession.endsWith('1.1') ? `objects/${accession}/ncbi-annotations.gff3.gz.tbi` : null,
+    annotation_data_sha256: accession.endsWith('1.1') ? 'c'.repeat(64) : null,
     annotation_storage_json: '{}',
   };
 }
@@ -116,6 +119,18 @@ class FakeStatement implements D1PreparedStatement {
   async all<T = Record<string, unknown>>() {
     if (this.query.includes('WITH requested(query_token')) {
       const token = String(this.bindings[0] || '');
+      if (token === 'multipath') {
+        return d1Result(Array.from({ length: 16 }, (_, index) => ({
+          query_token: token,
+          kind: 'genus',
+          value: `Genus${index}`,
+          domain: 'Bacteria',
+          phylum: `Phylum${index}`,
+          class_name: `Class${index}`,
+          order_name: `Order${index}`,
+          family: `Family${index}`,
+        })) as T[]);
+      }
       if (token === 'bacillota') {
         return d1Result([{
           query_token: token,
@@ -315,7 +330,11 @@ describe('D1 genome catalog repository', () => {
     const database = new FakeD1();
     database.rows[0].promoter_status = 'staged';
     database.rows[0].annotation_status = 'staged';
-    database.rows[0].reference_storage_json = JSON.stringify({ layout: 'individual-v1', files: {} });
+    database.rows[0].reference_storage_json = JSON.stringify({
+      layout: 'individual-v1',
+      files: {},
+      checksums: { fasta: 'a'.repeat(64) },
+    });
     database.rows[0].promoter_data_path = null;
     database.rows[0].promoter_index_path = null;
     const repository = new D1GenomeCatalogRepository(database);
@@ -329,6 +348,48 @@ describe('D1 genome catalog repository', () => {
     const match = await repository.getByAccession('GCA_000000001.1');
     expect(match).toMatchObject({ resourceStatus: 'staged', assetBase: null, storage: null });
     expect(match?.genome).toMatchObject({ predictedPromoterCount: 20, annotationFeatureCount: 120 });
+    expect(match?.plannedAssets?.cacheVersions).toEqual({
+      reference: 'a'.repeat(64),
+      predictedPromoters: 'b'.repeat(64),
+      ncbiAnnotations: 'c'.repeat(64),
+    });
+  });
+
+  it('bounds expanded taxonomy paths before building the D1 page query', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'multipath' });
+
+    const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    expect(pageQuery.bindings).toContain('Genus7');
+    expect(pageQuery.bindings).not.toContain('Genus8');
+    expect(pageQuery.bindings).toHaveLength(56);
+  });
+
+  it('removes expired cache entries and caps warm Worker query caches', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+    const internal = repository as unknown as {
+      facetCache: Map<string, { expiresAt: number; value: unknown }>;
+      taxonomySearchCache: Map<string, { expiresAt: number; value: unknown }>;
+    };
+    const future = Date.now() + 60_000;
+    for (let index = 0; index < 140; index += 1) {
+      internal.facetCache.set(`facet-${index}`, { expiresAt: future, value: {} });
+    }
+    for (let index = 0; index < 270; index += 1) {
+      internal.taxonomySearchCache.set(`taxonomy-${index}`, { expiresAt: future, value: new Map() });
+    }
+    internal.facetCache.set('expired-facet', { expiresAt: 0, value: {} });
+    internal.taxonomySearchCache.set('expired-taxonomy', { expiresAt: 0, value: new Map() });
+
+    await repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'cachemiss' });
+
+    expect(internal.facetCache.size).toBe(128);
+    expect(internal.taxonomySearchCache.size).toBe(256);
+    expect(internal.facetCache.has('expired-facet')).toBe(false);
+    expect(internal.taxonomySearchCache.has('expired-taxonomy')).toBe(false);
   });
 
   it('reuses active release and facet lookups within a warm repository', async () => {

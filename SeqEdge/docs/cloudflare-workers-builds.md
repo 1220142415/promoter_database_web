@@ -71,6 +71,27 @@ Connecting Workers Builds does not necessarily build the already-existing
 commit. Push a new commit after the connection, or use the dashboard's rebuild
 action when available.
 
+## Windows Git Push Troubleshooting
+
+The workstation may have environment overrides intended for an isolated test
+runner. In particular, `GIT_SSH_COMMAND=cmd /c exit 1` deliberately disables
+SSH, and the bundled MSYS2 SSH can fail with `couldn't create signal pipe`.
+The repository and GitHub account are healthy when the following check returns
+the `Hi duolaJohn!` authentication message:
+
+```powershell
+Remove-Item Env:GIT_SSH_COMMAND -ErrorAction SilentlyContinue
+$env:GIT_SSH = 'C:\Windows\System32\OpenSSH\ssh.exe'
+ssh -o BatchMode=yes -T git@github.com
+git push fork feature/genome-resource-db-promoter-v1
+```
+
+If GitHub is only reachable through the local proxy, set `HTTP_PROXY` and
+`HTTPS_PROXY` to `http://127.0.0.1:7997` for that PowerShell process. Do not
+put a password, personal access token, or proxy credentials in a remote URL or
+in repository files. The HTTPS credential helper is not required when the
+system OpenSSH key is already authenticated.
+
 ## Browser Asset Cache Versioning
 
 Unindexed per-genome FASTA and GFF3 source files are stored in the browser's

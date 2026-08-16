@@ -32,7 +32,7 @@ describe('release JBrowse configuration', () => {
       assembly: { sequence: { adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string; visibleRegionDownload: boolean } } } };
       tracks: ReadonlyArray<{ name: string; adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string } } }>;
       plugins: ReadonlyArray<{ name: string }>;
-      defaultSession: { view: { tracks: ReadonlyArray<{ displays: ReadonlyArray<{ configuration: string }> }> } };
+      defaultSession: { view: { tracks: ReadonlyArray<{ displays: ReadonlyArray<{ configuration: string; heightPreConfig: number }> }> } };
     };
     expect(config.assembly.sequence.adapter).toMatchObject({ type: 'BgzipFastaAdapter' });
     expect(config.assembly.sequence.metadata.seqEdgeDownload.kind).toBe('reference');
@@ -47,6 +47,7 @@ describe('release JBrowse configuration', () => {
     expect(config.defaultSession.view.tracks[0].displays[0].configuration).toBe(
       'GCA_000411415.1-reference-sequence-LinearReferenceSequenceDisplay',
     );
+    expect(config.defaultSession.view.tracks.map((track) => track.displays[0].heightPreConfig)).toEqual([120, 170, 170]);
   });
 
   it('does not invent an NCBI track when the release has no NCBI asset', () => {

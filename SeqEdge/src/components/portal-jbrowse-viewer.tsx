@@ -104,6 +104,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
       displays: (track.displays as Array<{ displayId: string; type: string }>).map((display) => ({
         type: display.type,
         configuration: display.displayId,
+        heightPreConfig: 170,
       })),
     }));
 
@@ -146,7 +147,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
             {
               type: 'ReferenceSequenceTrack',
               configuration: `${assembly.assemblyName}-reference-sequence`,
-              displays: [{ type: 'LinearReferenceSequenceDisplay', configuration: `${assembly.assemblyName}-reference-sequence-LinearReferenceSequenceDisplay` }],
+              displays: [{ type: 'LinearReferenceSequenceDisplay', configuration: `${assembly.assemblyName}-reference-sequence-LinearReferenceSequenceDisplay`, heightPreConfig: 120 }],
             },
             ...sessionTracks,
           ],

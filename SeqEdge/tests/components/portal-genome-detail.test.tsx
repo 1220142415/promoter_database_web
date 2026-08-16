@@ -152,10 +152,14 @@ describe('genome detail release contract', () => {
     expect(screen.getByText('Assembly overview').closest('details')).toHaveAttribute('open');
     expect(screen.getByText('Taxonomy').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByRole('heading', { name: 'Assembly quality at a glance' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Promoter statistics' })).toBeInTheDocument();
+    expect(screen.getByText('1,600')).toBeInTheDocument();
+    expect(screen.getByText('Predictions per Mb')).toBeInTheDocument();
+    expect(screen.getByText('> 0.9')).toBeInTheDocument();
+    expect(screen.getByText('RAPPtor 1.0')).toBeInTheDocument();
     expect(screen.getByText('Bacillus test organism')).toBeInTheDocument();
     expect(screen.getAllByText('1,500,000 bp')).not.toHaveLength(0);
     expect(screen.getByText('GTDB R214.1')).toBeInTheDocument();
-    expect(screen.getAllByText('RAPPtor')).not.toHaveLength(0);
     expect(screen.getAllByText('2026-08-01')).not.toHaveLength(0);
     expect(screen.getByRole('link', { name: 'Open NCBI record' })).toHaveAttribute(
       'href',

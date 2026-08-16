@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { isValidElement, type ReactNode } from 'react';
+import { isValidElement, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
@@ -31,12 +31,33 @@ function hasMetadataValue(value: ReactNode) {
   return !Array.isArray(value) || value.length > 0;
 }
 
-function MetadataGroup({ title, facts }: { title: string; facts: MetadataFact[] }) {
+function MetadataMetric({ label, value, context }: { label: string; value: ReactNode; context: string }) {
+  return (
+    <div className="genome-metric">
+      <span>{label}</span>
+      <strong>{metadataValue(value)}</strong>
+      <small>{context}</small>
+    </div>
+  );
+}
+
+function QualityBar({ label, value, hint, tone }: { label: string; value: number; hint: string; tone: 'teal' | 'gold' }) {
+  const fill = Math.max(0, Math.min(100, value));
+  return (
+    <div className={`genome-quality-measure genome-quality-${tone}`}>
+      <div><span>{label}</span><strong>{value.toLocaleString()}%</strong></div>
+      <div className="genome-quality-track" aria-hidden="true"><span style={{ width: `${fill}%` } as CSSProperties} /></div>
+      <small>{hint}</small>
+    </div>
+  );
+}
+
+function MetadataGroup({ title, description, facts, open = false }: { title: string; description: string; facts: MetadataFact[]; open?: boolean }) {
   const visibleFacts = facts.filter((fact) => hasMetadataValue(fact.value));
 
   return (
-    <section className="genome-metadata-group">
-      <h3>{title}</h3>
+    <details className="genome-metadata-group" open={open}>
+      <summary><span>{title}</span><small>{description}</small></summary>
       <dl>
         {visibleFacts.map((fact) => (
           <div key={fact.label}>
@@ -45,7 +66,7 @@ function MetadataGroup({ title, facts }: { title: string; facts: MetadataFact[] 
           </div>
         ))}
       </dl>
-    </section>
+    </details>
   );
 }
 
@@ -73,6 +94,11 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
   const browserAssembly = match.resourceStatus !== 'staged' && assetBase && match.storage
     ? { assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets }
     : null;
+  const qualityMeasures = [
+    genome.completeness === null ? null : { label: 'Completeness', value: genome.completeness, hint: 'Higher is better', tone: 'teal' as const },
+    details?.codingDensity === null || details?.codingDensity === undefined ? null : { label: 'Coding density', value: details.codingDensity, hint: 'Share of coding sequence', tone: 'teal' as const },
+    genome.contamination === null ? null : { label: 'Contamination', value: genome.contamination, hint: 'Lower is better', tone: 'gold' as const },
+  ].filter((measure) => measure !== null);
 
   return (
     <main className="portal-page genome-detail-page">
@@ -99,11 +125,30 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
         <section className="genome-metadata-section" aria-labelledby="genome-metadata-heading">
           <div className="genome-metadata-heading">
             <p className="portal-kicker">Catalog record</p>
-            <h2 id="genome-metadata-heading">Genome metadata</h2>
-            <p>Core assembly, taxonomy, quality and analysis information. Technical paths and checksums remain available in the catalog API.</p>
+            <h2 id="genome-metadata-heading">Genome summary</h2>
+            <p>Key biological and quality signals first. Expand a section only when you need the underlying catalog details.</p>
           </div>
-          <div className="genome-metadata-grid">
-            <MetadataGroup title="Identity and assembly" facts={[
+
+          <div className="genome-metrics-grid" aria-label="Genome key metrics">
+            <MetadataMetric label="Genome size" value={formatNumber(genome.genomeSizeBp, ' bp')} context="Assembly span" />
+            <MetadataMetric label="GC content" value={formatNumber(genome.gcContent, '%')} context="Base composition" />
+            <MetadataMetric label="Contigs" value={formatNumber(genome.contigCount)} context="Assembly continuity" />
+            <MetadataMetric label="Completeness" value={formatNumber(genome.completeness, '%')} context="Quality estimate" />
+            <MetadataMetric label="Contamination" value={formatNumber(genome.contamination, '%')} context="Quality estimate" />
+            <MetadataMetric label="Promoters" value={formatNumber(genome.predictedPromoterCount)} context="Model predictions" />
+          </div>
+
+          {qualityMeasures.length > 0 && (
+            <section className="genome-quality-overview" aria-labelledby="quality-overview-heading">
+              <div><p className="portal-kicker">Quality signals</p><h3 id="quality-overview-heading">Assembly quality at a glance</h3></div>
+              <div className="genome-quality-grid">
+                {qualityMeasures.map((measure) => <QualityBar key={measure.label} {...measure} />)}
+              </div>
+            </section>
+          )}
+
+          <div className="genome-metadata-groups">
+            <MetadataGroup title="Assembly overview" description="Identifiers and source" open facts={[
               { label: 'Accession', value: genome.accession, mono: true },
               { label: 'NCBI organism name', value: details?.ncbiOrganismName },
               { label: 'NCBI Tax ID', value: details?.ncbiTaxId, mono: true },
@@ -119,7 +164,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
               },
             ]} />
 
-            <MetadataGroup title="Taxonomy" facts={[
+            <MetadataGroup title="Taxonomy" description="GTDB lineage" facts={[
               { label: 'Domain', value: genome.domain },
               { label: 'Phylum', value: genome.phylum },
               { label: 'Class', value: genome.className },
@@ -130,38 +175,25 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
               { label: 'Taxonomy source', value: details?.taxonomySource },
             ]} />
 
-            <MetadataGroup title="Assembly quality" facts={[
-              { label: 'Genome size', value: formatNumber(genome.genomeSizeBp, ' bp') },
-              { label: 'GC content', value: formatNumber(genome.gcContent, '%') },
-              { label: 'Contigs', value: formatNumber(genome.contigCount) },
+            <MetadataGroup title="Quality and annotation" description="Continuity and features" facts={[
               { label: 'Contig N50', value: formatNumber(details?.contigN50 ?? null, ' bp') },
               { label: 'Longest contig', value: formatNumber(details?.longestContigBp ?? null, ' bp') },
-              { label: 'Coding density', value: formatNumber(details?.codingDensity ?? null, '%') },
               { label: 'Protein count', value: formatNumber(details?.proteinCount ?? null) },
               { label: 'tRNA count', value: formatNumber(details?.trnaCount ?? null) },
-              { label: 'Completeness', value: formatNumber(genome.completeness, '%') },
-              { label: 'Contamination', value: formatNumber(genome.contamination, '%') },
               { label: 'MIMAG quality', value: details?.mimagQuality },
-            ]} />
-
-            <MetadataGroup title="Promoter prediction" facts={[
-              { label: 'Predicted promoters', value: genome.predictedPromoterCount },
-              { label: 'Prediction method', value: details?.promoter.sourceId },
-              { label: 'Model version', value: details?.promoter.sourceVersion },
-              { label: 'Score threshold', value: metadataValue(details?.promoter.configuration?.threshold) },
-              { label: 'Generated at', value: details?.promoter.generatedAt },
-            ]} />
-
-            <MetadataGroup title="NCBI genome annotation" facts={[
               { label: 'Portal status', value: genome.annotationStatus },
               { label: 'Feature count', value: genome.annotationFeatureCount },
               { label: 'Experimental TSS count', value: genome.experimentalTssCount },
-              { label: 'Annotation source', value: details?.annotation.sourceId },
-              { label: 'Annotation version', value: details?.annotation.sourceVersion },
-              { label: 'Generated at', value: details?.annotation.generatedAt },
             ]} />
 
-            <MetadataGroup title="Release" facts={[
+            <MetadataGroup title="Analysis and release" description="Methods and provenance" facts={[
+              { label: 'Prediction method', value: details?.promoter.sourceId },
+              { label: 'Model version', value: details?.promoter.sourceVersion },
+              { label: 'Score threshold', value: metadataValue(details?.promoter.configuration?.threshold) },
+              { label: 'Prediction generated at', value: details?.promoter.generatedAt },
+              { label: 'Annotation source', value: details?.annotation.sourceId },
+              { label: 'Annotation version', value: details?.annotation.sourceVersion },
+              { label: 'Annotation generated at', value: details?.annotation.generatedAt },
               { label: 'SeqEdge release', value: releaseId, mono: true },
               { label: 'GTDB taxonomy release', value: details?.release.sourceReleaseId, mono: true },
               { label: 'Release date', value: details?.release.releaseDate },

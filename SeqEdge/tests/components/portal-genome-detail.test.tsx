@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import GenomeDetailPage from '@/app/genomes/[accession]/page';
 import { makeGenome } from '../fixtures/release';
-import type { GenomeCatalogMatch } from '@/types/genome-catalog';
+import type { GenomeCatalogDetails, GenomeCatalogMatch } from '@/types/genome-catalog';
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
@@ -23,6 +23,80 @@ function match(accession: string, status: 'available' | 'missing' | 'incompatibl
     genome.assets.ncbiAnnotationsIndex = `${accession}/ncbi-annotations.gff3.gz.tbi`;
   }
   return { releaseId: '2026-08-07', assetBase: '/api/local-data', genome, storage: { layout: 'individual-v1' as const, logicalObjectPrefix: accession } };
+}
+
+function details(): GenomeCatalogDetails {
+  return {
+    ncbiOrganismName: 'Bacillus test organism',
+    ncbiTaxId: 12_345,
+    assemblyName: 'ASM12345v1',
+    genbankAssemblyAccession: 'GCA_000411415.1',
+    refseqAssemblyAccession: 'GCF_000411415.1',
+    taxonomyRaw: 'd__Bacteria;p__Bacillota;c__Bacilli',
+    species: 'Bacillus testus',
+    taxonomySource: 'GTDB R214.1',
+    gtdbRepresentative: true,
+    gtdbGenomeRepresentative: 'GCA_000411415.1',
+    contigN50: 1_500_000,
+    longestContigBp: 2_000_000,
+    ambiguousBases: 10,
+    codingDensity: 88.2,
+    proteinCount: 3_900,
+    trnaCount: 82,
+    ssuRrnaCount: 4,
+    lsu23sRrnaCount: 4,
+    strainHeterogeneity: 1.5,
+    mimagQuality: 'high',
+    assemblySourceUrl: 'https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_000411415.1/',
+    referenceSha256: 'reference-sha256',
+    promoter: {
+      definitionId: 'predicted-promoters',
+      evidenceType: 'prediction',
+      countUnit: 'peaks',
+      featureCount: 2_400,
+      status: 'available',
+      sourceId: 'RAPPtor',
+      sourceVersion: '1.0',
+      configuration: { threshold: 0.9 },
+      generatedAt: '2026-08-01',
+      provenance: { model: 'RAPPtor' },
+      detailCounts: {},
+      dataPath: 'promoters.gff3.gz',
+      indexPath: 'promoters.gff3.gz.tbi',
+      dataSha256: 'promoter-sha256',
+      indexSha256: 'promoter-index-sha256',
+    },
+    annotation: {
+      definitionId: 'ncbi-annotation',
+      evidenceType: 'curated',
+      countUnit: 'features',
+      featureCount: 2_000,
+      status: 'available',
+      sourceId: 'NCBI',
+      sourceVersion: '2026-07',
+      configuration: {},
+      generatedAt: '2026-08-01',
+      provenance: { source: 'GenBank' },
+      detailCounts: { gene: 1_900 },
+      dataPath: 'annotations.gff3.gz',
+      indexPath: 'annotations.gff3.gz.tbi',
+      dataSha256: 'annotation-sha256',
+      indexSha256: 'annotation-index-sha256',
+    },
+    release: {
+      sourceReleaseId: 'gtdb-r214',
+      releaseDate: '2026-08-13',
+      generatedAt: '2026-08-13T00:00:00Z',
+      datasetVersion: 'SeqEdge 2026-08-13',
+      metadataSchemaVersion: '1.0',
+      publicationStatus: 'published',
+      storageLayout: 'individual-v1',
+      hfRepository: 'liurulong/bacterial-promoter-genomes',
+      hfRevision: 'main',
+      releaseAssetBaseUrl: 'https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main',
+      manifestIndexPath: 'manifest.json',
+    },
+  };
 }
 
 describe('genome detail release contract', () => {
@@ -64,6 +138,27 @@ describe('genome detail release contract', () => {
     expect(screen.queryByLabelText('Genome browser downloads')).not.toBeInTheDocument();
   });
 
+  it('places the larger browser before the complete catalog metadata', async () => {
+    const richMatch = match('GCA_000411415.1', 'available');
+    richMatch.genome.genomeSizeBp = 1_500_000;
+    richMatch.details = details();
+    vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(richMatch);
+    render(await GenomeDetailPage({ params: Promise.resolve({ accession: richMatch.genome.accession }) }));
+
+    const browser = screen.getByTestId('browser-contract');
+    const metadataHeading = screen.getByRole('heading', { name: 'Genome metadata' });
+    expect(browser.compareDocumentPosition(metadataHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Bacillus test organism')).toBeInTheDocument();
+    expect(screen.getAllByText('1,500,000 bp')).not.toHaveLength(0);
+    expect(screen.getByText('GTDB R214.1')).toBeInTheDocument();
+    expect(screen.getAllByText('RAPPtor')).not.toHaveLength(0);
+    expect(screen.getAllByText('2026-08-01')).not.toHaveLength(0);
+    expect(screen.getByRole('link', { name: 'Open NCBI record' })).toHaveAttribute(
+      'href',
+      'https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_000411415.1/',
+    );
+  });
+
   it('omits the NCBI track for GCA_000421325.1', async () => {
     vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(match('GCA_000421325.1', 'missing'));
     render(await GenomeDetailPage({ params: Promise.resolve({ accession: 'GCA_000421325.1' }) }));
@@ -78,7 +173,7 @@ describe('genome detail release contract', () => {
     render(await GenomeDetailPage({ params: Promise.resolve({ accession: 'GCA_000431335.1' }) }));
 
     expect(screen.getByTestId('browser-contract')).toHaveAttribute('data-ncbi', 'false');
-    expect(screen.getByText('Not available')).toBeInTheDocument();
+    expect(screen.getAllByText('incompatible')).not.toHaveLength(0);
     expect(screen.queryByText('Incompatible with assembly')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /NCBI annotation/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').filter((link) => link.hasAttribute('download'))).toHaveLength(0);
@@ -100,7 +195,7 @@ describe('genome detail release contract', () => {
     render(await GenomeDetailPage({ params: Promise.resolve({ accession: staged.genome.accession }) }));
 
     expect(screen.getByTestId('on-demand-browser-contract')).toHaveAttribute('data-assembly', staged.genome.accession);
-    expect(screen.getByText('2,000 cataloged features')).toBeInTheDocument();
+    expect(screen.getAllByText('2,000')).not.toHaveLength(0);
     expect(screen.queryByTestId('browser-contract')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Planned data files' })).not.toBeInTheDocument();
     expect(screen.queryByText('Batch 000')).not.toBeInTheDocument();

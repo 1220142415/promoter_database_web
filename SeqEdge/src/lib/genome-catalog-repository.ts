@@ -6,6 +6,8 @@ import { getReleaseCatalog, getReleaseGenome } from '@/lib/catalog-server';
 import { plannedHfBatchAssets } from '@/lib/hf-batch-assets';
 import type {
   GenomeCatalogMatch,
+  GenomeCatalogDetails,
+  GenomeFeatureDetails,
   GenomeCatalogRow,
   GenomeSearchQuery,
   GenomeSearchResponse,
@@ -402,6 +404,90 @@ function parseD1Storage(candidate: Record<string, unknown>, expectedLayout: stri
   };
 }
 
+function parseJsonRecord(value: unknown) {
+  const parsed = parseJson<unknown>(value, {});
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : {};
+}
+
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function nullableBoolean(value: unknown) {
+  if (value === null || value === undefined) return null;
+  return value === true || value === 1;
+}
+
+function d1FeatureDetails(row: D1GenomeRow, prefix: 'promoter' | 'annotation'): GenomeFeatureDetails {
+  return {
+    definitionId: row[`${prefix}_definition_id`] as string | null,
+    evidenceType: row[`${prefix}_evidence_type`] as string | null,
+    countUnit: row[`${prefix}_count_unit`] as string | null,
+    featureCount: nullableNumber(row[`${prefix}_feature_count`]),
+    status: row[`${prefix}_status`] as string | null,
+    sourceId: row[`${prefix}_source_id`] as string | null,
+    sourceVersion: row[`${prefix}_source_version`] as string | null,
+    configuration: parseJsonRecord(row[`${prefix}_configuration_json`]),
+    generatedAt: row[`${prefix}_generated_at`] as string | null,
+    provenance: parseJsonRecord(row[`${prefix}_provenance_json`]),
+    detailCounts: parseJsonRecord(row[`${prefix}_detail_counts_json`]),
+    dataPath: row[`${prefix}_data_path`] as string | null,
+    indexPath: row[`${prefix}_index_path`] as string | null,
+    dataSha256: row[`${prefix}_data_sha256`] as string | null,
+    indexSha256: row[`${prefix}_index_sha256`] as string | null,
+  };
+}
+
+function d1CatalogDetails(row: D1GenomeRow, release: D1ReleaseRow): GenomeCatalogDetails {
+  const referenceStorage = parseJsonRecord(row.reference_storage_json);
+  const referenceChecksums = referenceStorage.checksums && typeof referenceStorage.checksums === 'object' && !Array.isArray(referenceStorage.checksums)
+    ? referenceStorage.checksums as Record<string, unknown>
+    : {};
+  return {
+    ncbiOrganismName: row.ncbi_organism_name as string | null,
+    ncbiTaxId: nullableNumber(row.ncbi_tax_id),
+    assemblyName: row.assembly_name as string | null,
+    genbankAssemblyAccession: row.genbank_assembly_accession as string | null,
+    refseqAssemblyAccession: row.refseq_assembly_accession as string | null,
+    taxonomyRaw: row.taxonomy_raw as string | null,
+    species: row.species as string | null,
+    taxonomySource: row.taxonomy_source as string | null,
+    gtdbRepresentative: nullableBoolean(row.gtdb_representative),
+    gtdbGenomeRepresentative: row.gtdb_genome_representative as string | null,
+    contigN50: nullableNumber(row.contig_n50),
+    longestContigBp: nullableNumber(row.longest_contig_bp),
+    ambiguousBases: nullableNumber(row.ambiguous_bases),
+    codingDensity: nullableNumber(row.coding_density),
+    proteinCount: nullableNumber(row.protein_count),
+    trnaCount: nullableNumber(row.trna_count),
+    ssuRrnaCount: nullableNumber(row.ssu_rrna_count),
+    lsu23sRrnaCount: nullableNumber(row.lsu_23s_rrna_count),
+    strainHeterogeneity: nullableNumber(row.strain_heterogeneity),
+    mimagQuality: row.mimag_quality as string | null,
+    assemblySourceUrl: row.assembly_source_url as string | null,
+    referenceSha256: typeof referenceChecksums.fasta === 'string' ? referenceChecksums.fasta : null,
+    promoter: d1FeatureDetails(row, 'promoter'),
+    annotation: d1FeatureDetails(row, 'annotation'),
+    release: {
+      sourceReleaseId: release.source_release_id as string | null,
+      releaseDate: release.release_date as string | null,
+      generatedAt: release.generated_at as string | null,
+      datasetVersion: release.dataset_version as string | null,
+      metadataSchemaVersion: release.metadata_schema_version as string | null,
+      publicationStatus: release.publication_status as string | null,
+      storageLayout: release.storage_layout as string | null,
+      hfRepository: release.hf_repository as string | null,
+      hfRevision: release.hf_revision as string | null,
+      releaseAssetBaseUrl: release.release_asset_base_url as string | null,
+      manifestIndexPath: release.manifest_index_path as string | null,
+    },
+  };
+}
+
 function d1AnnotationStatus(value: unknown): ReleaseGenome['annotationStatus'] {
   if (value === 'ready' || value === 'staged') return 'available';
   return value === 'failed' ? 'incompatible' : 'missing';
@@ -540,14 +626,26 @@ const D1_FEATURE_JOINS = [
   "LEFT JOIN feature_sets a ON a.release_id = g.release_id AND a.accession = g.accession AND a.feature_type = 'gene_annotation' AND a.is_default = 1",
 ].join(' ');
 
+const D1_FEATURE_DEFINITION_JOINS = [
+  'LEFT JOIN feature_definitions pd ON pd.release_id = p.release_id AND pd.definition_id = p.definition_id',
+  'LEFT JOIN feature_definitions ad ON ad.release_id = a.release_id AND ad.definition_id = a.definition_id',
+].join(' ');
+
 const D1_GENOME_SELECT = [
   'SELECT g.*',
-  ', p.feature_count AS predicted_promoter_count, p.status AS promoter_status',
-  ', p.data_path AS promoter_data_path, p.index_path AS promoter_index_path, p.data_sha256 AS promoter_data_sha256, p.storage_json AS promoter_storage_json',
-  ', a.feature_count AS annotation_feature_count, a.status AS annotation_status',
-  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path, a.data_sha256 AS annotation_data_sha256, a.storage_json AS annotation_storage_json',
+  ', p.definition_id AS promoter_definition_id, p.feature_count AS predicted_promoter_count, p.feature_count AS promoter_feature_count, p.status AS promoter_status',
+  ', p.evidence_type AS promoter_evidence_type, p.count_unit AS promoter_count_unit, p.source_id AS promoter_source_id, p.source_version AS promoter_source_version',
+  ', p.provenance_json AS promoter_provenance_json, p.detail_counts_json AS promoter_detail_counts_json',
+  ', p.data_path AS promoter_data_path, p.index_path AS promoter_index_path, p.data_sha256 AS promoter_data_sha256, p.index_sha256 AS promoter_index_sha256, p.storage_json AS promoter_storage_json',
+  ', pd.configuration_json AS promoter_configuration_json, pd.generated_at AS promoter_generated_at',
+  ', a.definition_id AS annotation_definition_id, a.feature_count AS annotation_feature_count, a.status AS annotation_status',
+  ', a.evidence_type AS annotation_evidence_type, a.count_unit AS annotation_count_unit, a.source_id AS annotation_source_id, a.source_version AS annotation_source_version',
+  ', a.provenance_json AS annotation_provenance_json, a.detail_counts_json AS annotation_detail_counts_json',
+  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path, a.data_sha256 AS annotation_data_sha256, a.index_sha256 AS annotation_index_sha256, a.storage_json AS annotation_storage_json',
+  ', ad.configuration_json AS annotation_configuration_json, ad.generated_at AS annotation_generated_at',
   'FROM genomes g',
   D1_FEATURE_JOINS,
+  D1_FEATURE_DEFINITION_JOINS,
 ].join(' ');
 
 const D1_LIST_SELECT = [
@@ -838,6 +936,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const row = await this.database.prepare(D1_GENOME_SELECT + ' WHERE g.release_id = ? AND g.accession = ?').bind(String(release.release_id), accession).first<D1GenomeRow>();
     if (!row) return null;
     const releaseId = String(release.release_id);
+    const details = d1CatalogDetails(row, release);
     if (row.promoter_status !== 'ready') {
       const genome = d1RowToMetadataGenome(row, releaseId);
       const referenceStorage = parseJson<Record<string, unknown>>(row.reference_storage_json, {});
@@ -850,6 +949,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
         genome,
         storage: null,
         resourceStatus: 'staged',
+        details,
         plannedAssets: plannedHfBatchAssets(
           release.feature_summary_json,
           genome.accession,
@@ -886,7 +986,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
         || genome.storage.baseUrl
         || (genome.storage.layout === 'packed-v1' ? repositoryBase : releaseBase + '/objects');
     }
-    return { releaseId, assetBase: '/api/remote-data', genome, storage: genome.storage!, resourceStatus: 'ready' };
+    return { releaseId, assetBase: '/api/remote-data', genome, storage: genome.storage!, resourceStatus: 'ready', details };
   }
 
   async getActiveRelease(): Promise<ActiveReleaseSummary> {

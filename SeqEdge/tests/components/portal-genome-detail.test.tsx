@@ -138,7 +138,7 @@ describe('genome detail release contract', () => {
     expect(screen.queryByLabelText('Genome browser downloads')).not.toBeInTheDocument();
   });
 
-  it('places the larger browser before the complete catalog metadata', async () => {
+  it('places the larger browser before concise catalog metadata', async () => {
     const richMatch = match('GCA_000411415.1', 'available');
     richMatch.genome.genomeSizeBp = 1_500_000;
     richMatch.details = details();
@@ -157,6 +157,15 @@ describe('genome detail release contract', () => {
       'href',
       'https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_000411415.1/',
     );
+    expect(screen.getByRole('link', { name: 'Open Hugging Face dataset' })).toHaveAttribute(
+      'href',
+      'https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes',
+    );
+    expect(screen.queryByText('Definition ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('Data SHA-256')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reference FAI path')).not.toBeInTheDocument();
+    expect(screen.queryByText('Logical object prefix')).not.toBeInTheDocument();
+    expect(screen.queryByText('Not reported')).not.toBeInTheDocument();
   });
 
   it('omits the NCBI track for GCA_000421325.1', async () => {

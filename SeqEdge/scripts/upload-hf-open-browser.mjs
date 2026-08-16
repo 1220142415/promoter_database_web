@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';

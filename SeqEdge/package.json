@@ -15,6 +15,7 @@
         "data:pack:materialize": "node scripts/materialize-packed-shard.mjs",
         "data:pack:validate": "node scripts/validate-packed-release.mjs",
         "data:d1:legacy": "node scripts/build-legacy-d1-import.mjs",
+        "data:d1:sample": "node scripts/build-d1-feature-sample.mjs",
         "hf:plan": "node scripts/create-upload-plan.mjs",
         "hf:upload:browser": "node scripts/upload-hf-open-browser.mjs",
         "hf:reclaim:pack": "node scripts/reclaim-uploaded-pack.mjs",
@@ -32,9 +33,10 @@
         "test:api": "vitest run tests/api",
         "test:components": "vitest run tests/components",
         "test:e2e": "playwright test",
-        "build:cf": "node scripts/check-cloudflare-env.mjs && next build && opennextjs-cloudflare build --skipNextBuild && node scripts/build-cloudflare.mjs",
-        "preview:cf": "opennextjs-cloudflare preview",
-        "deploy:cf": "npm run build:cf && wrangler pages deploy .open-next --project-name seqedge"
+        "build:cf": "node scripts/check-cloudflare-env.mjs && opennextjs-cloudflare build",
+        "preview:cf": "npm run build:cf && opennextjs-cloudflare preview",
+        "deploy:cf": "npm run build:cf && opennextjs-cloudflare deploy",
+        "cf:typegen": "wrangler types worker-configuration.d.ts --env-interface CloudflareEnv --env-file config/cloudflare-typegen.env"
     },
     "dependencies": {
         "@emotion/react": "^11.14.0",

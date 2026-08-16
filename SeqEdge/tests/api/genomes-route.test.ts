@@ -5,6 +5,7 @@ vi.mock('node:fs', () => ({ readFileSync: vi.fn() }));
 
 import { readFileSync } from 'node:fs';
 import { GET } from '@/app/api/genomes/route';
+import type { GenomeSearchResponse } from '@/types/genome-catalog';
 import { makeGenome } from '../fixtures/release';
 
 const mockedReadFile = vi.mocked(readFileSync);
@@ -25,7 +26,7 @@ describe('GET /api/genomes', () => {
   it('returns a default page and metadata facets', async () => {
     mockedReadFile.mockReturnValue(catalogJson());
     const response = await GET(new Request('http://localhost/api/genomes'));
-    const body = await response.json();
+    const body = await response.json() as GenomeSearchResponse;
 
     expect(response.status).toBe(200);
     expect(body.items).toHaveLength(25);
@@ -39,14 +40,15 @@ describe('GET /api/genomes', () => {
     mockedReadFile.mockReturnValue(catalogJson(120));
     const response = await GET(new Request(`http://localhost/api/genomes?limit=${limit}`));
     expect(response.status).toBe(200);
-    expect((await response.json()).items).toHaveLength(limit);
+    const body = await response.json() as GenomeSearchResponse;
+    expect(body.items).toHaveLength(limit);
   });
 
   it('validates limits, filters, and cursor continuity', async () => {
     mockedReadFile.mockReturnValue(catalogJson());
     const first = await GET(new Request('http://localhost/api/genomes?limit=100&sort=promoters&direction=desc'));
     expect(first.status).toBe(200);
-    const firstBody = await first.json();
+    const firstBody = await first.json() as GenomeSearchResponse;
     expect(firstBody.items).toHaveLength(30);
     expect(firstBody.pageInfo.nextCursor).toBeNull();
 
@@ -55,7 +57,8 @@ describe('GET /api/genomes', () => {
 
     const filtered = await GET(new Request('http://localhost/api/genomes?q=Genome%2029&annotation=unavailable'));
     expect(filtered.status).toBe(200);
-    expect((await filtered.json()).items).toHaveLength(1);
+    const filteredBody = await filtered.json() as GenomeSearchResponse;
+    expect(filteredBody.items).toHaveLength(1);
   });
 
   it('returns 400 for malformed cursors', async () => {

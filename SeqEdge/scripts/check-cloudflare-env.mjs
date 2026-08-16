@@ -26,6 +26,14 @@ for (const name of required) {
 }
 
 const wrangler = readFileSync(path.join(process.cwd(), 'wrangler.toml'), 'utf8');
+if (!/^\s*main\s*=\s*["']\.open-next\/worker\.js["']\s*$/m.test(wrangler)) {
+  console.error('wrangler.toml must deploy .open-next/worker.js as a Cloudflare Worker.');
+  process.exit(1);
+}
+if (!/^\s*directory\s*=\s*["']\.open-next\/assets["']\s*$/m.test(wrangler)) {
+  console.error('wrangler.toml must bind .open-next/assets as Worker static assets.');
+  process.exit(1);
+}
 const d1Blocks = wrangler.split(/^\s*\[\[d1_databases\]\]\s*$/m).slice(1);
 const catalogBinding = d1Blocks.find((block) => /^\s*binding\s*=\s*["']SEQEDGE_DB["']\s*$/m.test(block));
 const databaseId = catalogBinding?.match(/^\s*database_id\s*=\s*["']([0-9a-f-]+)["']\s*$/mi)?.[1];

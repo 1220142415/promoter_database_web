@@ -14,7 +14,7 @@ import type {
   GenomeTaxonomyRank,
 } from '@/types/genome-catalog';
 import type { ReleaseGenome } from '@/types/release';
-import type { ActiveReleaseSummary, GenomeStorageMap } from '@/types/release';
+import type { ActiveReleaseSummary, GenomeStorageMap, PackedAsset } from '@/types/release';
 
 type SortValue = string | number | null;
 
@@ -44,7 +44,9 @@ function assetBaseForAccession(accession: string, defaultBase: string) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean));
-  return pilotAccessions.has(accession) ? '/api/remote-data' : defaultBase;
+  return pilotAccessions.has(accession)
+    ? process.env.HF_PILOT_STORAGE_BASE_URL.replace(/\/+$/, '')
+    : defaultBase;
 }
 
 export class GenomeCatalogUnavailableError extends Error {
@@ -279,6 +281,12 @@ class JsonGenomeCatalogRepository implements GenomeCatalogRepository {
 
 type D1ReleaseRow = Record<string, string | number | null>;
 type D1GenomeRow = Record<string, string | number | null>;
+type D1FeatureAggregateRow = {
+  feature_type: string;
+  status: string;
+  genome_count: number;
+  feature_count: number | null;
+};
 
 async function configuredD1() {
   const requested = process.env.SEQEDGE_CATALOG_BACKEND === 'd1' || process.env.NODE_ENV === 'production';
@@ -305,22 +313,49 @@ function isSafeObjectPath(value: string) {
   return segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..' && !segment.includes(':'));
 }
 
-function parseD1Storage(value: unknown, expectedLayout: string, releaseId: string, accession: string): GenomeStorageMap {
-  let storage: unknown;
-  try { storage = typeof value === 'string' ? JSON.parse(value) : null; } catch { storage = null; }
-  if (!storage || typeof storage !== 'object' || Array.isArray(storage)) throw new GenomeCatalogUnavailableError(accession + ': storage mapping is invalid.');
-  const candidate = storage as Record<string, unknown>;
+function parseObject(value: unknown, accession: string, label: string) {
+  let parsed: unknown;
+  try { parsed = typeof value === 'string' ? JSON.parse(value) : null; } catch { parsed = null; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new GenomeCatalogUnavailableError(accession + ': ' + label + ' is invalid.');
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function portalAssetPath(value: unknown, accession: string, label: string): string;
+function portalAssetPath(value: unknown, accession: string, label: string, optional: true): string | null;
+function portalAssetPath(value: unknown, accession: string, label: string, optional = false): string | null {
+  if ((value === null || value === undefined) && optional) return null;
+  if (typeof value !== 'string' || !isSafeObjectPath(value)) {
+    throw new GenomeCatalogUnavailableError(accession + ': ' + label + ' path is invalid.');
+  }
+  const path = value.startsWith('objects/') ? value.slice('objects/'.length) : value;
+  if (!path.startsWith(accession + '/')) {
+    throw new GenomeCatalogUnavailableError(accession + ': ' + label + ' path does not match the genome.');
+  }
+  return path;
+}
+
+function parseD1Storage(candidate: Record<string, unknown>, expectedLayout: string, releaseId: string, accession: string): GenomeStorageMap {
   if (
     candidate.layout !== expectedLayout
-    || typeof candidate.logicalObjectPrefix !== 'string'
-    || !isSafeObjectPath(candidate.logicalObjectPrefix)
   ) {
     throw new GenomeCatalogUnavailableError(accession + ': storage layout does not match the active release.');
   }
+  const logicalObjectPrefix = typeof candidate.logicalObjectPrefix === 'string'
+    ? candidate.logicalObjectPrefix
+    : accession;
+  if (!isSafeObjectPath(logicalObjectPrefix)) throw new GenomeCatalogUnavailableError(accession + ': storage prefix is invalid.');
   if (candidate.baseUrl !== undefined && (typeof candidate.baseUrl !== 'string' || !candidate.baseUrl.trim())) {
     throw new GenomeCatalogUnavailableError(accession + ': storage base URL is invalid.');
   }
-  if (candidate.layout === 'individual-v1') return candidate as GenomeStorageMap;
+  if (candidate.layout === 'individual-v1') {
+    return {
+      layout: 'individual-v1',
+      logicalObjectPrefix,
+      ...(typeof candidate.baseUrl === 'string' ? { baseUrl: candidate.baseUrl } : {}),
+    };
+  }
   if (candidate.layout !== 'packed-v1' || !candidate.assets || typeof candidate.assets !== 'object' || Array.isArray(candidate.assets)) {
     throw new GenomeCatalogUnavailableError(accession + ': packed storage assets are missing.');
   }
@@ -342,7 +377,12 @@ function parseD1Storage(value: unknown, expectedLayout: string, releaseId: strin
       || typeof asset.contentType !== 'string' || !asset.contentType.trim()
     ) throw new GenomeCatalogUnavailableError(accession + '/' + file + ': packed asset metadata is invalid.');
   }
-  return candidate as GenomeStorageMap;
+  return {
+    layout: 'packed-v1',
+    logicalObjectPrefix,
+    ...(typeof candidate.baseUrl === 'string' ? { baseUrl: candidate.baseUrl } : {}),
+    assets: candidate.assets as Record<string, PackedAsset>,
+  };
 }
 
 function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId: string): ReleaseGenome {
@@ -350,19 +390,44 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
   if (String(row.release_id) !== expectedReleaseId) {
     throw new GenomeCatalogUnavailableError(accession + ': genome release does not match the active release.');
   }
-  const storage = parseD1Storage(row.storage_json, expectedLayout, expectedReleaseId, accession);
-  const assets = storage.layout === 'packed-v1'
-    ? {
-        fasta: accession + '/reference.fa.gz',
-        fastaFai: accession + '/reference.fa.gz.fai',
-        fastaGzi: accession + '/reference.fa.gz.gzi',
-        predictedPromoters: accession + '/predicted-promoters.gff3.gz',
-        predictedPromotersIndex: accession + '/predicted-promoters.gff3.gz.tbi',
-        ncbiAnnotations: storage.assets['ncbi-annotations.gff3.gz'] ? accession + '/ncbi-annotations.gff3.gz' : null,
-        ncbiAnnotationsIndex: storage.assets['ncbi-annotations.gff3.gz.tbi'] ? accession + '/ncbi-annotations.gff3.gz.tbi' : null,
-        metadata: storage.assets['metadata.json'] ? accession + '/metadata.json' : null,
-      }
-    : parseJson(row.assets_json, {} as ReleaseGenome['assets']);
+  const referenceStorage = parseObject(row.reference_storage_json, accession, 'reference storage mapping');
+  const files = referenceStorage.files && typeof referenceStorage.files === 'object' && !Array.isArray(referenceStorage.files)
+    ? referenceStorage.files as Record<string, unknown>
+    : null;
+  if (expectedLayout === 'individual-v1' && !files) {
+    throw new GenomeCatalogUnavailableError(accession + ': reference files are missing.');
+  }
+  const promoterStorage = parseJson<Record<string, unknown>>(row.promoter_storage_json, {});
+  const annotationStorage = parseJson<Record<string, unknown>>(row.annotation_storage_json, {});
+  const packedAssets = {
+    ...(referenceStorage.assets && typeof referenceStorage.assets === 'object' && !Array.isArray(referenceStorage.assets)
+      ? referenceStorage.assets as Record<string, unknown>
+      : {}),
+    ...(promoterStorage.assets && typeof promoterStorage.assets === 'object' && !Array.isArray(promoterStorage.assets)
+      ? promoterStorage.assets as Record<string, unknown>
+      : {}),
+    ...(annotationStorage.assets && typeof annotationStorage.assets === 'object' && !Array.isArray(annotationStorage.assets)
+      ? annotationStorage.assets as Record<string, unknown>
+      : {}),
+  };
+  const storage = parseD1Storage({
+    ...referenceStorage,
+    ...(expectedLayout === 'packed-v1' ? { assets: packedAssets } : {}),
+  }, expectedLayout, expectedReleaseId, accession);
+  const assets = {
+    fasta: portalAssetPath(files?.fasta ?? accession + '/reference.fa.gz', accession, 'FASTA'),
+    fastaFai: portalAssetPath(files?.fai ?? accession + '/reference.fa.gz.fai', accession, 'FASTA index'),
+    fastaGzi: portalAssetPath(files?.gzi ?? accession + '/reference.fa.gz.gzi', accession, 'FASTA gzip index'),
+    predictedPromoters: portalAssetPath(row.promoter_data_path, accession, 'promoter data'),
+    predictedPromotersIndex: portalAssetPath(row.promoter_index_path, accession, 'promoter index'),
+    ncbiAnnotations: row.annotation_status === 'ready'
+      ? portalAssetPath(row.annotation_data_path, accession, 'annotation data')
+      : null,
+    ncbiAnnotationsIndex: row.annotation_status === 'ready'
+      ? portalAssetPath(row.annotation_index_path, accession, 'annotation index')
+      : null,
+    metadata: portalAssetPath(files?.metadata, accession, 'metadata', true),
+  };
   return {
     accession,
     organismName: String(row.organism_name),
@@ -380,12 +445,12 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
     contigCount: row.contig_count as number | null,
     completeness: row.completeness as number | null,
     contamination: row.contamination as number | null,
-    predictedPromoterCount: Number(row.predicted_promoter_count),
-    annotationStatus: row.annotation_status as ReleaseGenome['annotationStatus'],
-    annotationFeatureCount: Number(row.annotation_feature_count),
-    annotationCircularOriginSplitCount: Number(row.annotation_circular_origin_split_count || 0),
-    experimentalTssCount: Number(row.experimental_tss_count || 0),
-    hasExperimentalTss: Boolean(row.has_experimental_tss),
+    predictedPromoterCount: Number(row.predicted_promoter_count || 0),
+    annotationStatus: row.annotation_status === 'ready' ? 'available' : row.annotation_status === 'failed' ? 'incompatible' : 'missing',
+    annotationFeatureCount: Number(row.annotation_feature_count || 0),
+    annotationCircularOriginSplitCount: 0,
+    experimentalTssCount: 0,
+    hasExperimentalTss: false,
     defaultLocus: row.default_locus as string | null,
     primarySequence: row.primary_sequence as string | null,
     assets,
@@ -398,6 +463,21 @@ async function activeD1Release(database: D1Database) {
   if (!row) throw new GenomeCatalogUnavailableError('No active SeqEdge release is configured in D1.');
   return row;
 }
+
+const D1_FEATURE_JOINS = [
+  "LEFT JOIN feature_sets p ON p.release_id = g.release_id AND p.accession = g.accession AND p.feature_type = 'promoter' AND p.is_default = 1",
+  "LEFT JOIN feature_sets a ON a.release_id = g.release_id AND a.accession = g.accession AND a.feature_type = 'gene_annotation' AND a.is_default = 1",
+].join(' ');
+
+const D1_GENOME_SELECT = [
+  'SELECT g.*',
+  ', p.feature_count AS predicted_promoter_count, p.status AS promoter_status',
+  ', p.data_path AS promoter_data_path, p.index_path AS promoter_index_path, p.storage_json AS promoter_storage_json',
+  ', a.feature_count AS annotation_feature_count, a.status AS annotation_status',
+  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path, a.storage_json AS annotation_storage_json',
+  'FROM genomes g',
+  D1_FEATURE_JOINS,
+].join(' ');
 
 function normalizedTokens(value: string) {
   return value.toLocaleLowerCase().normalize('NFKC').split(/[^\p{L}\p{N}_.-]+/u).filter(Boolean);
@@ -416,33 +496,66 @@ function d1Where(query: GenomeSearchQuery, releaseId: string) {
   const taxonomyFields: Array<[keyof GenomeSearchQuery['taxonomy'], string]> = [['domain', 'domain'], ['phylum', 'phylum'], ['class', 'class_name'], ['order', 'order_name'], ['family', 'family'], ['genus', 'genus']];
   for (const [key, column] of taxonomyFields) if (query.taxonomy[key]) { clauses.push('g.' + column + ' = ?'); bindings.push(query.taxonomy[key]); }
   if (query.source) { clauses.push('g.genome_source = ?'); bindings.push(query.source); }
-  if (query.annotation === 'available') clauses.push("g.annotation_status = 'available'");
-  else if (query.annotation === 'unavailable') clauses.push("g.annotation_status <> 'available'");
+  if (query.annotation === 'available') clauses.push("a.status = 'ready'");
+  else if (query.annotation === 'unavailable') clauses.push("COALESCE(a.status, 'missing') <> 'ready'");
   return { clauses, bindings };
 }
 
 function d1Sort(query: GenomeSearchQuery) {
   const direction = query.direction === 'asc' ? 'ASC' : 'DESC';
-  if (query.sort === 'organism') return { expression: 'g.organism_name', order: 'g.organism_name ' + direction + ', g.accession ASC' };
-  if (query.sort === 'promoters') return { expression: 'g.predicted_promoter_count', order: 'g.predicted_promoter_count ' + direction + ', g.accession ASC' };
-  if (query.sort === 'genome-size') return { expression: 'g.genome_size_bp', order: 'g.genome_size_bp IS NULL ASC, g.genome_size_bp ' + direction + ', g.accession ASC' };
-  return { expression: 'g.accession', order: 'g.accession ' + direction };
+  if (query.sort === 'organism') return {
+    outerExpression: 'filtered.organism_name',
+    outerOrder: 'filtered.organism_name ' + direction + ', filtered.accession ASC',
+  };
+  if (query.sort === 'promoters') return {
+    outerExpression: 'COALESCE(filtered.predicted_promoter_count, 0)',
+    outerOrder: 'COALESCE(filtered.predicted_promoter_count, 0) ' + direction + ', filtered.accession ASC',
+  };
+  if (query.sort === 'genome-size') return {
+    outerExpression: 'filtered.genome_size_bp',
+    outerOrder: 'filtered.genome_size_bp IS NULL ASC, filtered.genome_size_bp ' + direction + ', filtered.accession ASC',
+  };
+  return {
+    outerExpression: 'filtered.accession',
+    outerOrder: 'filtered.accession ' + direction,
+  };
 }
 
 async function d1Facets(database: D1Database, releaseId: string, query: GenomeSearchQuery): Promise<GenomeSearchResponse['facets']> {
   const parents = [query.taxonomy.domain, query.taxonomy.phylum, query.taxonomy.class, query.taxonomy.order, query.taxonomy.family];
   const ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus'];
-  const statements = [database.prepare("SELECT DISTINCT value FROM facet_options WHERE release_id = ? AND kind = 'source' ORDER BY value").bind(releaseId)];
+  const branches = ["kind = 'source'"];
+  const bindings: string[] = [releaseId];
   for (let index = 0; index < ranks.length; index += 1) {
-    const clauses = ['release_id = ?', 'kind = ?'];
-    const bindings = [releaseId, ranks[index]];
+    const clauses = ["kind = ?"];
+    const rankBindings = [ranks[index]];
     const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'];
-    for (let parent = 0; parent < index && parent < parents.length; parent += 1) if (parents[parent]) { clauses.push(columns[parent] + ' = ?'); bindings.push(parents[parent]); }
-    statements.push(database.prepare('SELECT DISTINCT value FROM facet_options WHERE ' + clauses.join(' AND ') + ' ORDER BY value').bind(...bindings));
+    for (let parent = 0; parent < index && parent < parents.length; parent += 1) {
+      if (parents[parent]) {
+        clauses.push(columns[parent] + ' = ?');
+        rankBindings.push(parents[parent]);
+      }
+    }
+    branches.push('(' + clauses.join(' AND ') + ')');
+    bindings.push(...rankBindings);
   }
-  const results = await database.batch<{ value: string }>(statements);
-  const values = results.map((result) => result.results.map((row) => row.value));
-  return { sources: values[0], taxonomy: { domain: values[1], phylum: values[2], class: values[3], order: values[4], family: values[5], genus: values[6] } };
+  const result = await database
+    .prepare('SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE release_id = ? AND (' + branches.join(' OR ') + ') ORDER BY facet_kind, value')
+    .bind(...bindings)
+    .all<{ facet_kind: string; value: string }>();
+  const values = Object.fromEntries(['source', ...ranks].map((kind) => [kind, [] as string[]]));
+  for (const row of result.results) values[row.facet_kind]?.push(row.value);
+  return {
+    sources: values.source,
+    taxonomy: {
+      domain: values.domain,
+      phylum: values.phylum,
+      class: values.class,
+      order: values.order,
+      family: values.family,
+      genus: values.genus,
+    },
+  };
 }
 
 export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
@@ -453,40 +566,43 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const releaseId = String(release.release_id);
     const where = d1Where(query, releaseId);
     const sort = d1Sort(query);
-    const clauses = [...where.clauses];
+    const cursorClauses: string[] = [];
     const bindings = [...where.bindings];
     if (query.cursor) {
       const cursor = decodeCursor(query.cursor, query, releaseId);
+      const filtered = D1_GENOME_SELECT + ' WHERE ' + where.clauses.join(' AND ');
       const cursorRow = await this.database
-        .prepare('SELECT ' + sort.expression + ' AS cursor_value FROM genomes g WHERE ' + where.clauses.join(' AND ') + ' AND g.accession = ?')
+        .prepare('WITH filtered AS (' + filtered + ') SELECT ' + sort.outerExpression + ' AS cursor_value FROM filtered WHERE filtered.accession = ?')
         .bind(...where.bindings, cursor.accession)
         .first<{ cursor_value: SortValue }>();
       if (!cursorRow || cursorRow.cursor_value !== cursor.value) throw new InvalidGenomeCursorError('cursor does not belong to this result set');
       const comparison = query.direction === 'asc' ? '>' : '<';
       if (query.sort === 'genome-size' && cursor.value === null) {
-        clauses.push('(g.genome_size_bp IS NULL AND g.accession > ?)');
+        cursorClauses.push('(filtered.genome_size_bp IS NULL AND filtered.accession > ?)');
         bindings.push(cursor.accession);
       } else if (query.sort === 'genome-size') {
-        clauses.push('(g.genome_size_bp IS NULL OR (g.genome_size_bp IS NOT NULL AND ((g.genome_size_bp ' + comparison + ' ?) OR (g.genome_size_bp = ? AND g.accession > ?))))');
+        cursorClauses.push('(filtered.genome_size_bp IS NULL OR (filtered.genome_size_bp IS NOT NULL AND ((filtered.genome_size_bp ' + comparison + ' ?) OR (filtered.genome_size_bp = ? AND filtered.accession > ?))))');
         bindings.push(cursor.value as number, cursor.value as number, cursor.accession);
       } else {
-        clauses.push('((' + sort.expression + ' ' + comparison + ' ?) OR (' + sort.expression + ' = ? AND g.accession > ?))');
+        cursorClauses.push('((' + sort.outerExpression + ' ' + comparison + ' ?) OR (' + sort.outerExpression + ' = ? AND filtered.accession > ?))');
         bindings.push(cursor.value as string | number, cursor.value as string | number, cursor.accession);
       }
     }
-    const select = 'SELECT g.* FROM genomes g WHERE ' + clauses.join(' AND ') + ' ORDER BY ' + sort.order + ' LIMIT ?';
-    const [pageResult, countResult, facets] = await Promise.all([
+    const filtered = D1_GENOME_SELECT + ' WHERE ' + where.clauses.join(' AND ');
+    const select = 'WITH filtered AS (' + filtered + ') SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count FROM filtered'
+      + (cursorClauses.length ? ' WHERE ' + cursorClauses.join(' AND ') : '')
+      + ' ORDER BY ' + sort.outerOrder + ' LIMIT ?';
+    const [pageResult, facets] = await Promise.all([
       this.database.prepare(select).bind(...bindings, query.limit + 1).all<D1GenomeRow>(),
-      this.database.prepare('SELECT COUNT(*) AS count FROM genomes g WHERE ' + where.clauses.join(' AND ')).bind(...where.bindings).first<{ count: number }>(),
       d1Facets(this.database, releaseId, query),
     ]);
-    const genomes = pageResult.results.map((row) => rowToGenome(row, String(release.layout), releaseId));
+    const genomes = pageResult.results.map((row) => rowToGenome(row, String(release.storage_layout), releaseId));
     const hasNext = genomes.length > query.limit;
     const page = genomes.slice(0, query.limit);
     return {
       releaseId,
       items: page.map(toCatalogRow),
-      total: Number(countResult?.count || 0),
+      total: Number(pageResult.results[0]?.total_count || 0),
       facets,
       pageInfo: { nextCursor: hasNext && page.length ? encodeCursor(page[page.length - 1], query, releaseId) : null, hasNext },
     };
@@ -494,9 +610,23 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
 
   async getByAccession(accession: string): Promise<GenomeCatalogMatch | null> {
     const release = await activeD1Release(this.database);
-    const row = await this.database.prepare('SELECT * FROM genomes WHERE release_id = ? AND accession = ?').bind(String(release.release_id), accession).first<D1GenomeRow>();
+    const row = await this.database.prepare(D1_GENOME_SELECT + ' WHERE g.release_id = ? AND g.accession = ?').bind(String(release.release_id), accession).first<D1GenomeRow>();
     if (!row) return null;
-    const genome = rowToGenome(row, String(release.layout), String(release.release_id));
+    const genome = rowToGenome(row, String(release.storage_layout), String(release.release_id));
+    const releaseVersion = encodeURIComponent(String(release.release_id));
+    const versionAsset = (path: string | null) => path
+      ? path + (path.includes('?') ? '&' : '?') + 'release=' + releaseVersion
+      : null;
+    genome.assets = {
+      fasta: versionAsset(genome.assets.fasta)!,
+      fastaFai: versionAsset(genome.assets.fastaFai)!,
+      fastaGzi: versionAsset(genome.assets.fastaGzi)!,
+      predictedPromoters: versionAsset(genome.assets.predictedPromoters)!,
+      predictedPromotersIndex: versionAsset(genome.assets.predictedPromotersIndex)!,
+      ncbiAnnotations: versionAsset(genome.assets.ncbiAnnotations),
+      ncbiAnnotationsIndex: versionAsset(genome.assets.ncbiAnnotationsIndex),
+      metadata: versionAsset(genome.assets.metadata),
+    };
     const releaseBase = String(release.release_asset_base_url || '').replace(/\/+$/, '');
     const repositoryBase = releaseBase.endsWith('/releases/' + String(release.release_id))
       ? releaseBase.slice(0, -('/releases/' + String(release.release_id)).length)
@@ -504,22 +634,34 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     if (genome.storage) {
       genome.storage.baseUrl = process.env.HF_STORAGE_BASE_URL
         || genome.storage.baseUrl
-        || (genome.storage.layout === 'packed-v1' ? repositoryBase : releaseBase);
+        || (genome.storage.layout === 'packed-v1' ? repositoryBase : releaseBase + '/objects');
     }
     return { releaseId: String(release.release_id), assetBase: '/api/remote-data', genome, storage: genome.storage! };
   }
 
   async getActiveRelease(): Promise<ActiveReleaseSummary> {
     const row = await activeD1Release(this.database);
+    const releaseId = String(row.release_id);
+    const summary = parseJson<Record<string, unknown>>(row.feature_summary_json, {});
+    const aggregates = await this.database.prepare(
+      'SELECT feature_type, status, COUNT(*) AS genome_count, SUM(feature_count) AS feature_count FROM feature_sets WHERE release_id = ? GROUP BY feature_type, status',
+    ).bind(releaseId).all<D1FeatureAggregateRow>();
+    const promoterSummary = aggregates.results.find((entry) => entry.feature_type === 'promoter' && entry.status === 'ready');
+    const annotationReady = aggregates.results.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'ready');
+    const annotationMissing = aggregates.results.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'missing');
+    const annotationFailed = aggregates.results.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'failed');
     return {
-      releaseId: String(row.release_id), sourceReleaseId: row.source_release_id as string | null,
+      releaseId, sourceReleaseId: row.source_release_id as string | null,
       releaseDate: row.release_date as string | null, generatedAt: row.generated_at as string | null,
       description: row.description as string | null, totalGenomes: Number(row.total_genomes),
-      totalPredictedPromoters: Number(row.total_predicted_promoters), totalAnnotatedGenomes: Number(row.total_annotated_genomes),
-      totalDownloadedAnnotations: Number(row.total_downloaded_annotations), totalMissingAnnotations: Number(row.total_missing_annotations),
-      totalIncompatibleAnnotations: Number(row.total_incompatible_annotations), totalUsableAnnotations: Number(row.total_usable_annotations),
-      totalCircularOriginSplitFeatures: Number(row.total_circular_origin_split_features), totalCircularOriginSplitGenomes: Number(row.total_circular_origin_split_genomes),
-      totalExperimentalTss: Number(row.total_experimental_tss), topPhyla: parseJson(row.top_phyla_json, []),
+      totalPredictedPromoters: Number(promoterSummary?.feature_count || 0), totalAnnotatedGenomes: Number(annotationReady?.genome_count || 0),
+      totalDownloadedAnnotations: Number(annotationReady?.genome_count || 0) + Number(annotationFailed?.genome_count || 0),
+      totalMissingAnnotations: Number(annotationMissing?.genome_count || 0),
+      totalIncompatibleAnnotations: Number(annotationFailed?.genome_count || 0), totalUsableAnnotations: Number(annotationReady?.genome_count || 0),
+      totalCircularOriginSplitFeatures: Number(summary.totalCircularOriginSplitFeatures || 0),
+      totalCircularOriginSplitGenomes: Number(summary.totalCircularOriginSplitGenomes || 0),
+      totalExperimentalTss: Number(summary.totalExperimentalTss || 0),
+      topPhyla: Array.isArray(summary.topPhyla) ? summary.topPhyla as ActiveReleaseSummary['topPhyla'] : [],
       releaseAssetBaseUrl: row.release_asset_base_url as string | null, manifestIndexPath: row.manifest_index_path as string | null,
     };
   }

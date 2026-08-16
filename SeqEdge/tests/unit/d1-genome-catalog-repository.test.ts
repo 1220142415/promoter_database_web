@@ -3,184 +3,275 @@ import { describe, expect, it } from 'vitest';
 import { D1GenomeCatalogRepository, GenomeCatalogUnavailableError, InvalidGenomeCursorError } from '@/lib/genome-catalog-repository';
 import { DEFAULT_GENOME_SEARCH_QUERY } from '@/lib/genome-search-query';
 
-const packedAsset = {
-  packPath: 'releases/2026-08-11/packs/pack-00-000.bin',
-  offset: 0,
-  length: 100,
-  sha256: '0'.repeat(64),
-  contentType: 'application/gzip',
-};
-
 const releaseRow = {
-  release_id: '2026-08-11', source_release_id: '2026-08-07', release_date: '2026-08-11', generated_at: '2026-08-11T00:00:00Z',
-  description: 'Packed release', layout: 'packed-v1', release_asset_base_url: 'https://huggingface.co/datasets/owner/repo/resolve/main/releases/2026-08-11',
-  manifest_index_path: 'manifest-index.json', total_genomes: 2, total_predicted_promoters: 30, total_annotated_genomes: 1,
-  total_downloaded_annotations: 1, total_missing_annotations: 1, total_incompatible_annotations: 0, total_usable_annotations: 1,
-  total_circular_origin_split_features: 0, total_circular_origin_split_genomes: 0, total_experimental_tss: 0,
-  top_phyla_json: '[{"name":"Bacillota","count":2}]',
+  release_id: '2026-08-07',
+  source_release_id: null,
+  release_date: '2026-08-07',
+  generated_at: '2026-08-07T00:00:00Z',
+  description: 'Feature catalog release',
+  storage_layout: 'individual-v1',
+  release_asset_base_url: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07',
+  manifest_index_path: null,
+  total_genomes: 2,
+  feature_summary_json: '{"promoter":{"genomeCount":2,"featureCount":30},"totalCircularOriginSplitFeatures":4,"totalCircularOriginSplitGenomes":2,"totalExperimentalTss":3,"topPhyla":[{"name":"Bacillota","count":2}]}',
 };
 
 function genomeRow(accession: string, size: number | null, promoters: number) {
   return {
-    release_id: '2026-08-11', accession, organism_name: 'Bacillus ' + accession, strain: null, domain: 'Bacteria', phylum: 'Bacillota',
-    class_name: 'Bacilli', order_name: 'Bacillales', family: 'Bacillaceae', genus: 'Bacillus', genome_source: 'NCBI GenBank',
-    assembly_level: null, genome_size_bp: size, gc_content: 42, contig_count: 1, completeness: null, contamination: null,
-    predicted_promoter_count: promoters, annotation_status: accession.endsWith('1.1') ? 'available' : 'missing', annotation_feature_count: 1,
-    annotation_circular_origin_split_count: 0, experimental_tss_count: 0, has_experimental_tss: 0, default_locus: 'chr:1-10', primary_sequence: 'chr',
-    logical_object_prefix: '00/' + accession,
-    assets_json: JSON.stringify({ fasta: accession + '/reference.fa.gz', fastaFai: accession + '/reference.fa.gz.fai', fastaGzi: accession + '/reference.fa.gz.gzi', predictedPromoters: accession + '/predicted-promoters.gff3.gz', predictedPromotersIndex: accession + '/predicted-promoters.gff3.gz.tbi', ncbiAnnotations: null, ncbiAnnotationsIndex: null, metadata: accession + '/metadata.json' }),
-    storage_json: JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/' + accession, assets: { 'reference.fa.gz': packedAsset } }),
+    release_id: '2026-08-07',
+    accession,
+    organism_name: 'Bacillus ' + accession,
+    strain: null,
+    domain: 'Bacteria',
+    phylum: 'Bacillota',
+    class_name: 'Bacilli',
+    order_name: 'Bacillales',
+    family: 'Bacillaceae',
+    genus: 'Bacillus',
+    genome_source: 'NCBI GenBank',
+    assembly_level: null,
+    genome_size_bp: size,
+    gc_content: 42,
+    contig_count: 1,
+    completeness: null,
+    contamination: null,
+    default_locus: 'chr:1-10',
+    primary_sequence: 'chr',
+    reference_storage_json: JSON.stringify({
+      layout: 'individual-v1',
+      files: {
+        fasta: `objects/${accession}/reference.fa.gz`,
+        fai: `objects/${accession}/reference.fa.gz.fai`,
+        gzi: `objects/${accession}/reference.fa.gz.gzi`,
+        metadata: `objects/${accession}/metadata.json`,
+      },
+    }),
+    predicted_promoter_count: promoters,
+    promoter_status: 'ready',
+    promoter_data_path: `objects/${accession}/predicted-promoters.gff3.gz`,
+    promoter_index_path: `objects/${accession}/predicted-promoters.gff3.gz.tbi`,
+    promoter_storage_json: '{}',
+    annotation_status: accession.endsWith('1.1') ? 'ready' : null,
+    annotation_feature_count: accession.endsWith('1.1') ? 120 : null,
+    annotation_data_path: accession.endsWith('1.1') ? `objects/${accession}/ncbi-annotations.gff3.gz` : null,
+    annotation_index_path: accession.endsWith('1.1') ? `objects/${accession}/ncbi-annotations.gff3.gz.tbi` : null,
+    annotation_storage_json: '{}',
   };
 }
 
+type JoinedGenomeRow = ReturnType<typeof genomeRow> & { total_count?: number };
 type Recorded = { query: string; bindings: Array<string | number | null> };
+
+const D1_META: D1Meta & Record<string, unknown> = {
+  duration: 0,
+  size_after: 0,
+  rows_read: 0,
+  rows_written: 0,
+  last_row_id: 0,
+  changed_db: false,
+  changes: 0,
+};
+
+function d1Result<T>(results: T[]): D1Result<T> {
+  return { results, success: true, meta: D1_META };
+}
 
 class FakeStatement implements D1PreparedStatement {
   bindings: Array<string | number | null> = [];
+
   constructor(private database: FakeD1, readonly query: string) {}
-  bind(...values: Array<string | number | null>) { this.bindings = values; this.database.recorded.push({ query: this.query, bindings: values }); return this; }
+
+  bind(...values: unknown[]) {
+    const bindings = values as Array<string | number | null>;
+    this.bindings = bindings;
+    this.database.recorded.push({ query: this.query, bindings });
+    return this;
+  }
+
   async first<T>() {
     if (this.query.includes('FROM portal_state')) return this.database.release as T;
     if (this.query.startsWith('SELECT COUNT')) return { count: this.database.rows.length } as T;
-    if (this.query.includes('FROM genomes WHERE')) return (this.database.rows.find((row) => row.accession === this.bindings[1]) || null) as T | null;
-    if (this.query.startsWith('SELECT g.') && this.query.includes(' AS cursor_value FROM genomes g')) {
+    if (this.query.includes('SELECT g.*') && !this.query.includes('AS cursor_value')) {
+      return (this.database.rows.find((row) => row.accession === this.bindings[1]) || null) as T | null;
+    }
+    if (this.query.includes(' AS cursor_value FROM filtered')) {
       const row = this.database.rows.find((candidate) => candidate.accession === this.bindings[this.bindings.length - 1]);
       if (!row) return null;
       const value = this.query.includes('genome_size_bp') ? row.genome_size_bp
-        : this.query.includes('predicted_promoter_count') ? row.predicted_promoter_count
+        : this.query.includes('p.feature_count') ? row.predicted_promoter_count
           : this.query.includes('organism_name') ? row.organism_name : row.accession;
       return { cursor_value: value } as T;
     }
     return null;
   }
-  async all<T>() {
-    if (this.query.startsWith('SELECT g.*')) return { results: this.database.rows, success: true, meta: {} } as D1Result<T>;
-    return { results: [], success: true, meta: {} };
+
+  async run<T = Record<string, unknown>>() {
+    return d1Result<T>([]);
+  }
+
+  async all<T = Record<string, unknown>>() {
+    if (this.query.startsWith('SELECT feature_type')) {
+      return d1Result(this.database.aggregates as T[]);
+    }
+    if (this.query.includes('SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count')) {
+      return d1Result(this.database.rows.map((row) => ({ ...row, total_count: this.database.rows.length })) as T[]);
+    }
+    if (this.query.startsWith('SELECT g.*')) {
+      return d1Result(this.database.rows as T[]);
+    }
+    if (this.query.includes('facet_kind')) {
+      return d1Result([
+        { facet_kind: 'source', value: 'NCBI GenBank' },
+        ...['Bacteria', 'Bacillota', 'Bacilli', 'Bacillales', 'Bacillaceae', 'Bacillus']
+          .map((value, index) => ({ facet_kind: ['domain', 'phylum', 'class', 'order', 'family', 'genus'][index], value })),
+      ] as T[]);
+    }
+    return d1Result<T>([]);
+  }
+
+  raw<T = unknown[]>(options: { columnNames: true }): Promise<[string[], ...T[]]>;
+  raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>;
+  async raw<T = unknown[]>(options?: { columnNames?: boolean }) {
+    return options?.columnNames ? [[],] as [string[], ...T[]] : [] as T[];
   }
 }
 
 class FakeD1 implements D1Database {
   recorded: Recorded[] = [];
+  preparedQueries: string[] = [];
   release = { ...releaseRow };
-  rows = [genomeRow('GCA_000000001.1', 2_000_000, 20), genomeRow('GCA_000000002.1', null, 10)];
-  prepare(query: string) { return new FakeStatement(this, query); }
+  rows: JoinedGenomeRow[] = [
+    genomeRow('GCA_000000001.1', 2_000_000, 20),
+    genomeRow('GCA_000000002.1', null, 10),
+  ];
+  aggregates = [
+    { feature_type: 'promoter', status: 'ready', genome_count: 2, feature_count: 30 },
+    { feature_type: 'gene_annotation', status: 'ready', genome_count: 1, feature_count: 120 },
+    { feature_type: 'gene_annotation', status: 'missing', genome_count: 1, feature_count: null },
+  ];
+
+  prepare(query: string) {
+    this.preparedQueries.push(query);
+    return new FakeStatement(this, query);
+  }
+
+  async exec(query: string) { void query; return { count: 0, duration: 0 }; }
+  withSession(): D1DatabaseSession { throw new Error('not implemented by fake'); }
+  async dump() { return new ArrayBuffer(0); }
+
   async batch<T>(statements: D1PreparedStatement[]) {
-    return statements.map((_statement, index) => ({ results: index === 0 ? [{ value: 'NCBI GenBank' }] : [{ value: ['Bacteria', 'Bacillota', 'Bacilli', 'Bacillales', 'Bacillaceae', 'Bacillus'][index - 1] }], success: true, meta: {} })) as Array<D1Result<T>>;
+    return statements.map((_statement, index) => d1Result([{
+      value: index === 0
+        ? 'NCBI GenBank'
+        : ['Bacteria', 'Bacillota', 'Bacilli', 'Bacillales', 'Bacillaceae', 'Bacillus'][index - 1],
+    } as T]));
   }
 }
 
 describe('D1 genome catalog repository', () => {
-  it('reads the active release summary and exact accession storage mapping', async () => {
-    const database = new FakeD1();
-    const repository = new D1GenomeCatalogRepository(database);
+  it('maps the feature catalog schema to the portal model', async () => {
+    const repository = new D1GenomeCatalogRepository(new FakeD1());
     const summary = await repository.getActiveRelease();
-    expect(summary).toMatchObject({ releaseId: '2026-08-11', sourceReleaseId: '2026-08-07', manifestIndexPath: 'manifest-index.json', totalGenomes: 2 });
+    expect(summary).toMatchObject({
+      releaseId: '2026-08-07',
+      totalGenomes: 2,
+      totalPredictedPromoters: 30,
+      totalAnnotatedGenomes: 1,
+      totalMissingAnnotations: 1,
+      totalCircularOriginSplitFeatures: 4,
+      totalCircularOriginSplitGenomes: 2,
+      totalExperimentalTss: 3,
+      topPhyla: [{ name: 'Bacillota', count: 2 }],
+    });
 
     const match = await repository.getByAccession('GCA_000000001.1');
-    expect(match?.releaseId).toBe('2026-08-11');
-    expect(match?.storage).toMatchObject({ layout: 'packed-v1', baseUrl: 'https://huggingface.co/datasets/owner/repo/resolve/main' });
+    expect(match?.storage).toMatchObject({
+      layout: 'individual-v1',
+      logicalObjectPrefix: 'GCA_000000001.1',
+      baseUrl: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07/objects',
+    });
+    expect(match?.genome).toMatchObject({
+      predictedPromoterCount: 20,
+      annotationStatus: 'available',
+      annotationFeatureCount: 120,
+      assets: {
+        fasta: 'GCA_000000001.1/reference.fa.gz?release=2026-08-07',
+        predictedPromoters: 'GCA_000000001.1/predicted-promoters.gff3.gz?release=2026-08-07',
+      },
+    });
     expect(await repository.getByAccession('GCA_000000001')).toBeNull();
   });
 
-  it('generates multi-token prefix search, filters, null-last sort, and cascading facet bindings', async () => {
+  it('joins default feature sets for search, sorting, and annotation filters', async () => {
     const database = new FakeD1();
     const repository = new D1GenomeCatalogRepository(database);
     const result = await repository.search({
       ...DEFAULT_GENOME_SEARCH_QUERY,
-      q: 'bacillus subtilis', source: 'NCBI GenBank', annotation: 'unavailable', sort: 'genome-size', direction: 'desc',
+      q: 'bacillus subtilis',
+      source: 'NCBI GenBank',
+      annotation: 'unavailable',
+      sort: 'promoters',
+      direction: 'desc',
       taxonomy: { domain: 'Bacteria', phylum: 'Bacillota', class: '', order: '', family: '', genus: '' },
     });
-    expect(result.releaseId).toBe('2026-08-11');
+    expect(result.releaseId).toBe('2026-08-07');
     expect(result.facets.taxonomy.genus).toEqual(['Bacillus']);
-    const pageQuery = database.recorded.find((entry) => entry.query.startsWith('SELECT g.*'))!;
+    const pageQuery = database.recorded.find((entry) => entry.query.includes('SELECT filtered.*, (SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    expect(pageQuery.query).toContain("p.feature_type = 'promoter'");
+    expect(pageQuery.query).toContain("a.feature_type = 'gene_annotation'");
+    expect(pageQuery.query).toContain("COALESCE(a.status, 'missing') <> 'ready'");
+    expect(pageQuery.query).toContain('COALESCE(filtered.predicted_promoter_count, 0) DESC');
     expect(pageQuery.query).toContain('st.token >= ? AND st.token < ?');
     expect(pageQuery.query).not.toContain(' LIKE ');
-    expect(pageQuery.query).toContain("g.annotation_status <> 'available'");
-    expect(pageQuery.query).toContain('g.genome_size_bp IS NULL ASC');
-    expect(pageQuery.bindings).toEqual(expect.arrayContaining(['bacillus', 'bacillus\uffff', 'subtilis', 'subtilis\uffff', 'Bacteria', 'Bacillota', 'NCBI GenBank']));
-    const facetGenus = database.recorded.find((entry) => entry.query.includes("kind = ?") && entry.bindings[1] === 'genus')!;
-    expect(facetGenus.bindings).toEqual(['2026-08-11', 'genus', 'Bacteria', 'Bacillota']);
+    expect(pageQuery.bindings).toEqual(expect.arrayContaining([
+      'bacillus', 'bacillus\uffff', 'subtilis', 'subtilis\uffff', 'Bacteria', 'Bacillota', 'NCBI GenBank',
+    ]));
+    expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
+    expect(database.preparedQueries).toHaveLength(3);
+    expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT'))).toBe(false);
   });
 
-  it('binds v2 cursors to the active release and complete query configuration', async () => {
+  it('binds cursors to the active release and complete query configuration', async () => {
     const database = new FakeD1();
-    database.rows = Array.from({ length: 26 }, (_, index) => genomeRow('GCA_' + String(index + 1).padStart(9, '0') + '.1', index, index));
+    database.rows = Array.from({ length: 26 }, (_, index) => genomeRow(
+      'GCA_' + String(index + 1).padStart(9, '0') + '.1',
+      index,
+      index,
+    ));
     const repository = new D1GenomeCatalogRepository(database);
     const first = await repository.search(DEFAULT_GENOME_SEARCH_QUERY);
     expect(first.pageInfo.hasNext).toBe(true);
     expect(first.pageInfo.nextCursor).toBeTruthy();
-    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, direction: 'desc', cursor: first.pageInfo.nextCursor })).rejects.toBeInstanceOf(InvalidGenomeCursorError);
-    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'bacillus', cursor: first.pageInfo.nextCursor })).rejects.toBeInstanceOf(InvalidGenomeCursorError);
-    const payload = JSON.parse(Buffer.from(first.pageInfo.nextCursor!, 'base64url').toString('utf8'));
-    payload.releaseId = '2026-08-07';
-    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, cursor: Buffer.from(JSON.stringify(payload)).toString('base64url') })).rejects.toBeInstanceOf(InvalidGenomeCursorError);
+    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, direction: 'desc', cursor: first.pageInfo.nextCursor }))
+      .rejects.toBeInstanceOf(InvalidGenomeCursorError);
+    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'bacillus', cursor: first.pageInfo.nextCursor }))
+      .rejects.toBeInstanceOf(InvalidGenomeCursorError);
 
     const forged = JSON.parse(Buffer.from(first.pageInfo.nextCursor!, 'base64url').toString('utf8'));
     forged.accession = 'GCA_999999999.1';
-    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, cursor: Buffer.from(JSON.stringify(forged)).toString('base64url') })).rejects.toBeInstanceOf(InvalidGenomeCursorError);
-
-    const forgedValue = JSON.parse(Buffer.from(first.pageInfo.nextCursor!, 'base64url').toString('utf8'));
-    forgedValue.value = 'GCA_000000024.1';
-    await expect(repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, cursor: Buffer.from(JSON.stringify(forgedValue)).toString('base64url') })).rejects.toBeInstanceOf(InvalidGenomeCursorError);
+    await expect(repository.search({
+      ...DEFAULT_GENOME_SEARCH_QUERY,
+      cursor: Buffer.from(JSON.stringify(forged)).toString('base64url'),
+    })).rejects.toBeInstanceOf(InvalidGenomeCursorError);
   });
 
   it.each([
-    ['malformed JSON', '{'],
-    ['array mapping', JSON.stringify([])],
-    ['array assets', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: [] })],
-    ['empty assets', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: {} })],
-    ['traversal pack path', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, packPath: '../pack.bin' } } })],
-    ['wrong release pack path', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, packPath: 'releases/2026-08-07/packs/pack-00-000.bin' } } })],
-    ['negative offset', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, offset: -1 } } })],
-    ['fractional offset', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, offset: 1.5 } } })],
-    ['negative length', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, length: -1 } } })],
-    ['fractional length', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, length: 1.5 } } })],
-    ['invalid sha256', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, sha256: 'not-a-sha256' } } })],
-    ['empty content type', JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: { ...packedAsset, contentType: '   ' } } })],
-  ])('rejects packed storage with %s', async (_label, storageJson) => {
+    ['malformed reference JSON', '{'],
+    ['array reference mapping', JSON.stringify([])],
+    ['wrong storage layout', JSON.stringify({ layout: 'packed-v1', files: {} })],
+    ['missing reference files', JSON.stringify({ layout: 'individual-v1' })],
+    ['traversal reference path', JSON.stringify({ layout: 'individual-v1', files: { fasta: '../reference.fa.gz' } })],
+    ['cross-genome reference path', JSON.stringify({ layout: 'individual-v1', files: { fasta: 'objects/GCA_999999999.1/reference.fa.gz' } })],
+  ])('rejects %s', async (_label, referenceStorageJson) => {
     const database = new FakeD1();
-    database.rows[0].storage_json = storageJson;
+    database.rows[0].reference_storage_json = referenceStorageJson;
     const repository = new D1GenomeCatalogRepository(database);
-    await expect(repository.getByAccession('GCA_000000001.1')).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
-  });
-
-  it('accepts legacy individual storage and rejects invalid base URLs or release layout mismatches', async () => {
-    const database = new FakeD1();
-    database.release = {
-      ...database.release,
-      release_id: '2026-08-07',
-      layout: 'individual-v1',
-      release_asset_base_url: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07',
-    };
-    database.rows[0].release_id = '2026-08-07';
-    database.rows[0].storage_json = JSON.stringify({
-      layout: 'individual-v1',
-      logicalObjectPrefix: 'GCA_000000001.1',
-      baseUrl: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07',
-    });
-    const repository = new D1GenomeCatalogRepository(database);
-    await expect(repository.getByAccession('GCA_000000001.1')).resolves.toMatchObject({
-      storage: { layout: 'individual-v1', baseUrl: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07' },
-    });
-
-    database.rows[0].storage_json = JSON.stringify({ layout: 'individual-v1', logicalObjectPrefix: 'GCA_000000001.1' });
-    await expect(repository.getByAccession('GCA_000000001.1')).resolves.toMatchObject({
-      storage: { layout: 'individual-v1', baseUrl: 'https://huggingface.co/datasets/owner/pilot/resolve/main/releases/2026-08-07' },
-    });
-
-    database.rows[0].storage_json = JSON.stringify({ layout: 'individual-v1', logicalObjectPrefix: 'GCA_000000001.1', baseUrl: 42 });
-    await expect(repository.getByAccession('GCA_000000001.1')).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
-
-    database.rows[0].storage_json = JSON.stringify({ layout: 'individual-v1', logicalObjectPrefix: 'GCA_000000001.1', baseUrl: ' ' });
-    await expect(repository.getByAccession('GCA_000000001.1')).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
-
-    database.rows[0].storage_json = JSON.stringify({ layout: 'packed-v1', logicalObjectPrefix: '00/GCA_000000001.1', assets: { file: packedAsset } });
     await expect(repository.getByAccession('GCA_000000001.1')).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
   });
 
   it('rejects a genome row from a release other than the active release', async () => {
     const database = new FakeD1();
-    database.rows[0].release_id = '2026-08-07';
+    database.rows[0].release_id = '2026-08-11';
     const repository = new D1GenomeCatalogRepository(database);
     await expect(repository.getByAccession('GCA_000000001.1')).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
   });

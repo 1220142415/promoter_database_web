@@ -1,12 +1,18 @@
 name = "seqedge"
-compatibility_date = "2025-06-01"
+main = ".open-next/worker.js"
+compatibility_date = "2026-08-13"
 compatibility_flags = ["nodejs_compat"]
 
-pages_build_output_dir = ".open-next"
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
 
-# Add the real database_id after creating seqedge-catalog.
-# [[d1_databases]]
-# binding = "SEQEDGE_DB"
-# database_name = "seqedge-catalog"
-# database_id = "<database-id>"
-# migrations_dir = "migrations"
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[[d1_databases]]
+binding = "SEQEDGE_DB"
+database_name = "seqedge-catalog"
+database_id = "13173011-d2b9-4763-b379-ecc1562ef497"
+migrations_dir = "migrations"

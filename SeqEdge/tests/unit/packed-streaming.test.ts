@@ -71,6 +71,13 @@ describe('streaming Pack lifecycle', () => {
     expect(plan.materialization).toBe('materialized');
     expect((await stat(path.join(releaseRoot, 'packs', path.posix.basename(plan.packs[0].path)))).isFile()).toBe(true);
     expect(JSON.parse(await readFile(path.join(releaseRoot, '.release-complete.json'), 'utf8')).state).toBe('complete');
+    const releaseSql = await readFile(path.join(releaseRoot, 'd1', '000-release.sql'), 'utf8');
+    const genomeSql = await readFile(path.join(releaseRoot, 'd1', '001-genomes.sql'), 'utf8');
+    expect(releaseSql).toContain('storage_layout');
+    expect(releaseSql).not.toContain('total_predicted_promoters');
+    expect(genomeSql).toContain('reference_storage_json');
+    expect(genomeSql.match(/INSERT INTO feature_sets /g)).toHaveLength(2);
+    expect(genomeSql).not.toContain('predicted_promoter_count');
   }, 30_000);
 
   it('plans without Pack files, materializes one Pack, and only reclaims a remotely verified hash', async () => {

@@ -87,7 +87,7 @@ The genome catalog is rendered with the first 25 rows on the server. Search, tax
 
 Supported query parameters are `q`, `domain`, `phylum`, `class`, `order`, `family`, `genus`, `source`, `annotation`, `sort`, `direction`, `limit`, and `cursor`. `limit` must be 25, 50, or 100. Pagination cursors are opaque and tied to the selected sort field and direction. `annotation=unavailable` includes both missing and assembly-incompatible NCBI annotations.
 
-Server code accesses the catalog through `GenomeCatalogRepository.search()` and `GenomeCatalogRepository.getByAccession()`. The current repository reads and caches `src/generated/release-catalog.json`. A future Cloudflare D1 implementation can replace this repository internally while preserving the API response and the catalog/detail-page contracts; this phase does not create a database, migration, or cloud credential.
+Server code accesses the catalog through `GenomeCatalogRepository.search()` and `GenomeCatalogRepository.getByAccession()`. Local development reads and caches `src/generated/release-catalog.json`; production uses the `SEQEDGE_DB` D1 binding. Promoter counts and file references are joined from the default `feature_sets` row, while genomic intervals remain in indexed GFF3 files.
 
 ## Object storage
 
@@ -160,6 +160,17 @@ npm run test:e2e
 npm run build:cf
 ```
 
+Deploy the validated OpenNext build to Cloudflare Workers with:
+
+```bash
+npm run deploy:cf
+```
+
+For Workers Builds, use `npm run build:cf` as the build command and
+`npx @opennextjs/cloudflare deploy` as the deploy command. Configure
+`NEXT_PUBLIC_STORAGE_BASE_URL=/api/remote-data` and the active release URL as
+`NEXT_PUBLIC_RELEASE_ASSET_BASE_URL` in the Cloudflare build environment.
+
 The full data validator checks collection counts, accession identity, feature types, score and strand bounds, FASTA/GFF3 coordinate containment, BGZF and Tabix indexes, manifests, and SHA-256 digests.
 
 ### Standalone and Cloudflare builds from WSL
@@ -219,7 +230,7 @@ npm run hf:upload:packed:cli -- --release 2026-08-11 --dry-run
 
 Full validation checks all 1,000 genomes and 7,312 logical fragments, fragment and Pack SHA-256 values, 4 KiB alignment, non-overlapping offsets, all 256 manifest/catalog shards, and D1 genome INSERT counts. `--quick` skips only rereading all large-file bytes.
 
-D1 is bound as `SEQEDGE_DB`. Apply `migrations/0001_seqedge_catalog.sql`, then import the legacy rollback release from `.data/d1-imports/2026-08-07/` and the packed release from `.data/releases/2026-08-11/d1/`. Keep both inactive until Pack hashes, D1 counts, API pagination, Range responses, preview deployment, and representative JBrowse pages pass; only then apply `activate.sql`. Roll back with the legacy `activate-rollback.sql` without deleting either release or any Pack.
+D1 is bound as `SEQEDGE_DB`. Apply the migrations in order with `npx wrangler d1 migrations apply SEQEDGE_DB --remote`; `0002_feature_catalog.sql` preserves any catalog already created by the original `0001`. Then import the legacy rollback release from `.data/d1-imports/2026-08-07/` and the packed release from `.data/releases/2026-08-11/d1/`. Do not apply `activate.sql` until the Hugging Face release exists and its Pack hashes, D1 counts, API pagination, Range responses, preview deployment, and representative JBrowse pages all pass. Roll back with the legacy `activate-rollback.sql` without deleting either release or any Pack.
 
 Production requires D1; local development defaults to the generated JSON catalog unless `SEQEDGE_CATALOG_BACKEND=d1` is explicitly set. The catalog API never exposes Pack offsets. Only the allowlisted `/api/remote-data/<accession>/<file>` proxy reads the active release mapping and rewrites a single logical Range. D1 import files contain at most 500 genomes each, and the complete 80,000-row catalog is never bundled into Next.js.
 

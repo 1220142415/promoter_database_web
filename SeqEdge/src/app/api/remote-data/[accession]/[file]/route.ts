@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { genomeCatalogRepository } from '@/lib/genome-catalog-repository';
 import { normalizeDownloadFilename } from '@/lib/track-download';
 
@@ -16,6 +17,18 @@ const ALLOWED_FILES = new Set([
   'ncbi-annotations.gff3.gz.tbi',
   'metadata.json',
 ]);
+const IMMUTABLE_FILES = new Set([
+  'reference.fa.gz.fai',
+  'reference.fa.gz.gzi',
+  'predicted-promoters.gff3.gz.tbi',
+  'ncbi-annotations.gff3.gz.tbi',
+  'metadata.json',
+]);
+
+type EdgeCache = {
+  match(request: Request): Promise<Response | undefined>;
+  put(request: Request, response: Response): Promise<void>;
+};
 
 type RouteContext = {
   params: Promise<{ accession: string; file: string }>;
@@ -38,20 +51,75 @@ function individualUpstream(storage: Extract<NonNullable<Awaited<ReturnType<type
   return base ? `${base}/${storage.logicalObjectPrefix}/${file}` : configuredIndividualUpstream(accession, file);
 }
 
+function edgeCache() {
+  const cache = (globalThis as typeof globalThis & { caches?: { default?: EdgeCache } }).caches?.default;
+  return cache || null;
+}
+
+function cacheKey(request: Request, method: string, range: string | null) {
+  const url = new URL(request.url);
+  url.searchParams.set('__seqedge_cache_version', '3');
+  url.searchParams.set('__seqedge_cache_method', method);
+  url.searchParams.set('__seqedge_cache_range', range || 'full');
+  return new Request(url.toString(), { method: 'GET' });
+}
+
+function cacheControl(file: string, ranged: boolean, versioned: boolean) {
+  if (versioned) return 'public, max-age=31536000, s-maxage=31536000, immutable';
+  if (ranged) return 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
+  return 'public, max-age=300, s-maxage=3600';
+}
+
+async function cachedResponse(key: Request | null) {
+  if (!key) return null;
+  try {
+    const cached = await edgeCache()?.match(key);
+    if (!cached) return null;
+    const headers = new Headers(cached.headers);
+    const status = Number(headers.get('x-seqedge-cached-status') || cached.status);
+    headers.delete('x-seqedge-cached-status');
+    headers.set('X-SeqEdge-Cache', 'HIT');
+    return new Response(cached.body, { status, headers });
+  } catch { return null; }
+}
+
+async function storeResponse(key: Request | null, response: Response) {
+  if (!key || ![200, 206].includes(response.status)) return;
+  try {
+    const cached = response.clone();
+    const headers = new Headers(cached.headers);
+    headers.set('x-seqedge-cached-status', String(cached.status));
+    const write = edgeCache()?.put(key, new Response(cached.body, { status: 200, headers }));
+    if (!write) return;
+    try { getCloudflareContext().ctx.waitUntil(write); } catch { await write; }
+  } catch { /* Cache API is optional in local Node tests. */ }
+}
+
 async function serve(request: Request, context: RouteContext, headOnly: boolean) {
   const { accession, file } = await context.params;
   if (!ACCESSION_PATTERN.test(accession) || !ALLOWED_FILES.has(file)) {
     return NextResponse.json({ error: 'Unknown remote release asset.' }, { status: 404 });
   }
+  const range = request.headers.get('range');
+  const versioned = Boolean(new URL(request.url).searchParams.get('release'));
+  const cacheable = versioned && (Boolean(range) || IMMUTABLE_FILES.has(file));
+  const key = cacheable ? cacheKey(request, headOnly ? 'HEAD' : 'GET', range) : null;
+  const hit = await cachedResponse(key);
+  if (hit) return hit;
   const match = await genomeCatalogRepository.getByAccession(accession);
   if (!match) return NextResponse.json({ error: 'Unknown remote release asset.' }, { status: 404 });
   const completeRelease = Boolean(process.env.HF_STORAGE_BASE_URL || process.env.NODE_ENV === 'production' || process.env.SEQEDGE_CATALOG_BACKEND === 'd1');
   if (!completeRelease && !pilotAccessions().has(accession)) return NextResponse.json({ error: 'Unknown remote release asset.' }, { status: 404 });
-  if (match.storage.layout === 'packed-v1') return servePacked(request, match.storage, file, headOnly);
-  const upstream = individualUpstream(match.storage, accession, file);
-  if (!upstream) return NextResponse.json({ error: 'Remote storage is not configured.' }, { status: 503 });
-
-  return serveIndividual(request, upstream, file, headOnly);
+  let response: Response;
+  if (match.storage.layout === 'packed-v1') response = await servePacked(request, match.storage, file, headOnly);
+  else {
+    const upstream = individualUpstream(match.storage, accession, file);
+    if (!upstream) return NextResponse.json({ error: 'Remote storage is not configured.' }, { status: 503 });
+    response = await serveIndividual(request, upstream, file, headOnly);
+  }
+  response.headers.set('X-SeqEdge-Cache', key ? 'MISS' : 'BYPASS');
+  await storeResponse(key, response);
+  return response;
 }
 
 async function fetchUpstream(url: string, method: 'GET' | 'HEAD', range?: string) {
@@ -64,14 +132,14 @@ async function fetchUpstream(url: string, method: 'GET' | 'HEAD', range?: string
   }
 }
 
-function downloadHeaders(request: Request, file: string, response: Response) {
+function downloadHeaders(request: Request, file: string, response: Response, ranged = false) {
   const requestedFilename = new URL(request.url).searchParams.get('filename');
   const firstDot = file.indexOf('.');
   const requiredExtension = firstDot >= 0 ? file.slice(firstDot) : '';
   const downloadFilename = normalizeDownloadFilename(requestedFilename, requiredExtension, file);
   const headers = new Headers({
     'Accept-Ranges': response.headers.get('accept-ranges') || 'bytes',
-    'Cache-Control': 'public, max-age=300, s-maxage=3600',
+    'Cache-Control': cacheControl(file, ranged, Boolean(new URL(request.url).searchParams.get('release'))),
     'Content-Disposition': `attachment; filename="${downloadFilename}"`,
     'Content-Type': response.headers.get('content-type') || 'application/octet-stream',
   });
@@ -89,16 +157,28 @@ async function serveIndividual(request: Request, upstream: string, file: string,
   let logicalSize: number | null = null;
   let metadataResponse: Response | null = null;
   if (requestedRange) {
-    metadataResponse = await fetchUpstream(upstream, 'HEAD');
+    const metadataKey = cacheKey(request, 'HEAD-METADATA', null);
+    metadataResponse = await cachedResponse(metadataKey);
+    if (!metadataResponse) {
+      metadataResponse = await fetchUpstream(upstream, 'HEAD');
+      if (metadataResponse?.ok) {
+        const metadataHeaders = new Headers(metadataResponse.headers);
+        const upstreamLength = metadataHeaders.get('content-length');
+        if (upstreamLength) metadataHeaders.set('X-SeqEdge-Logical-Length', upstreamLength);
+        metadataHeaders.set('Cache-Control', cacheControl(file, false, true));
+        metadataResponse = new Response(null, { status: metadataResponse.status, headers: metadataHeaders });
+        await storeResponse(metadataKey, metadataResponse);
+      }
+    }
     if (!metadataResponse) return NextResponse.json({ error: 'Remote release asset could not be reached.' }, { status: 502 });
     if (!metadataResponse.ok) return NextResponse.json({ error: 'Remote release asset is unavailable.' }, { status: metadataResponse.status === 404 ? 404 : 502 });
-    logicalSize = Number(metadataResponse.headers.get('content-length'));
+    logicalSize = Number(metadataResponse.headers.get('x-seqedge-logical-length') || metadataResponse.headers.get('content-length'));
     if (!Number.isSafeInteger(logicalSize) || logicalSize < 0) return NextResponse.json({ error: 'Remote release asset length is invalid.' }, { status: 502 });
     logicalRange = parseLogicalRange(requestedRange, logicalSize);
     if (!logicalRange) return new Response(null, { status: 416, headers: { 'Content-Range': 'bytes */' + logicalSize } });
     normalizedRange = 'bytes=' + logicalRange.start + '-' + logicalRange.end;
     if (headOnly) {
-      const headers = downloadHeaders(request, file, metadataResponse);
+      const headers = downloadHeaders(request, file, metadataResponse, true);
       headers.set('Content-Length', String(logicalRange.end - logicalRange.start + 1));
       headers.set('Content-Range', 'bytes ' + logicalRange.start + '-' + logicalRange.end + '/' + logicalSize);
       return new Response(null, { status: 206, headers });
@@ -119,7 +199,7 @@ async function serveIndividual(request: Request, upstream: string, file: string,
       || Number(response.headers.get('content-length')) !== expectedLength
     ) return NextResponse.json({ error: 'Remote release asset returned an invalid byte range.' }, { status: 502 });
   }
-  return new Response(headOnly ? null : response.body, { status: response.status, headers: downloadHeaders(request, file, response) });
+  return new Response(headOnly ? null : response.body, { status: response.status, headers: downloadHeaders(request, file, response, Boolean(logicalRange)) });
 }
 
 function parseLogicalRange(value: string | null, size: number) {
@@ -154,7 +234,7 @@ async function servePacked(request: Request, storage: Extract<NonNullable<Awaite
   const downloadFilename = normalizeDownloadFilename(requestedFilename, requiredExtension, file);
   const responseHeaders = new Headers({
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'public, max-age=300, s-maxage=3600',
+    'Cache-Control': cacheControl(file, range.partial, Boolean(new URL(request.url).searchParams.get('release'))),
     'Content-Disposition': 'attachment; filename="' + downloadFilename + '"',
     'Content-Length': String(range.end - range.start + 1),
     'Content-Type': asset.contentType || 'application/octet-stream',

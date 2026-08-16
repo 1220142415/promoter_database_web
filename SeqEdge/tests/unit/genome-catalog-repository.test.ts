@@ -164,7 +164,8 @@ describe('JSON genome catalog repository', () => {
     process.env.HF_PILOT_STORAGE_BASE_URL = 'https://huggingface.co/datasets/owner/repo/resolve/main/releases/test/objects/';
     process.env.HF_PILOT_ACCESSIONS = 'GCA_000000001.1';
 
-    expect((await genomeCatalogRepository.getByAccession('GCA_000000001.1'))?.assetBase).toBe('/api/remote-data');
+    expect((await genomeCatalogRepository.getByAccession('GCA_000000001.1'))?.assetBase)
+      .toBe('https://huggingface.co/datasets/owner/repo/resolve/main/releases/test/objects');
     expect((await genomeCatalogRepository.getByAccession('GCA_000000002.1'))?.assetBase).toBe('/api/local-data');
   });
 });

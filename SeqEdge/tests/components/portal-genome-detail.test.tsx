@@ -146,8 +146,12 @@ describe('genome detail release contract', () => {
     render(await GenomeDetailPage({ params: Promise.resolve({ accession: richMatch.genome.accession }) }));
 
     const browser = screen.getByTestId('browser-contract');
-    const metadataHeading = screen.getByRole('heading', { name: 'Genome metadata' });
+    const metadataHeading = screen.getByRole('heading', { name: 'Genome summary' });
     expect(browser.compareDocumentPosition(metadataHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByLabelText('Genome key metrics')).toBeInTheDocument();
+    expect(screen.getByText('Assembly overview').closest('details')).toHaveAttribute('open');
+    expect(screen.getByText('Taxonomy').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByRole('heading', { name: 'Assembly quality at a glance' })).toBeInTheDocument();
     expect(screen.getByText('Bacillus test organism')).toBeInTheDocument();
     expect(screen.getAllByText('1,500,000 bp')).not.toHaveLength(0);
     expect(screen.getByText('GTDB R214.1')).toBeInTheDocument();

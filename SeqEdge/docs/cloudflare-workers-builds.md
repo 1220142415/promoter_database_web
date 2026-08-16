@@ -54,6 +54,11 @@ be copied into the repository or pasted into build logs.
    npx wrangler d1 migrations apply SEQEDGE_DB --remote
    ```
 
+   Migration `0004_taxonomy_search.sql` adds the value index used by the
+   current catalog taxonomy search. The query can still run if only the older
+   schema is present, but D1 may scan the facet table; apply `0004` before
+   production traffic so the bounded search path stays inexpensive.
+
 3. Push a commit to `feature/genome-resource-db-promoter-v1`.
 4. Open the Worker Deployments/Builds page and wait for the Linux build.
 5. Inspect the build log. The expected sequence is `npm run build:cf`, then
@@ -65,6 +70,40 @@ be copied into the repository or pasted into build logs.
 Connecting Workers Builds does not necessarily build the already-existing
 commit. Push a new commit after the connection, or use the dashboard's rebuild
 action when available.
+
+## Windows Git Push Troubleshooting
+
+The workstation may have environment overrides intended for an isolated test
+runner. In particular, `GIT_SSH_COMMAND=cmd /c exit 1` deliberately disables
+SSH, and the bundled MSYS2 SSH can fail with `couldn't create signal pipe`.
+The repository and GitHub account are healthy when the following check returns
+the `Hi duolaJohn!` authentication message:
+
+```powershell
+Remove-Item Env:GIT_SSH_COMMAND -ErrorAction SilentlyContinue
+$env:GIT_SSH = 'C:\Windows\System32\OpenSSH\ssh.exe'
+ssh -o BatchMode=yes -T git@github.com
+git push fork feature/genome-resource-db-promoter-v1
+```
+
+If GitHub is only reachable through the local proxy, set `HTTP_PROXY` and
+`HTTPS_PROXY` to `http://127.0.0.1:7997` for that PowerShell process. Do not
+put a password, personal access token, or proxy credentials in a remote URL or
+in repository files. The HTTPS credential helper is not required when the
+system OpenSSH key is already authenticated.
+
+## Browser Asset Cache Versioning
+
+Unindexed per-genome FASTA and GFF3 source files are stored in the browser's
+Cache Storage. The cache key contains the release, accession, asset kind, and
+the asset SHA-256 when metadata provides one. Re-importing metadata with a new
+checksum therefore creates a new cache entry automatically; the user does not
+need to clear the browser cache after a file is replaced.
+
+The current GTDB metadata has promoter and NCBI annotation SHA-256 values, but
+does not yet provide a reference FASTA SHA-256. Reference files consequently
+fall back to a release-and-URL-based key until that checksum is added. Changing
+the release ID or asset URL still invalidates the reference cache.
 
 ## Troubleshooting
 

@@ -21,6 +21,11 @@ const plannedAssets = {
   reference: 'https://huggingface.co/reference.fna.gz',
   predictedPromoters: 'https://huggingface.co/promoters.gff3',
   ncbiAnnotations: 'https://huggingface.co/annotation.gff3.gz',
+  cacheVersions: {
+    reference: 'a'.repeat(64),
+    predictedPromoters: 'b'.repeat(64),
+    ncbiAnnotations: 'c'.repeat(64),
+  },
   batch: '000',
 };
 
@@ -64,9 +69,9 @@ describe('on-demand genome browser', () => {
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
     expect(vi.mocked(loadCachedGenomeAsset).mock.calls.map(([url, key]) => [url, key])).toEqual([
-      [plannedAssets.reference, 'SeqEdge 2026-08-13/GCA_000007325.1/reference'],
-      [plannedAssets.predictedPromoters, 'SeqEdge 2026-08-13/GCA_000007325.1/promoters'],
-      [plannedAssets.ncbiAnnotations, 'SeqEdge 2026-08-13/GCA_000007325.1/ncbi'],
+      [plannedAssets.reference, `SeqEdge 2026-08-13/GCA_000007325.1/reference/${'a'.repeat(64)}`],
+      [plannedAssets.predictedPromoters, `SeqEdge 2026-08-13/GCA_000007325.1/promoters/${'b'.repeat(64)}`],
+      [plannedAssets.ncbiAnnotations, `SeqEdge 2026-08-13/GCA_000007325.1/ncbi/${'c'.repeat(64)}`],
     ]);
     expect(maybeDecompressGzip).toHaveBeenCalledTimes(3);
     expect(firstFastaRefName).toHaveBeenCalled();

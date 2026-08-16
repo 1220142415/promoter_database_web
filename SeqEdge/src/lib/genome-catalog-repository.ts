@@ -543,9 +543,9 @@ const D1_FEATURE_JOINS = [
 const D1_GENOME_SELECT = [
   'SELECT g.*',
   ', p.feature_count AS predicted_promoter_count, p.status AS promoter_status',
-  ', p.data_path AS promoter_data_path, p.index_path AS promoter_index_path, p.storage_json AS promoter_storage_json',
+  ', p.data_path AS promoter_data_path, p.index_path AS promoter_index_path, p.data_sha256 AS promoter_data_sha256, p.storage_json AS promoter_storage_json',
   ', a.feature_count AS annotation_feature_count, a.status AS annotation_status',
-  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path, a.storage_json AS annotation_storage_json',
+  ', a.data_path AS annotation_data_path, a.index_path AS annotation_index_path, a.data_sha256 AS annotation_data_sha256, a.storage_json AS annotation_storage_json',
   'FROM genomes g',
   D1_FEATURE_JOINS,
 ].join(' ');
@@ -562,6 +562,8 @@ const D1_LIST_SELECT = [
 function normalizedTokens(value: string) {
   return value.toLocaleLowerCase().normalize('NFKC').split(/[^\p{L}\p{N}_.-]+/u).filter(Boolean);
 }
+
+const MAX_TAXONOMY_PATH_BINDINGS = 48;
 
 function taxonomyPathClause(match: D1TaxonomyMatch) {
   const path: Array<[string, string]> = [];
@@ -596,14 +598,17 @@ function d1Where(query: GenomeSearchQuery, releaseId: string, taxonomyMatches: M
   const tokens = normalizedTokens(query.q);
   if (query.q) {
     const accession = query.q.toLocaleUpperCase();
+    let remainingTaxonomyBindings = MAX_TAXONOMY_PATH_BINDINGS;
     const tokenClauses = tokens.map((token) => {
       const alternatives = ['g.accession IN (SELECT st.accession FROM genome_search_terms st WHERE st.release_id = ? AND st.token >= ? AND st.token < ?)'];
       bindings.push(releaseId, token, token + '\uffff');
       for (const match of taxonomyMatches.get(token) || []) {
         const path = taxonomyPathClause(match);
         if (!path) continue;
+        if (path.bindings.length > remainingTaxonomyBindings) break;
         alternatives.push(path.sql);
         bindings.push(...path.bindings);
+        remainingTaxonomyBindings -= path.bindings.length;
       }
       return '(' + alternatives.join(' OR ') + ')';
     });
@@ -638,7 +643,29 @@ function d1Sort(query: GenomeSearchQuery) {
   };
 }
 
-const MAX_TAXONOMY_PREFIX_MATCHES = 64;
+const MAX_TAXONOMY_PREFIX_MATCHES = 16;
+const MAX_FACET_CACHE_ENTRIES = 128;
+const MAX_TAXONOMY_CACHE_ENTRIES = 256;
+const QUERY_CACHE_TTL_MS = 300_000;
+
+function cacheValue<T>(
+  cache: Map<string, { expiresAt: number; value: T }>,
+  key: string,
+  value: T,
+  maximum: number,
+) {
+  const now = Date.now();
+  for (const [candidate, entry] of cache) {
+    if (entry.expiresAt <= now) cache.delete(candidate);
+  }
+  cache.delete(key);
+  cache.set(key, { value, expiresAt: now + QUERY_CACHE_TTL_MS });
+  while (cache.size > maximum) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
 
 async function d1TaxonomyMatches(database: D1Database, releaseId: string, query: string) {
   const tokens = [...new Set(normalizedTokens(query).filter((token) => token.length >= 3))];
@@ -741,7 +768,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const cached = this.facetCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
     const value = await d1Facets(this.database, releaseId, query);
-    this.facetCache.set(key, { value, expiresAt: Date.now() + 300_000 });
+    cacheValue(this.facetCache, key, value, MAX_FACET_CACHE_ENTRIES);
     return value;
   }
 
@@ -751,7 +778,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const cached = this.taxonomySearchCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
     const value = await d1TaxonomyMatches(this.database, releaseId, query);
-    this.taxonomySearchCache.set(key, { value, expiresAt: Date.now() + 300_000 });
+    cacheValue(this.taxonomySearchCache, key, value, MAX_TAXONOMY_CACHE_ENTRIES);
     return value;
   }
 
@@ -813,6 +840,10 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const releaseId = String(release.release_id);
     if (row.promoter_status !== 'ready') {
       const genome = d1RowToMetadataGenome(row, releaseId);
+      const referenceStorage = parseJson<Record<string, unknown>>(row.reference_storage_json, {});
+      const referenceChecksums = referenceStorage.checksums && typeof referenceStorage.checksums === 'object' && !Array.isArray(referenceStorage.checksums)
+        ? referenceStorage.checksums as Record<string, unknown>
+        : {};
       return {
         releaseId,
         assetBase: null,
@@ -823,6 +854,11 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
           release.feature_summary_json,
           genome.accession,
           genome.annotationStatus === 'available',
+          {
+            reference: typeof referenceChecksums.fasta === 'string' ? referenceChecksums.fasta : null,
+            predictedPromoters: row.promoter_data_sha256 as string | null,
+            ncbiAnnotations: row.annotation_data_sha256 as string | null,
+          },
         ),
       };
     }

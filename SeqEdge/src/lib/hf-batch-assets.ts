@@ -2,8 +2,15 @@ export interface PlannedGenomeAssets {
   reference: string;
   predictedPromoters: string;
   ncbiAnnotations: string | null;
+  cacheVersions: {
+    reference: string | null;
+    predictedPromoters: string | null;
+    ncbiAnnotations: string | null;
+  };
   batch: string;
 }
+
+type PlannedAssetVersions = Partial<PlannedGenomeAssets['cacheVersions']>;
 
 type BatchRange = {
   id: string;
@@ -50,10 +57,15 @@ function renderPath(template: unknown, accession: string, batch: string) {
   return path.includes('{') || path.startsWith('/') ? null : path;
 }
 
+function cacheVersion(value: unknown) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : null;
+}
+
 export function plannedHfBatchAssets(
   featureSummaryJson: unknown,
   accession: string,
   includeNcbiAnnotations: boolean,
+  versions: PlannedAssetVersions = {},
 ): PlannedGenomeAssets | null {
   if (!ACCESSION_PATTERN.test(accession)) return null;
   let summary: Record<string, unknown>;
@@ -79,6 +91,11 @@ export function plannedHfBatchAssets(
     reference: `${base}/${reference}`,
     predictedPromoters: `${base}/${predictedPromoters}`,
     ncbiAnnotations: ncbiAnnotations ? `${base}/${ncbiAnnotations}` : null,
+    cacheVersions: {
+      reference: cacheVersion(versions.reference),
+      predictedPromoters: cacheVersion(versions.predictedPromoters),
+      ncbiAnnotations: ncbiAnnotations ? cacheVersion(versions.ncbiAnnotations) : null,
+    },
     batch: range.id,
   };
 }

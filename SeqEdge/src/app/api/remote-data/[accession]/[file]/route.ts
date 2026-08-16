@@ -108,6 +108,9 @@ async function serve(request: Request, context: RouteContext, headOnly: boolean)
   if (hit) return hit;
   const match = await genomeCatalogRepository.getByAccession(accession);
   if (!match) return NextResponse.json({ error: 'Unknown remote release asset.' }, { status: 404 });
+  if (match.resourceStatus === 'staged' || !match.storage) {
+    return NextResponse.json({ error: 'Genome release assets are still being prepared.' }, { status: 503 });
+  }
   const completeRelease = Boolean(process.env.HF_STORAGE_BASE_URL || process.env.NODE_ENV === 'production' || process.env.SEQEDGE_CATALOG_BACKEND === 'd1');
   if (!completeRelease && !pilotAccessions().has(accession)) return NextResponse.json({ error: 'Unknown remote release asset.' }, { status: 404 });
   let response: Response;

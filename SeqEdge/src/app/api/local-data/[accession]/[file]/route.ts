@@ -77,6 +77,9 @@ async function serve(request: Request, context: RouteContext, headOnly: boolean)
 
   const match = await genomeCatalogRepository.getByAccession(accession);
   if (!match) return NextResponse.json({ error: 'Unknown release asset.' }, { status: 404 });
+  if (match.resourceStatus === 'staged' || !match.storage) {
+    return NextResponse.json({ error: 'Release asset is still being prepared.' }, { status: 503 });
+  }
   const path = join(dataRoot(match.releaseId), match.storage.logicalObjectPrefix, file);
   let details;
   try {

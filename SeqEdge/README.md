@@ -170,6 +170,9 @@ For Workers Builds, use `npm run build:cf` as the build command and
 `npx @opennextjs/cloudflare deploy` as the deploy command. Configure
 `NEXT_PUBLIC_STORAGE_BASE_URL=/api/remote-data` and the active release URL as
 `NEXT_PUBLIC_RELEASE_ASSET_BASE_URL` in the Cloudflare build environment.
+The complete connection settings, first-build trigger, troubleshooting notes,
+and cost controls are recorded in
+[`docs/cloudflare-workers-builds.md`](docs/cloudflare-workers-builds.md).
 
 The full data validator checks collection counts, accession identity, feature types, score and strand bounds, FASTA/GFF3 coordinate containment, BGZF and Tabix indexes, manifests, and SHA-256 digests.
 
@@ -233,6 +236,14 @@ Full validation checks all 1,000 genomes and 7,312 logical fragments, fragment a
 D1 is bound as `SEQEDGE_DB`. Apply the migrations in order with `npx wrangler d1 migrations apply SEQEDGE_DB --remote`; `0002_feature_catalog.sql` preserves any catalog already created by the original `0001`. Then import the legacy rollback release from `.data/d1-imports/2026-08-07/` and the packed release from `.data/releases/2026-08-11/d1/`. Do not apply `activate.sql` until the Hugging Face release exists and its Pack hashes, D1 counts, API pagination, Range responses, preview deployment, and representative JBrowse pages all pass. Roll back with the legacy `activate-rollback.sql` without deleting either release or any Pack.
 
 Production requires D1; local development defaults to the generated JSON catalog unless `SEQEDGE_CATALOG_BACKEND=d1` is explicitly set. The catalog API never exposes Pack offsets. Only the allowlisted `/api/remote-data/<accession>/<file>` proxy reads the active release mapping and rewrites a single logical Range. D1 import files contain at most 500 genomes each, and the complete 80,000-row catalog is never bundled into Next.js.
+
+The homepage release metrics are a checked-in snapshot in `src/generated/release-summary.json`. This keeps homepage requests static and avoids a D1 read for counts that only change when a release is published. Update that snapshot as part of each release deployment, then deploy the Worker and switch the D1 active release together. Genome lists, filters, details, and biological asset routes remain dynamic and continue to use D1.
+
+For the numeric Hugging Face upload layout, generate the accession-to-batch plan from the sorted metadata TSV. The command writes an auditable `asset-links.tsv`, a compact 81-batch `asset-layout.json`, and a guarded one-row D1 update. Planned batches stay `staged` until all files and JBrowse indexes have been uploaded and verified.
+
+```bash
+npm run hf:batch-plan -- --input gtdb_genome_metadata_r214.tsv --output hf-batch-asset-plan
+```
 
 ## Coordinate contract
 

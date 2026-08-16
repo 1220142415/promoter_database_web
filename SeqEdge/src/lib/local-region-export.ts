@@ -42,7 +42,7 @@ export function validateRegionExport(input: RegionExportInput, requireTracks = t
 export async function exportRegion(input: RegionExportInput, format: RegionExportFormat = 'gff3') {
   const region = validateRegionExport(input, format === 'gff3');
   const match = await genomeCatalogRepository.getByAccession(region.accession);
-  if (!match) throw new Error('Genome release assets are not available locally.');
+  if (!match || match.resourceStatus === 'staged' || !match.storage) throw new Error('Genome release assets are not available locally.');
   const objectRoot = join(dataRoot(match.releaseId), match.storage.logicalObjectPrefix);
   const fasta = join(objectRoot, 'reference.fa.gz');
   const promoters = join(objectRoot, 'predicted-promoters.gff3.gz');

@@ -138,6 +138,26 @@ describe('remote pilot asset proxy', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('does not contact storage for staged catalog resources', async () => {
+    process.env.HF_STORAGE_BASE_URL = 'https://example.test/objects';
+    const repository = await import('@/lib/genome-catalog-repository');
+    const lookup = vi.spyOn(repository.genomeCatalogRepository, 'getByAccession').mockResolvedValue({
+      releaseId: 'gtdb-r214-2026-08-13',
+      assetBase: null,
+      genome: {} as never,
+      storage: null,
+      resourceStatus: 'staged',
+    });
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock;
+
+    const response = await GET(new Request('http://localhost/test'), context('reference.fa.gz'));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Genome release assets are still being prepared.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    lookup.mockRestore();
+  });
+
   it('translates packed logical ranges and rewrites response headers', async () => {
     process.env.HF_STORAGE_BASE_URL = 'https://example.test';
     const packed = {

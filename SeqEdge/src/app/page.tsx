@@ -4,10 +4,10 @@ import DataObjectRoundedIcon from '@mui/icons-material/DataObjectRounded';
 import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
 import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
-import { genomeCatalogRepository } from '@/lib/genome-catalog-repository';
-import PortalReleaseState from '@/components/portal-release-state';
+import releaseSummary from '@/generated/release-summary.json';
+import type { ActiveReleaseSummary } from '@/types/release';
 
-export const dynamic = 'force-dynamic';
+const catalog = releaseSummary as ActiveReleaseSummary;
 
 function formatDate(value: string | null) {
   if (!value) return 'Not reported';
@@ -15,14 +15,13 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date);
 }
 
-export default async function HomePage() {
-  let catalog;
-  try {
-    catalog = await genomeCatalogRepository.getActiveRelease();
-  } catch (cause) {
-    return <PortalReleaseState message={cause instanceof Error ? cause.message : 'The active release is unavailable.'} />;
-  }
+function taxonomyReleaseLabel(value: string | null) {
+  return value ? `GTDB taxonomy ${value.replace(/^GTDB\s+/i, '')}` : 'GTDB taxonomy not reported';
+}
+
+export default function HomePage() {
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
+  const releaseLabel = `SeqEdge ${catalog.releaseDate || catalog.releaseId}`;
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
 
   return (
@@ -51,8 +50,8 @@ export default async function HomePage() {
         <div className="portal-shell metrics-grid">
           <div><PublicRoundedIcon aria-hidden="true" /><span>Genomes</span><strong>{catalog.totalGenomes.toLocaleString()}</strong></div>
           <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{catalog.totalPredictedPromoters.toLocaleString()}</strong></div>
-          <div><ScienceRoundedIcon aria-hidden="true" /><span>Usable NCBI annotations</span><strong>{catalog.totalUsableAnnotations.toLocaleString()}</strong></div>
-          <div className="release-metric"><span>Current release</span><strong>{catalog.releaseId}</strong><small>{formatDate(catalog.releaseDate || catalog.generatedAt)}</small></div>
+          <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
+          <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>
 
@@ -86,15 +85,18 @@ export default async function HomePage() {
         <div className="portal-shell">
           <div className="data-access-heading">
             <div><p className="portal-kicker">Data access</p><h2>Release files</h2></div>
-            <p>Release <strong>{catalog.releaseId}</strong>, generated {formatDate(catalog.generatedAt)}. Open a genome to inspect and download its reference, promoter and available annotation tracks.</p>
+            <p>Release <strong>{releaseLabel}</strong>, generated {formatDate(catalog.generatedAt)}. {catalog.resourceStatus === 'staged'
+              ? 'Genome metadata and feature counts are available while indexed resources are prepared.'
+              : 'Open a genome to inspect and download its reference, promoter and available annotation tracks.'}</p>
           </div>
-          <div className="release-downloads" aria-label="Release downloads">
-            <a href={`${releaseBase}/release.json`} download><span><strong>Release metadata</strong><small>Counts, provenance and generation status</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
-            <a href={`${releaseBase}/manifest.tsv`} download><span><strong>File manifest</strong><small>Paths, byte sizes and SHA-256 digests</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
-            <a href={`${releaseBase}/checksums.sha256`} download><span><strong>Checksums</strong><small>Complete SHA-256 verification list</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
-            {catalog.manifestIndexPath ? <a href={`${releaseBase}/${catalog.manifestIndexPath}`} download><span><strong>Manifest index</strong><small>Shard catalogs and physical Pack inventory</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
-          </div>
-          <p className="data-access-note">These files describe and verify the release; genome-specific biological data are accessed from the genome catalog.</p>
+          {catalog.resourceStatus === 'staged'
+            ? <p className="data-access-note">Genome metadata and feature counts are published. Reference and indexed track files are still being prepared.</p>
+            : <><div className="release-downloads" aria-label="Release downloads">
+              <a href={`${releaseBase}/release.json`} download><span><strong>Release metadata</strong><small>Counts, provenance and generation status</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
+              <a href={`${releaseBase}/manifest.tsv`} download><span><strong>File manifest</strong><small>Paths, byte sizes and SHA-256 digests</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
+              <a href={`${releaseBase}/checksums.sha256`} download><span><strong>Checksums</strong><small>Complete SHA-256 verification list</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
+              {catalog.manifestIndexPath ? <a href={`${releaseBase}/${catalog.manifestIndexPath}`} download><span><strong>Manifest index</strong><small>Shard catalogs and physical Pack inventory</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
+            </div><p className="data-access-note">These files describe and verify the release; genome-specific biological data are accessed from the genome catalog.</p></>}
         </div>
       </section>
     </main>

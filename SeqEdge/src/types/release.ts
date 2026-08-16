@@ -78,6 +78,7 @@ export interface ActiveReleaseSummary {
   topPhyla: PhylumCount[];
   releaseAssetBaseUrl: string | null;
   manifestIndexPath: string | null;
+  resourceStatus?: 'ready' | 'staged';
 }
 
 export interface PhylumCount {

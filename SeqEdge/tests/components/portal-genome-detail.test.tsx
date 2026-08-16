@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import GenomeDetailPage from '@/app/genomes/[accession]/page';
 import { makeGenome } from '../fixtures/release';
+import type { GenomeCatalogMatch } from '@/types/genome-catalog';
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
@@ -13,7 +14,7 @@ vi.mock('@/lib/genome-catalog-repository', () => ({ genomeCatalogRepository: { g
 
 import { genomeCatalogRepository } from '@/lib/genome-catalog-repository';
 
-function match(accession: string, status: 'available' | 'missing' | 'incompatible') {
+function match(accession: string, status: 'available' | 'missing' | 'incompatible'): GenomeCatalogMatch {
   const genome = makeGenome({ accession, organismName: status === 'available' ? 'Annotated genome' : 'Prediction-only genome', annotationStatus: status });
   if (status !== 'missing') {
     genome.annotationFeatureCount = 2_000;
@@ -80,5 +81,18 @@ describe('genome detail release contract', () => {
     expect(screen.queryByText('Incompatible with assembly')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /NCBI annotation/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').filter((link) => link.hasAttribute('download'))).toHaveLength(0);
+  });
+
+  it('shows catalog metadata while staged genome files are being prepared', async () => {
+    const staged = match('GCA_000411415.1', 'available');
+    staged.resourceStatus = 'staged';
+    staged.assetBase = null;
+    staged.storage = null;
+    vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(staged);
+    render(await GenomeDetailPage({ params: Promise.resolve({ accession: staged.genome.accession }) }));
+
+    expect(screen.getByText('Genome files are being prepared')).toBeInTheDocument();
+    expect(screen.getByText('2,000 cataloged features')).toBeInTheDocument();
+    expect(screen.queryByTestId('browser-contract')).not.toBeInTheDocument();
   });
 });

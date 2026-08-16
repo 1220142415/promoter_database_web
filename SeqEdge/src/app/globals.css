@@ -104,7 +104,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 
 .portal-page { min-height: calc(100vh - 64px); background: var(--wash); padding-bottom: 88px; }
 .page-intro { padding-block: 60px 38px; }
-.page-intro h1, .detail-heading h1, .portal-state-page h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 48px; line-height: 1.1; font-weight: 600; }
+.page-intro h1, .detail-heading h1, .genome-browser-header h1, .portal-state-page h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 48px; line-height: 1.1; font-weight: 600; }
 .page-intro > p:last-child, .methods-intro > p { max-width: 750px; margin: 16px 0 0; color: var(--ink-soft); font-size: 17px; line-height: 1.65; }
 
 .catalog-section { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -163,10 +163,16 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .release-stamp span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 750; }
 .release-stamp strong { display: block; margin-top: 3px; font-family: "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; align-items: start; }
-.genome-detail-page .detail-grid { width: calc(100% - 32px); max-width: none; }
+.genome-detail-page .detail-grid { width: calc(100% - 32px); max-width: none; padding-top: 24px; }
 .detail-main { display: grid; gap: 28px; min-width: 0; }
 .detail-section { background: white; border: 1px solid var(--line); border-radius: 8px; }
 .detail-section { padding: 22px; overflow: hidden; }
+.genome-browser-header { margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.genome-browser-header .back-link { margin-bottom: 20px; }
+.detail-context { display: flex; align-items: stretch; gap: 26px; }
+.locus-stamp { min-width: 180px; border-left: 1px solid var(--line-strong); padding-left: 14px; }
+.locus-stamp span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 750; }
+.locus-stamp code { display: block; max-width: 240px; margin-top: 5px; color: var(--ink-soft); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .detail-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .detail-section-heading h2 { font-size: 27px; }
 .detail-section-heading code { max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -213,9 +219,11 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .genome-metric span { color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; }
 .genome-metric strong { margin-top: 9px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(21px, 1.7vw, 30px); line-height: 1.1; overflow-wrap: anywhere; }
 .genome-metric small { margin-top: 8px; color: var(--muted); font-size: 10px; }
-.genome-quality-overview { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(0, 1.35fr); gap: 34px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; background: var(--wash); }
-.genome-quality-overview h3 { margin: 0; font-size: 19px; }
+.genome-summary-panels { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr); gap: 18px; align-items: stretch; }
+.genome-quality-overview, .promoter-overview { border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; background: var(--wash); }
+.genome-quality-overview h3, .promoter-overview h3 { margin: 0; font-size: 19px; }
 .genome-quality-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+.genome-quality-overview .genome-quality-grid { margin-top: 20px; }
 .genome-quality-measure > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; }
 .genome-quality-measure > div:first-child span { color: var(--ink-soft); font-weight: 700; }
 .genome-quality-measure > div:first-child strong { font-size: 14px; }
@@ -224,6 +232,13 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .genome-quality-teal .genome-quality-track span { background: var(--teal); }
 .genome-quality-gold .genome-quality-track span { background: var(--gold); min-width: 3px; }
 .genome-quality-measure small { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; }
+.promoter-stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; margin-top: 8px; }
+.promoter-stat { min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.promoter-stat:nth-last-child(-n + 2) { border-bottom: 0; }
+.promoter-stat span, .promoter-stat small { display: block; color: var(--muted); font-size: 10px; }
+.promoter-stat span { font-weight: 750; text-transform: uppercase; }
+.promoter-stat strong { display: block; margin-top: 5px; font-size: 15px; overflow-wrap: anywhere; }
+.promoter-stat small { margin-top: 4px; }
 .genome-metadata-groups { display: grid; gap: 10px; }
 .genome-metadata-group { min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: white; overflow: hidden; }
 .genome-metadata-group summary { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 20px; cursor: pointer; list-style: none; color: var(--teal-dark); font-size: 13px; font-weight: 800; text-transform: uppercase; }
@@ -302,7 +317,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .genome-metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .genome-metric:nth-child(3) { border-right: 0; }
   .genome-metric:nth-child(-n + 3) { border-bottom: 1px solid var(--line); }
-  .genome-quality-overview { grid-template-columns: 1fr; gap: 20px; }
+  .genome-summary-panels { grid-template-columns: 1fr; }
   .genome-metadata-group dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .methods-layout { grid-template-columns: 170px minmax(0, 1fr); gap: 50px; }
 }
@@ -327,7 +342,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .split-section, .evidence-layout { grid-template-columns: 1fr; gap: 34px; }
   .phyla-row { grid-template-columns: minmax(92px, 130px) 1fr 52px; gap: 10px; }
   .page-intro { padding-block: 44px 28px; }
-  .page-intro h1, .detail-heading h1, .portal-state-page h1 { font-size: 38px; }
+  .page-intro h1, .detail-heading h1, .genome-browser-header h1, .portal-state-page h1 { font-size: 38px; }
   .catalog-toolbar { grid-template-columns: 1fr 42px; }
   .catalog-search { grid-column: 1 / -1; }
   .catalog-toolbar label:not(.catalog-search) { grid-column: span 2; }
@@ -336,10 +351,10 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .catalog-pagination { justify-content: space-between; gap: 10px; }
   .catalog-pagination > span { display: none; }
   .detail-title-row { align-items: flex-start; flex-direction: column; }
-  .genome-detail-page .detail-grid { width: 100%; }
+  .genome-detail-page .detail-grid { width: 100%; padding-top: 14px; }
   .detail-section { border-left: 0; border-right: 0; border-radius: 0; padding: 18px 14px; }
-  .detail-section-heading { align-items: flex-start; flex-direction: column; }
-  .detail-section-heading code { max-width: 100%; }
+  .detail-context { width: 100%; flex-direction: column; gap: 12px; }
+  .locus-stamp, .release-stamp { min-width: 0; }
   .browser-loading { min-height: 480px; }
   .genome-metadata-section { padding-inline: 14px; }
   .genome-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

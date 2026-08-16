@@ -292,6 +292,19 @@ type D1FeatureAggregateRow = {
   feature_count: number | null;
 };
 
+type D1TaxonomyMatchRow = {
+  query_token: string;
+  kind: GenomeTaxonomyRank;
+  value: string;
+  domain: string;
+  phylum: string;
+  class_name: string;
+  order_name: string;
+  family: string;
+};
+
+type D1TaxonomyMatch = Omit<D1TaxonomyMatchRow, 'query_token'>;
+
 async function configuredD1() {
   const requested = process.env.SEQEDGE_CATALOG_BACKEND === 'd1' || process.env.NODE_ENV === 'production';
   if (!requested) return null;
@@ -550,15 +563,52 @@ function normalizedTokens(value: string) {
   return value.toLocaleLowerCase().normalize('NFKC').split(/[^\p{L}\p{N}_.-]+/u).filter(Boolean);
 }
 
-function d1Where(query: GenomeSearchQuery, releaseId: string) {
+function taxonomyPathClause(match: D1TaxonomyMatch) {
+  const path: Array<[string, string]> = [];
+  if (match.kind === 'domain') path.push(['domain', match.value]);
+  else {
+    path.push(['domain', match.domain]);
+    if (match.kind === 'phylum') path.push(['phylum', match.value]);
+    else {
+      path.push(['phylum', match.phylum]);
+      if (match.kind === 'class') path.push(['class_name', match.value]);
+      else {
+        path.push(['class_name', match.class_name]);
+        if (match.kind === 'order') path.push(['order_name', match.value]);
+        else {
+          path.push(['order_name', match.order_name]);
+          if (match.kind === 'family') path.push(['family', match.value]);
+          else path.push(['family', match.family], ['genus', match.value]);
+        }
+      }
+    }
+  }
+  if (path.some(([, value]) => !value)) return null;
+  return {
+    sql: '(' + path.map(([column]) => 'g.' + column + ' = ?').join(' AND ') + ')',
+    bindings: path.map(([, value]) => value),
+  };
+}
+
+function d1Where(query: GenomeSearchQuery, releaseId: string, taxonomyMatches: Map<string, D1TaxonomyMatch[]> = new Map()) {
   const clauses = ['g.release_id = ?'];
   const bindings: Array<string | number> = [releaseId];
   const tokens = normalizedTokens(query.q);
   if (query.q) {
     const accession = query.q.toLocaleUpperCase();
-    const tokenClauses = tokens.map(() => 'g.accession IN (SELECT st.accession FROM genome_search_terms st WHERE st.release_id = ? AND st.token >= ? AND st.token < ?)');
+    const tokenClauses = tokens.map((token) => {
+      const alternatives = ['g.accession IN (SELECT st.accession FROM genome_search_terms st WHERE st.release_id = ? AND st.token >= ? AND st.token < ?)'];
+      bindings.push(releaseId, token, token + '\uffff');
+      for (const match of taxonomyMatches.get(token) || []) {
+        const path = taxonomyPathClause(match);
+        if (!path) continue;
+        alternatives.push(path.sql);
+        bindings.push(...path.bindings);
+      }
+      return '(' + alternatives.join(' OR ') + ')';
+    });
     clauses.push('(g.accession = ? OR (g.accession >= ? AND g.accession < ?) OR (' + (tokenClauses.length ? tokenClauses.join(' AND ') : '0') + '))');
-    bindings.push(accession, accession, accession + '\uffff', ...tokens.flatMap((token) => [releaseId, token, token + '\uffff']));
+    bindings.splice(1, 0, accession, accession, accession + '\uffff');
   }
   const taxonomyFields: Array<[keyof GenomeSearchQuery['taxonomy'], string]> = [['domain', 'domain'], ['phylum', 'phylum'], ['class', 'class_name'], ['order', 'order_name'], ['family', 'family'], ['genus', 'genus']];
   for (const [key, column] of taxonomyFields) if (query.taxonomy[key]) { clauses.push('g.' + column + ' = ?'); bindings.push(query.taxonomy[key]); }
@@ -586,6 +636,48 @@ function d1Sort(query: GenomeSearchQuery) {
     outerExpression: 'filtered.accession',
     outerOrder: 'filtered.accession ' + direction,
   };
+}
+
+const MAX_TAXONOMY_PREFIX_MATCHES = 64;
+
+async function d1TaxonomyMatches(database: D1Database, releaseId: string, query: string) {
+  const tokens = [...new Set(normalizedTokens(query).filter((token) => token.length >= 3))];
+  const matches = new Map<string, D1TaxonomyMatch[]>();
+  if (!tokens.length) return matches;
+  const requested = tokens.map(() => '(?, ?, ?)').join(', ');
+  const sql = `WITH requested(query_token, prefix_start, prefix_end) AS (VALUES ${requested}),
+    ranked_matches AS (
+      SELECT requested.query_token, fo.kind, fo.value, fo.domain, fo.phylum, fo.class_name, fo.order_name, fo.family,
+        ROW_NUMBER() OVER (PARTITION BY requested.query_token ORDER BY fo.kind, fo.value, fo.domain, fo.phylum, fo.class_name, fo.order_name, fo.family) AS match_number
+      FROM requested
+      JOIN facet_options fo
+        ON fo.release_id = ?
+       AND fo.value >= requested.prefix_start COLLATE NOCASE
+       AND fo.value < requested.prefix_end COLLATE NOCASE
+      WHERE fo.kind IN ('domain', 'phylum', 'class', 'order', 'family', 'genus')
+    )
+    SELECT query_token, kind, value, domain, phylum, class_name, order_name, family
+    FROM ranked_matches WHERE match_number <= ?`;
+  const result = await database.prepare(sql)
+    .bind(...tokens.flatMap((token) => [token, token, token + '\uffff']), releaseId, MAX_TAXONOMY_PREFIX_MATCHES + 1)
+    .all<D1TaxonomyMatchRow>();
+  for (const row of result.results) {
+    const entries = matches.get(row.query_token) || [];
+    entries.push({
+      kind: row.kind,
+      value: row.value,
+      domain: row.domain,
+      phylum: row.phylum,
+      class_name: row.class_name,
+      order_name: row.order_name,
+      family: row.family,
+    });
+    matches.set(row.query_token, entries);
+  }
+  for (const [token, entries] of matches) {
+    if (entries.length > MAX_TAXONOMY_PREFIX_MATCHES) matches.delete(token);
+  }
+  return matches;
 }
 
 async function d1Facets(database: D1Database, releaseId: string, query: GenomeSearchQuery): Promise<GenomeSearchResponse['facets']> {
@@ -633,6 +725,7 @@ function hasGenomeFilters(query: GenomeSearchQuery) {
 export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
   private releaseCache: { expiresAt: number; value: D1ReleaseRow } | null = null;
   private facetCache = new Map<string, { expiresAt: number; value: GenomeSearchResponse['facets'] }>();
+  private taxonomySearchCache = new Map<string, { expiresAt: number; value: Map<string, D1TaxonomyMatch[]> }>();
 
   constructor(private database: D1Database) {}
 
@@ -652,10 +745,21 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     return value;
   }
 
+  private async taxonomyMatches(releaseId: string, query: string) {
+    if (!query) return new Map<string, D1TaxonomyMatch[]>();
+    const key = JSON.stringify([releaseId, normalizedTokens(query)]);
+    const cached = this.taxonomySearchCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const value = await d1TaxonomyMatches(this.database, releaseId, query);
+    this.taxonomySearchCache.set(key, { value, expiresAt: Date.now() + 300_000 });
+    return value;
+  }
+
   async search(query: GenomeSearchQuery): Promise<GenomeSearchResponse> {
     const release = await this.activeRelease();
     const releaseId = String(release.release_id);
-    const where = d1Where(query, releaseId);
+    const taxonomyMatches = await this.taxonomyMatches(releaseId, query.q);
+    const where = d1Where(query, releaseId, taxonomyMatches);
     const sort = d1Sort(query);
     const cursorClauses: string[] = [];
     const bindings = [...where.bindings];

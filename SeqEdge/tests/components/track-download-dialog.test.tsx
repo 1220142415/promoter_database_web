@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TrackDownloadDialog from '@/components/track-download-dialog';
@@ -22,7 +22,10 @@ const referenceMetadata: TrackDownloadMetadata = {
   wholeAssetUrl: '/api/local-data/GCA_000411415.1/reference.fa.gz',
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('track download dialog', () => {
   it('downloads one visible annotation track with a sanitized editable filename', async () => {
@@ -103,6 +106,38 @@ describe('track download dialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(click).not.toHaveBeenCalled();
+    expect(handleClose).toHaveBeenCalledOnce();
+  });
+
+  it('creates a visible-region download from browser-prepared data', async () => {
+    const user = userEvent.setup();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const handleClose = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => ({
+        text: async () => '##gff-version 3\ncontig_1\tRAPPtor\tpromoter\t5\t5\t.\t+\t.\tID=p1\n',
+      } as Blob),
+    }));
+    class MockUrl extends URL {
+      static createObjectURL = vi.fn(() => 'blob:visible-export');
+      static revokeObjectURL = vi.fn();
+    }
+    vi.stubGlobal('URL', MockUrl);
+    render(
+      <TrackDownloadDialog
+        handleClose={handleClose}
+        metadata={{ ...promoterMetadata, wholeAssetUrl: 'blob:promoters', downloadMode: 'browser' }}
+        visibleRegion={{ refName: 'contig_1', start: 1, end: 10 }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => expect(click).toHaveBeenCalledOnce());
+    const anchor = click.mock.contexts[0] as unknown as HTMLAnchorElement;
+    expect(anchor.href).toBe('blob:visible-export');
+    expect(anchor.download).toBe('RAPPtor-promoters_GCA_000411415.1_contig_1_1-10.gff3');
     expect(handleClose).toHaveBeenCalledOnce();
   });
 });

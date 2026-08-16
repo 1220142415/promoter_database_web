@@ -47,11 +47,18 @@ be copied into the repository or pasted into build logs.
    npm run lint
    ```
 
-2. Push a commit to `feature/genome-resource-db-promoter-v1`.
-3. Open the Worker Deployments/Builds page and wait for the Linux build.
-4. Inspect the build log. The expected sequence is `npm run build:cf`, then
+2. If the commit adds a numbered D1 migration, apply it before deploying the
+   Worker. Wrangler records applied migrations and skips them on later runs:
+
+   ```bash
+   npx wrangler d1 migrations apply SEQEDGE_DB --remote
+   ```
+
+3. Push a commit to `feature/genome-resource-db-promoter-v1`.
+4. Open the Worker Deployments/Builds page and wait for the Linux build.
+5. Inspect the build log. The expected sequence is `npm run build:cf`, then
    `npx @opennextjs/cloudflare deploy`.
-5. Smoke-test `/`, `/genomes`, a genome detail route, `/api/genomes`, and one
+6. Smoke-test `/`, `/genomes`, a genome detail route, `/api/genomes`, and one
    remote-data route through the configured proxy if Hugging Face is not
    directly reachable.
 

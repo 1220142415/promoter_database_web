@@ -29,13 +29,14 @@ describe('release JBrowse configuration', () => {
     render(<PortalJBrowseViewer assembly={assembly(true)} />);
     expect(screen.getByTestId('mock-jbrowse')).toBeInTheDocument();
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
-      assembly: { sequence: { adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string } } } };
+      assembly: { sequence: { adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string; visibleRegionDownload: boolean } } } };
       tracks: ReadonlyArray<{ name: string; adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string } } }>;
       plugins: ReadonlyArray<{ name: string }>;
       defaultSession: { view: { tracks: ReadonlyArray<{ displays: ReadonlyArray<{ configuration: string }> }> } };
     };
     expect(config.assembly.sequence.adapter).toMatchObject({ type: 'BgzipFastaAdapter' });
     expect(config.assembly.sequence.metadata.seqEdgeDownload.kind).toBe('reference');
+    expect(config.assembly.sequence.metadata.seqEdgeDownload.visibleRegionDownload).toBe(false);
     expect(config.tracks.map((track) => track.name)).toEqual([
       'RAPPtor predicted promoter peaks',
       'NCBI genome annotation',
@@ -52,6 +53,21 @@ describe('release JBrowse configuration', () => {
     render(<PortalJBrowseViewer assembly={assembly(false)} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as { tracks: ReadonlyArray<{ name: string }> };
     expect(config.tracks.map((track) => track.name)).toEqual(['RAPPtor predicted promoter peaks']);
+  });
+
+  it('uses whole-file adapters for a browser-prepared staged genome', () => {
+    const unindexed = { ...assembly(true), adapterMode: 'unindexed' as const };
+    unindexed.assets.ncbiAnnotationsIndex = null;
+    render(<PortalJBrowseViewer assembly={unindexed} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      assembly: { sequence: { adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { downloadMode: string } } } };
+      tracks: ReadonlyArray<{ adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { downloadMode: string } } }>;
+    };
+    expect(config.assembly.sequence.adapter).toMatchObject({ type: 'UnindexedFastaAdapter' });
+    expect(config.tracks).toHaveLength(2);
+    expect(config.tracks.every((track) => track.adapter.type === 'Gff3Adapter')).toBe(true);
+    expect(config.assembly.sequence.metadata.seqEdgeDownload.downloadMode).toBe('browser');
+    expect(config.tracks.every((track) => track.metadata.seqEdgeDownload.downloadMode === 'browser')).toBe(true);
   });
 
   it('wires view changes to the region download controller', () => {

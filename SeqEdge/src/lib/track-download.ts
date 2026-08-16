@@ -16,6 +16,8 @@ export interface TrackDownloadMetadata {
   label: string;
   regionExportBase: string;
   wholeAssetUrl: string;
+  downloadMode?: 'remote' | 'browser';
+  visibleRegionDownload?: boolean;
 }
 
 export type LinearViewLike = {
@@ -67,6 +69,8 @@ export function isTrackDownloadMetadata(value: unknown): value is TrackDownloadM
     && typeof metadata.label === 'string'
     && typeof metadata.regionExportBase === 'string'
     && typeof metadata.wholeAssetUrl === 'string'
+    && (metadata.downloadMode === undefined || metadata.downloadMode === 'remote' || metadata.downloadMode === 'browser')
+    && (metadata.visibleRegionDownload === undefined || typeof metadata.visibleRegionDownload === 'boolean')
   );
 }
 
@@ -89,7 +93,75 @@ export function defaultTrackDownloadFilename(
   if (scope === 'visible' && region) {
     return `${settings.prefix}_${metadata.accession}_${region.refName}_${region.start}-${region.end}${settings.regionExtension}`;
   }
-  return `${settings.prefix}_${metadata.accession}${settings.wholeExtension}`;
+  const wholeExtension = 'downloadMode' in metadata && metadata.downloadMode === 'browser'
+    ? settings.regionExtension
+    : settings.wholeExtension;
+  return `${settings.prefix}_${metadata.accession}${wholeExtension}`;
+}
+
+export function requiredTrackDownloadExtension(
+  metadata: TrackDownloadMetadata,
+  scope: TrackDownloadScope,
+) {
+  const settings = KIND_SETTINGS[metadata.kind];
+  return scope === 'visible' || metadata.downloadMode === 'browser'
+    ? settings.regionExtension
+    : settings.wholeExtension;
+}
+
+function wrappedSequence(sequence: string) {
+  const lines = [];
+  for (let offset = 0; offset < sequence.length; offset += 60) lines.push(sequence.slice(offset, offset + 60));
+  return lines.join('\n');
+}
+
+function visibleFasta(text: string, region: TrackDownloadRegion) {
+  let currentName = '';
+  let sequence = '';
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith('>')) {
+      if (currentName === region.refName) break;
+      currentName = line.slice(1).trim().split(/\s+/, 1)[0] || '';
+      sequence = '';
+    } else if (currentName === region.refName) {
+      sequence += line.replace(/\s+/g, '');
+    }
+  }
+  if (currentName !== region.refName) throw new Error(`Reference sequence ${region.refName} was not found.`);
+  if (region.start > sequence.length) throw new Error('The visible region starts beyond the reference sequence.');
+  const end = Math.min(region.end, sequence.length);
+  const selected = sequence.slice(region.start - 1, end);
+  return `>${region.refName}:${region.start}-${end}\n${wrappedSequence(selected)}\n`;
+}
+
+function visibleGff3(text: string, region: TrackDownloadRegion) {
+  const selected = ['##gff-version 3'];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line || line.startsWith('#')) continue;
+    const fields = line.split('\t');
+    if (fields.length < 9 || fields[0] !== region.refName) continue;
+    const start = Number(fields[3]);
+    const end = Number(fields[4]);
+    if (Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= region.end && end >= region.start) {
+      selected.push(line);
+    }
+  }
+  return `${selected.join('\n')}\n`;
+}
+
+export async function browserTrackDownloadBlob(
+  metadata: TrackDownloadMetadata,
+  scope: TrackDownloadScope,
+  region: TrackDownloadRegion | null,
+) {
+  const response = await fetch(metadata.wholeAssetUrl);
+  if (!response.ok) throw new Error(`Cached genome data could not be read (HTTP ${response.status}).`);
+  const source = await response.blob();
+  if (scope === 'whole') return source;
+  if (!region) throw new Error('A single visible reference region is required.');
+  const text = await source.text();
+  const exported = metadata.kind === 'reference' ? visibleFasta(text, region) : visibleGff3(text, region);
+  return new Blob([exported], { type: 'text/plain; charset=utf-8' });
 }
 
 export function normalizeDownloadFilename(input: string | null | undefined, requiredExtension: string, fallback: string) {

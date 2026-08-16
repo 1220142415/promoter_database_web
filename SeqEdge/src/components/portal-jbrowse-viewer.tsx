@@ -13,13 +13,14 @@ export interface BrowserRegion {
 }
 
 function resolveAsset(base: string, path: string) {
-  if (/^https?:\/\//i.test(path) || path.startsWith('/')) return path;
+  if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith('/')) return path;
   return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
 export default function PortalJBrowseViewer({ assembly, onRegionChange }: { assembly: JBrowseReleaseAssembly; onRegionChange?: (region: BrowserRegion) => void }) {
   const viewState = useMemo(() => {
-    const regionExportBase = assembly.regionExportBase || '/api/local-region';
+    const unindexed = assembly.adapterMode === 'unindexed';
+    const regionExportBase = assembly.regionExportBase || '';
     const downloadMetadata = (
       kind: TrackDownloadMetadata['kind'],
       label: string,
@@ -31,6 +32,8 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         label,
         regionExportBase,
         wholeAssetUrl,
+        downloadMode: unindexed ? 'browser' : 'remote',
+        visibleRegionDownload: unindexed || Boolean(regionExportBase),
       },
     });
     const predictedTrackId = `${assembly.assemblyName}-predicted-promoters`;
@@ -46,18 +49,25 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         assemblyNames: [assembly.assemblyName],
         type: 'FeatureTrack',
         adapter: {
-          type: 'Gff3TabixAdapter',
-          gffGzLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.predictedPromoters) },
-          index: {
-            indexType: 'TBI',
-            location: { uri: resolveAsset(assembly.assetBase, assembly.assets.predictedPromotersIndex) },
-          },
+          ...(unindexed
+            ? {
+                type: 'Gff3Adapter',
+                gffLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.predictedPromoters) },
+              }
+            : {
+                type: 'Gff3TabixAdapter',
+                gffGzLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.predictedPromoters) },
+                index: {
+                  indexType: 'TBI',
+                  location: { uri: resolveAsset(assembly.assetBase, assembly.assets.predictedPromotersIndex) },
+                },
+              }),
         },
         displays: [{ displayId: `${predictedTrackId}-display`, type: 'LinearBasicDisplay' }],
       },
     ];
 
-    if (assembly.assets.ncbiAnnotations && assembly.assets.ncbiAnnotationsIndex) {
+    if (assembly.assets.ncbiAnnotations && (unindexed || assembly.assets.ncbiAnnotationsIndex)) {
       const ncbiTrackId = `${assembly.assemblyName}-ncbi-annotations`;
       tracks.push({
         trackId: ncbiTrackId,
@@ -70,12 +80,19 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         assemblyNames: [assembly.assemblyName],
         type: 'FeatureTrack',
         adapter: {
-          type: 'Gff3TabixAdapter',
-          gffGzLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotations) },
-          index: {
-            indexType: 'TBI',
-            location: { uri: resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotationsIndex) },
-          },
+          ...(unindexed
+            ? {
+                type: 'Gff3Adapter',
+                gffLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotations) },
+              }
+            : {
+                type: 'Gff3TabixAdapter',
+                gffGzLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotations) },
+                index: {
+                  indexType: 'TBI',
+                  location: { uri: resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotationsIndex!) },
+                },
+              }),
         },
         displays: [{ displayId: `${ncbiTrackId}-display`, type: 'LinearBasicDisplay' }],
       });
@@ -103,10 +120,17 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
             resolveAsset(assembly.assetBase, assembly.assets.fasta),
           ),
           adapter: {
-            type: 'BgzipFastaAdapter',
-            fastaLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fasta) },
-            faiLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fastaFai) },
-            gziLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fastaGzi) },
+            ...(unindexed
+              ? {
+                  type: 'UnindexedFastaAdapter',
+                  fastaLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fasta) },
+                }
+              : {
+                  type: 'BgzipFastaAdapter',
+                  fastaLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fasta) },
+                  faiLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fastaFai) },
+                  gziLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.fastaGzi) },
+                }),
           },
         },
       },

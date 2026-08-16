@@ -114,6 +114,34 @@ class FakeStatement implements D1PreparedStatement {
   }
 
   async all<T = Record<string, unknown>>() {
+    if (this.query.includes('WITH requested(query_token')) {
+      const token = String(this.bindings[0] || '');
+      if (token === 'bacillota') {
+        return d1Result([{
+          query_token: token,
+          kind: 'phylum',
+          value: 'Bacillota',
+          domain: 'Bacteria',
+          phylum: '',
+          class_name: '',
+          order_name: '',
+          family: '',
+        }] as T[]);
+      }
+      if (token === 'bacillus') {
+        return d1Result([{
+          query_token: token,
+          kind: 'genus',
+          value: 'Bacillus',
+          domain: 'Bacteria',
+          phylum: 'Bacillota',
+          class_name: 'Bacilli',
+          order_name: 'Bacillales',
+          family: 'Bacillaceae',
+        }] as T[]);
+      }
+      return d1Result<T>([]);
+    }
     if (this.query.startsWith('SELECT feature_type')) {
       return d1Result(this.database.aggregates as T[]);
     }
@@ -236,9 +264,20 @@ describe('D1 genome catalog repository', () => {
       'bacillus', 'bacillus\uffff', 'subtilis', 'subtilis\uffff', 'Bacteria', 'Bacillota', 'NCBI GenBank',
     ]));
     expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
-    expect(database.preparedQueries).toHaveLength(3);
+    expect(database.preparedQueries).toHaveLength(4);
     expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT'))).toBe(false);
     expect(database.recorded.find((entry) => entry.query.includes('facet_kind'))?.bindings).not.toContain('genus');
+  });
+
+  it('resolves taxonomy text through indexed facet paths', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+    await repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'Bacillota' });
+
+    const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    expect(database.preparedQueries.some((query) => query.includes('WITH requested(query_token'))).toBe(true);
+    expect(pageQuery.query).toContain('(g.domain = ? AND g.phylum = ?)');
+    expect(pageQuery.bindings).toEqual(expect.arrayContaining(['Bacteria', 'Bacillota']));
   });
 
   it('rejects a staged release even if portal_state points at it', async () => {

@@ -118,4 +118,5 @@ export interface JBrowseReleaseAssembly {
   assetBase: string;
   assets: ReleaseAssets;
   regionExportBase?: string;
+  adapterMode?: 'indexed' | 'unindexed';
 }

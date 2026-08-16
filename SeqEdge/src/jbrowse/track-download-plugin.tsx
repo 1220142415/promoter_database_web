@@ -61,7 +61,7 @@ export default class SeqEdgeTrackDownloadPlugin extends Plugin {
                   onClick: () => {
                     const view = getContainingView(self) as unknown as LinearViewLike;
                     const session = getSession(self) as unknown as DialogSession;
-                    const visibleRegion = visibleTrackRegion(view);
+                    const visibleRegion = metadata.visibleRegionDownload === false ? null : visibleTrackRegion(view);
                     session.queueDialog((doneCallback) => [
                       TrackDownloadDialog,
                       { handleClose: doneCallback, metadata, visibleRegion },

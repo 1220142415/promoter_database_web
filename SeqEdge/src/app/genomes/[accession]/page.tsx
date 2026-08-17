@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { isValidElement, type CSSProperties, type ReactNode } from 'react';
+import { isValidElement, type ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
@@ -31,33 +31,11 @@ function hasMetadataValue(value: ReactNode) {
   return !Array.isArray(value) || value.length > 0;
 }
 
-function MetadataMetric({ label, value, context }: { label: string; value: ReactNode; context: string }) {
+function MetadataMetric({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="genome-metric">
       <span>{label}</span>
       <strong>{metadataValue(value)}</strong>
-      <small>{context}</small>
-    </div>
-  );
-}
-
-function PromoterStat({ label, value, context }: { label: string; value: ReactNode; context: string }) {
-  return (
-    <div className="promoter-stat">
-      <span>{label}</span>
-      <strong>{metadataValue(value)}</strong>
-      <small>{context}</small>
-    </div>
-  );
-}
-
-function QualityBar({ label, value, hint, tone }: { label: string; value: number; hint: string; tone: 'teal' | 'gold' }) {
-  const fill = Math.max(0, Math.min(100, value));
-  return (
-    <div className={`genome-quality-measure genome-quality-${tone}`}>
-      <div><span>{label}</span><strong>{value.toLocaleString()}%</strong></div>
-      <div className="genome-quality-track" aria-hidden="true"><span style={{ width: `${fill}%` } as CSSProperties} /></div>
-      <small>{hint}</small>
     </div>
   );
 }
@@ -104,19 +82,9 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
   const browserAssembly = match.resourceStatus !== 'staged' && assetBase && match.storage
     ? { assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets }
     : null;
-  const qualityMeasures = [
-    genome.completeness === null ? null : { label: 'Completeness', value: genome.completeness, hint: 'Higher is better', tone: 'teal' as const },
-    details?.codingDensity === null || details?.codingDensity === undefined ? null : { label: 'Coding density', value: details.codingDensity, hint: 'Share of coding sequence', tone: 'teal' as const },
-    genome.contamination === null ? null : { label: 'Contamination', value: genome.contamination, hint: 'Lower is better', tone: 'gold' as const },
-  ].filter((measure) => measure !== null);
   const promoterDensityPerMb = genome.genomeSizeBp && genome.genomeSizeBp > 0
     ? genome.predictedPromoterCount * 1_000_000 / genome.genomeSizeBp
     : null;
-  const predictionThreshold = details?.promoter.configuration.threshold;
-  const thresholdOperator = details?.promoter.configuration.thresholdOperator;
-  const scoreRule = predictionThreshold === null || predictionThreshold === undefined
-    ? null
-    : `${typeof thresholdOperator === 'string' ? thresholdOperator : '>'} ${String(predictionThreshold)}`;
   const predictionModel = [details?.promoter.sourceId, details?.promoter.sourceVersion].filter(Boolean).join(' ');
 
   return (
@@ -144,47 +112,24 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
 
         <section className="genome-metadata-section" aria-labelledby="genome-metadata-heading">
           <div className="genome-metadata-heading">
-            <p className="portal-kicker">Catalog record</p>
             <h2 id="genome-metadata-heading">Genome summary</h2>
-            <p>Key biological and quality signals first. Expand a section only when you need the underlying catalog details.</p>
           </div>
 
           <div className="genome-metrics-grid" aria-label="Genome key metrics">
-            <MetadataMetric label="Genome size" value={formatNumber(genome.genomeSizeBp, ' bp')} context="Assembly span" />
-            <MetadataMetric label="GC content" value={formatNumber(genome.gcContent, '%')} context="Base composition" />
-            <MetadataMetric label="Contigs" value={formatNumber(genome.contigCount)} context="Assembly continuity" />
-            <MetadataMetric label="Completeness" value={formatNumber(genome.completeness, '%')} context="Quality estimate" />
-            <MetadataMetric label="Contamination" value={formatNumber(genome.contamination, '%')} context="Quality estimate" />
-            <MetadataMetric label="Promoters" value={formatNumber(genome.predictedPromoterCount)} context="Model predictions" />
-          </div>
-
-          <div className="genome-summary-panels">
-            {qualityMeasures.length > 0 && (
-              <section className="genome-quality-overview" aria-labelledby="quality-overview-heading">
-                <div><p className="portal-kicker">Quality signals</p><h3 id="quality-overview-heading">Assembly quality at a glance</h3></div>
-                <div className="genome-quality-grid">
-                  {qualityMeasures.map((measure) => <QualityBar key={measure.label} {...measure} />)}
-                </div>
-              </section>
-            )}
-
-            <section className="promoter-overview" aria-labelledby="promoter-overview-heading">
-              <div><p className="portal-kicker">Prediction profile</p><h3 id="promoter-overview-heading">Promoter statistics</h3></div>
-              <div className="promoter-stat-grid">
-                <PromoterStat label="Density" value={promoterDensityPerMb === null ? null : promoterDensityPerMb.toLocaleString(undefined, { maximumFractionDigits: 1 })} context="Predictions per Mb" />
-                <PromoterStat label="Score rule" value={scoreRule} context="Configured cutoff" />
-                <PromoterStat label="Model" value={predictionModel || null} context="Method and version" />
-                <PromoterStat label="Generated" value={details?.promoter.generatedAt} context="Prediction run" />
-              </div>
-            </section>
+            <MetadataMetric label="Genome size" value={formatNumber(genome.genomeSizeBp, ' bp')} />
+            <MetadataMetric label="GC content" value={formatNumber(genome.gcContent, '%')} />
+            <MetadataMetric label="Contigs" value={formatNumber(genome.contigCount)} />
+            <MetadataMetric label="Contig N50" value={formatNumber(details?.contigN50 ?? null, ' bp')} />
+            <MetadataMetric label="Completeness" value={formatNumber(genome.completeness, '%')} />
+            <MetadataMetric label="Contamination" value={formatNumber(genome.contamination, '%')} />
+            <MetadataMetric label="Promoters" value={formatNumber(genome.predictedPromoterCount)} />
+            <MetadataMetric label="Promoter density" value={promoterDensityPerMb === null ? null : `${promoterDensityPerMb.toLocaleString(undefined, { maximumFractionDigits: 1 })} / Mb`} />
           </div>
 
           <div className="genome-metadata-groups">
             <MetadataGroup title="Assembly overview" description="Identifiers and source" open facts={[
               { label: 'Accession', value: genome.accession, mono: true },
               { label: 'NCBI organism name', value: details?.ncbiOrganismName },
-              { label: 'NCBI Tax ID', value: details?.ncbiTaxId, mono: true },
-              { label: 'Genome source', value: genome.genomeSource },
               { label: 'Assembly level', value: genome.assemblyLevel },
               { label: 'Assembly name', value: details?.assemblyName },
               { label: 'RefSeq assembly accession', value: details?.refseqAssemblyAccession, mono: true },
@@ -208,7 +153,6 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
             ]} />
 
             <MetadataGroup title="Quality and annotation" description="Continuity and features" facts={[
-              { label: 'Contig N50', value: formatNumber(details?.contigN50 ?? null, ' bp') },
               { label: 'Longest contig', value: formatNumber(details?.longestContigBp ?? null, ' bp') },
               { label: 'Protein count', value: formatNumber(details?.proteinCount ?? null) },
               { label: 'tRNA count', value: formatNumber(details?.trnaCount ?? null) },
@@ -219,6 +163,8 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
             ]} />
 
             <MetadataGroup title="Annotation and release" description="Sources and provenance" facts={[
+              { label: 'Prediction model', value: predictionModel || null },
+              { label: 'Prediction generated at', value: details?.promoter.generatedAt },
               { label: 'Annotation source', value: details?.annotation.sourceId },
               { label: 'Annotation version', value: details?.annotation.sourceVersion },
               { label: 'Annotation generated at', value: details?.annotation.generatedAt },

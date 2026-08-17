@@ -67,6 +67,7 @@ describe('on-demand genome browser', () => {
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-locus', 'NC_000001.1:1-10000');
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableAnnotationAvailable');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
     expect(vi.mocked(loadCachedGenomeAsset).mock.calls.map(([url, key]) => [url, key])).toEqual([
       [plannedAssets.reference, `SeqEdge 2026-08-13/GCA_000007325.1/reference/${'a'.repeat(64)}`],
@@ -75,5 +76,51 @@ describe('on-demand genome browser', () => {
     ]);
     expect(maybeDecompressGzip).toHaveBeenCalledTimes(3);
     expect(firstFastaRefName).toHaveBeenCalled();
+  });
+
+  it('marks an intentionally absent annotation without requesting it', async () => {
+    const withoutAnnotation = {
+      ...plannedAssets,
+      ncbiAnnotations: null,
+      cacheVersions: { ...plannedAssets.cacheVersions, ncbiAnnotations: null },
+    };
+    vi.mocked(loadCachedGenomeAsset).mockReset()
+      .mockResolvedValueOnce(new Blob(['reference']))
+      .mockResolvedValueOnce(new Blob(['promoters']));
+
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_002319795.1"
+        releaseId="SeqEdge 2026-08-13"
+        plannedAssets={withoutAnnotation}
+      />,
+    );
+
+    expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'false');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableAnnotationNot available');
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks only an inaccessible required file as failed', async () => {
+    const withoutAnnotation = {
+      ...plannedAssets,
+      ncbiAnnotations: null,
+      cacheVersions: { ...plannedAssets.cacheVersions, ncbiAnnotations: null },
+    };
+    vi.mocked(loadCachedGenomeAsset).mockReset()
+      .mockResolvedValueOnce(new Blob(['reference']))
+      .mockRejectedValueOnce(new Error('Genome asset is unavailable (HTTP 404).'));
+
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_002319795.1"
+        releaseId="SeqEdge 2026-08-13"
+        plannedAssets={withoutAnnotation}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Genome asset is unavailable (HTTP 404).');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersFailedAnnotationNot available');
+    expect(screen.queryByTestId('prepared-browser')).not.toBeInTheDocument();
   });
 });

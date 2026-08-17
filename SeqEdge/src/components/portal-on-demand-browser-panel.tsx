@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
+import GenomeFileStatus, { type GenomeFileState } from '@/components/genome-file-status';
 import PortalBrowserPanel from '@/components/portal-browser-panel';
 import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/lib/on-demand-genome-assets';
 import type { PlannedGenomeAssets } from '@/lib/hf-batch-assets';
@@ -12,6 +13,16 @@ type Props = {
   releaseId: string;
   plannedAssets: PlannedGenomeAssets;
 };
+
+type FileStates = { reference: GenomeFileState; promoters: GenomeFileState; annotation: GenomeFileState };
+
+function initialFileStates(hasAnnotation: boolean): FileStates {
+  return {
+    reference: 'preparing',
+    promoters: 'preparing',
+    annotation: hasAnnotation ? 'preparing' : 'unavailable',
+  };
+}
 
 function objectUrl(blob: Blob, type: string) {
   return URL.createObjectURL(new Blob([blob], { type }));
@@ -25,6 +36,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
   const [error, setError] = useState('');
+  const [fileStates, setFileStates] = useState<FileStates>(() => initialFileStates(Boolean(plannedAssets.ncbiAnnotations)));
   const objectUrls = useRef<string[]>([]);
   const abortController = useRef<AbortController | null>(null);
 
@@ -39,15 +51,27 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     objectUrls.current = [];
     const controller = new AbortController();
     abortController.current = controller;
+    setAssembly(null);
     setStatus('loading');
     setError('');
+    setFileStates(initialFileStates(Boolean(plannedAssets.ncbiAnnotations)));
     try {
       const cachePrefix = `${releaseId}/${accession}`;
+      const load = async (kind: keyof FileStates, url: string, cacheKey: string) => {
+        try {
+          const blob = await loadCachedGenomeAsset(url, cacheKey, controller.signal);
+          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, [kind]: 'available' }));
+          return blob;
+        } catch (cause) {
+          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, [kind]: 'failed' }));
+          throw cause;
+        }
+      };
       const [compressedReference, promoters, annotation] = await Promise.all([
-        loadCachedGenomeAsset(plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference), controller.signal),
-        loadCachedGenomeAsset(plannedAssets.predictedPromoters, assetCacheKey(cachePrefix, 'promoters', plannedAssets.predictedPromoters, plannedAssets.cacheVersions.predictedPromoters), controller.signal),
+        load('reference', plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference)),
+        load('promoters', plannedAssets.predictedPromoters, assetCacheKey(cachePrefix, 'promoters', plannedAssets.predictedPromoters, plannedAssets.cacheVersions.predictedPromoters)),
         plannedAssets.ncbiAnnotations
-          ? loadCachedGenomeAsset(plannedAssets.ncbiAnnotations, assetCacheKey(cachePrefix, 'ncbi', plannedAssets.ncbiAnnotations, plannedAssets.cacheVersions.ncbiAnnotations), controller.signal).catch(() => null)
+          ? load('annotation', plannedAssets.ncbiAnnotations, assetCacheKey(cachePrefix, 'ncbi', plannedAssets.ncbiAnnotations, plannedAssets.cacheVersions.ncbiAnnotations)).catch(() => null)
           : Promise.resolve(null),
       ]);
       const [reference, promoterGff, annotationGff] = await Promise.all([
@@ -90,14 +114,17 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     void prepare();
   }, [prepare]);
 
-  if (assembly) return <PortalBrowserPanel assembly={assembly} />;
+  if (assembly) return <><GenomeFileStatus states={fileStates} /><PortalBrowserPanel assembly={assembly} /></>;
 
   return (
-    <div className="browser-unavailable browser-on-demand">
-      <strong>{status === 'loading' ? 'Preparing genome browser' : 'Genome browser could not be loaded'}</strong>
-      {status === 'loading'
-        ? <p>Loading this genome from the local browser cache or release storage.</p>
-        : <><p className="browser-load-error" role="alert">{error}</p><button type="button" className="browser-load-button" onClick={() => void prepare()}><PlayArrowRoundedIcon aria-hidden="true" />Retry</button></>}
-    </div>
+    <>
+      <GenomeFileStatus states={fileStates} />
+      <div className="browser-unavailable browser-on-demand">
+        <strong>{status === 'loading' ? 'Preparing genome browser' : 'Genome browser could not be loaded'}</strong>
+        {status === 'loading'
+          ? <p>Loading this genome from the local browser cache or release storage.</p>
+          : <><p className="browser-load-error" role="alert">{error}</p><button type="button" className="browser-load-button" onClick={() => void prepare()}><PlayArrowRoundedIcon aria-hidden="true" />Retry</button></>}
+      </div>
+    </>
   );
 }

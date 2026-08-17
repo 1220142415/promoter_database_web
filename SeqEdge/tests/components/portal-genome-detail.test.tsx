@@ -158,6 +158,14 @@ describe('genome detail release contract', () => {
     expect(screen.queryByText('Score rule')).not.toBeInTheDocument();
     expect(screen.queryByText('NCBI Tax ID')).not.toBeInTheDocument();
     expect(screen.queryByText('Genome source')).not.toBeInTheDocument();
+    expect(screen.queryByText('Identifiers and source')).not.toBeInTheDocument();
+    expect(screen.queryByText('GTDB lineage')).not.toBeInTheDocument();
+    expect(screen.queryByText('Continuity and features')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sources and provenance')).not.toBeInTheDocument();
+    expect(screen.queryByText('Initial locus')).not.toBeInTheDocument();
+    expect(screen.queryByText('Interactive genome browser')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unindexed files are prepared only for this genome and cached locally by the browser.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/The promoter track contains model-predicted peaks/)).not.toBeInTheDocument();
     expect(screen.getByText('Bacillus test organism')).toBeInTheDocument();
     expect(screen.getAllByText('1,500,000 bp')).not.toHaveLength(0);
     expect(screen.getByText('GTDB R214.1')).toBeInTheDocument();
@@ -217,6 +225,7 @@ describe('genome detail release contract', () => {
     expect(screen.queryByTestId('browser-contract')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Planned data files' })).not.toBeInTheDocument();
     expect(screen.queryByText('Batch 000')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unindexed files are prepared only for this genome and cached locally by the browser.')).not.toBeInTheDocument();
     expect(screen.getAllByRole('link').filter((link) => link.hasAttribute('download'))).toHaveLength(0);
   });
 });

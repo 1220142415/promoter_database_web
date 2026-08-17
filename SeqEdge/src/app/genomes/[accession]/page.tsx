@@ -40,12 +40,12 @@ function MetadataMetric({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function MetadataGroup({ title, description, facts, open = false }: { title: string; description: string; facts: MetadataFact[]; open?: boolean }) {
+function MetadataGroup({ title, facts, open = false }: { title: string; facts: MetadataFact[]; open?: boolean }) {
   const visibleFacts = facts.filter((fact) => hasMetadataValue(fact.value));
 
   return (
     <details className="genome-metadata-group" open={open}>
-      <summary><span>{title}</span><small>{description}</small></summary>
+      <summary><span>{title}</span></summary>
       <dl>
         {visibleFacts.map((fact) => (
           <div key={fact.label}>
@@ -95,18 +95,15 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
             <header className="genome-browser-header">
               <Link href="/genomes" className="back-link"><ArrowBackRoundedIcon fontSize="small" /> Genome catalog</Link>
               <div className="detail-title-row">
-                <div><p className="portal-kicker">Assembly {genome.accession} · Interactive genome browser</p><h1>{genome.organismName}</h1>{genome.strain && <p className="detail-strain">Strain {genome.strain}</p>}</div>
-                <div className="detail-context">
-                  <div className="locus-stamp"><span>Initial locus</span><code>{defaultLocus}</code></div>
-                  <div className="release-stamp"><span>Release</span><strong>{releaseId}</strong></div>
-                </div>
+                <div><p className="portal-kicker">Assembly {genome.accession}</p><h1>{genome.organismName}</h1>{genome.strain && <p className="detail-strain">Strain {genome.strain}</p>}</div>
+                <div className="release-stamp"><span>Release</span><strong>{releaseId}</strong></div>
               </div>
             </header>
             {browserAssembly
-              ? <><PortalBrowserPanel assembly={browserAssembly} /><p className="browser-evidence-note">The promoter track contains model-predicted peaks. NCBI annotation is shown as a separate track only when it is available for this assembly.</p></>
+              ? <PortalBrowserPanel assembly={browserAssembly} />
               : match.plannedAssets
-                ? <><PortalOnDemandBrowserPanel accession={genome.accession} releaseId={releaseId} plannedAssets={match.plannedAssets} /><p className="browser-evidence-note">Unindexed files are prepared only for this genome and cached locally by the browser.</p></>
-              : <div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>The catalog metadata and feature counts are available. Reference and indexed track files will appear here after upload validation.</p></div>}
+                ? <PortalOnDemandBrowserPanel accession={genome.accession} releaseId={releaseId} plannedAssets={match.plannedAssets} />
+                : <div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>The catalog metadata and feature counts are available. Reference and indexed track files will appear here after upload validation.</p></div>}
           </section>
         </div>
 
@@ -127,7 +124,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
           </div>
 
           <div className="genome-metadata-groups">
-            <MetadataGroup title="Assembly overview" description="Identifiers and source" open facts={[
+            <MetadataGroup title="Assembly overview" open facts={[
               { label: 'Accession', value: genome.accession, mono: true },
               { label: 'NCBI organism name', value: details?.ncbiOrganismName },
               { label: 'Assembly level', value: genome.assemblyLevel },
@@ -141,7 +138,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
               },
             ]} />
 
-            <MetadataGroup title="Taxonomy" description="GTDB lineage" facts={[
+            <MetadataGroup title="Taxonomy" facts={[
               { label: 'Domain', value: genome.domain },
               { label: 'Phylum', value: genome.phylum },
               { label: 'Class', value: genome.className },
@@ -152,7 +149,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
               { label: 'Taxonomy source', value: details?.taxonomySource },
             ]} />
 
-            <MetadataGroup title="Quality and annotation" description="Continuity and features" facts={[
+            <MetadataGroup title="Quality and annotation" facts={[
               { label: 'Longest contig', value: formatNumber(details?.longestContigBp ?? null, ' bp') },
               { label: 'Protein count', value: formatNumber(details?.proteinCount ?? null) },
               { label: 'tRNA count', value: formatNumber(details?.trnaCount ?? null) },
@@ -162,7 +159,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
               { label: 'Experimental TSS count', value: genome.experimentalTssCount },
             ]} />
 
-            <MetadataGroup title="Annotation and release" description="Sources and provenance" facts={[
+            <MetadataGroup title="Annotation and release" facts={[
               { label: 'Prediction model', value: predictionModel || null },
               { label: 'Prediction generated at', value: details?.promoter.generatedAt },
               { label: 'Annotation source', value: details?.annotation.sourceId },

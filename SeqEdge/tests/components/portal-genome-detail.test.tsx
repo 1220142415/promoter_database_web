@@ -143,7 +143,7 @@ describe('genome detail release contract', () => {
     richMatch.genome.genomeSizeBp = 1_500_000;
     richMatch.details = details();
     vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(richMatch);
-    render(await GenomeDetailPage({ params: Promise.resolve({ accession: richMatch.genome.accession }) }));
+    const { container } = render(await GenomeDetailPage({ params: Promise.resolve({ accession: richMatch.genome.accession }) }));
 
     const browser = screen.getByTestId('browser-contract');
     const metadataHeading = screen.getByRole('heading', { name: 'Genome summary' });
@@ -151,12 +151,13 @@ describe('genome detail release contract', () => {
     expect(screen.getByLabelText('Genome key metrics')).toBeInTheDocument();
     expect(screen.getByText('Assembly overview').closest('details')).toHaveAttribute('open');
     expect(screen.getByText('Taxonomy').closest('details')).not.toHaveAttribute('open');
-    expect(screen.getByRole('heading', { name: 'Assembly quality at a glance' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Promoter statistics' })).toBeInTheDocument();
-    expect(screen.getByText('1,600')).toBeInTheDocument();
-    expect(screen.getByText('Predictions per Mb')).toBeInTheDocument();
-    expect(screen.getByText('> 0.9')).toBeInTheDocument();
+    expect(screen.getByText('1,600 / Mb')).toBeInTheDocument();
     expect(screen.getByText('RAPPtor 1.0')).toBeInTheDocument();
+    expect(container.querySelector('.genome-metrics-grid small')).not.toBeInTheDocument();
+    expect(screen.queryByText('Coding density')).not.toBeInTheDocument();
+    expect(screen.queryByText('Score rule')).not.toBeInTheDocument();
+    expect(screen.queryByText('NCBI Tax ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('Genome source')).not.toBeInTheDocument();
     expect(screen.getByText('Bacillus test organism')).toBeInTheDocument();
     expect(screen.getAllByText('1,500,000 bp')).not.toHaveLength(0);
     expect(screen.getByText('GTDB R214.1')).toBeInTheDocument();

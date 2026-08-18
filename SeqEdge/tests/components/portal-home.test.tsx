@@ -14,7 +14,7 @@ describe('portal home', () => {
 
     expect(screen.getByRole('heading', { name: 'SeqEdge' })).toBeInTheDocument();
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('80,789');
-    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('1,888,109,477');
+    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('305,246,460');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations cataloged53,285');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Current releaseSeqEdge 2026-08-13GTDB taxonomy R214.1');
     expect(screen.getByLabelText('Release statistics')).not.toHaveTextContent('gtdb-r214-2026-08-13');

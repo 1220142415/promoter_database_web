@@ -239,7 +239,7 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
           <select value={annotationStatus} onChange={(event) => setAnnotationStatus(event.target.value as GenomeAnnotationFilter)}>
             <option value="">Any status</option>
             <option value="available">Cataloged</option>
-            <option value="unavailable">Not cataloged</option>
+            <option value="unavailable">Missing</option>
           </select>
         </label>
         <button type="button" className="catalog-reset" onClick={clearFilters} title="Clear filters" aria-label="Clear filters"><RestartAltRoundedIcon /></button>
@@ -299,8 +299,8 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
                 <td><span>{formatCount(genome.genomeSizeBp)} bp</span><small>{formatCount(genome.contigCount)} contigs</small></td>
                 <td className="numeric-cell">{genome.predictedPromoterCount.toLocaleString()}</td>
                 <td>{genome.annotationStatus === 'available'
-                  ? <span className="evidence-available">NCBI cataloged</span>
-                  : <span className="evidence-muted">Not cataloged</span>}</td>
+                  ? <span className="evidence-available">Available</span>
+                  : <span className="evidence-muted">Missing</span>}</td>
               </tr>
             ))}
             {result.items.length === 0 && <tr><td colSpan={6} className="catalog-empty">No genomes match the current filters.</td></tr>}

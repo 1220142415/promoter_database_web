@@ -221,8 +221,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .genome-metadata-heading h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 32px; line-height: 1.18; font-weight: 600; }
 .genome-metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--line); }
 .genome-metric { min-width: 0; min-height: 112px; display: flex; flex-direction: column; justify-content: center; padding: 18px 20px; background: white; }
-.genome-metric span { color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; }
-.genome-metric strong { margin-top: 9px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(21px, 1.7vw, 30px); line-height: 1.1; overflow-wrap: anywhere; }
+.genome-metric span { color: var(--muted); font-size: 12px; line-height: 1.35; font-weight: 650; }
+.genome-metric strong { margin-top: 8px; color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 24px; line-height: 1.15; font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .genome-metadata-groups { display: grid; gap: 10px; }
 .genome-metadata-group { min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: white; overflow: hidden; }
 .genome-metadata-group summary { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 20px; cursor: pointer; list-style: none; color: var(--teal-dark); font-size: 13px; font-weight: 800; text-transform: uppercase; }
@@ -338,6 +338,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .genome-metadata-section { padding-inline: 14px; }
   .genome-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .genome-metric { min-height: 100px; padding: 15px; }
+  .genome-metric strong { font-size: 21px; }
   .genome-metadata-group summary { padding-inline: 16px; }
   .genome-metadata-group dl { grid-template-columns: 1fr; padding-inline: 16px; }
   .methods-layout { grid-template-columns: 1fr; gap: 34px; }

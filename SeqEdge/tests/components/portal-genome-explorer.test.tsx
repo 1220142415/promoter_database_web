@@ -48,6 +48,9 @@ describe('portal genome explorer', () => {
 
     expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Available').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Missing').length).toBeGreaterThan(0);
+    expect(screen.queryByText('NCBI cataloged')).not.toBeInTheDocument();
     await user.type(screen.getByPlaceholderText(/Search accession/), 'Annotated');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain('q=Annotated');

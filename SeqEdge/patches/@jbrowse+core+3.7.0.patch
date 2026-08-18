@@ -15,3 +15,31 @@ index ea4ed66..655f285 100644
          upDownBp,
          forceLoad,
      });
+diff --git a/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/dialogs/SequenceTypeSelector.js b/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/dialogs/SequenceTypeSelector.js
+index 29dc153..311112c 100644
+--- a/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/dialogs/SequenceTypeSelector.js
++++ b/node_modules/@jbrowse/core/BaseFeatureWidget/SequenceFeatureDetails/dialogs/SequenceTypeSelector.js
+@@ -15,1 +15,1 @@
+-    const { intronBp, upDownBp, mode, hasCDS, hasExonOrCDS } = model;
++    const { intronBp, upDownBp, mode, hasCDS, hasExon } = model;
+@@ -29,1 +29,1 @@
+-                ...(hasExonOrCDS
++                ...(hasExon
+@@ -34,1 +34,1 @@
+-                ...(hasExonOrCDS
++                ...(hasExon
+@@ -39,1 +39,1 @@
+-                ...(hasExonOrCDS
++                ...(hasExon
+@@ -44,1 +44,1 @@
+-                ...(hasExonOrCDS
++                ...(hasExon
+@@ -49,1 +49,1 @@
+-                ...(hasExonOrCDS
++                ...(hasExon
+@@ -54,1 +54,1 @@
+-                ...(!hasExonOrCDS
++                ...(!hasExon
+@@ -59,1 +59,1 @@
+-                ...(!hasExonOrCDS
++                ...(!hasExon

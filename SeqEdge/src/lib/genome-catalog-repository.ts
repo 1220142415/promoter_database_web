@@ -542,32 +542,6 @@ function d1RowToMetadataGenome(row: D1GenomeRow, expectedReleaseId: string): Rel
   };
 }
 
-function hasIndexedGenomeAssets(row: D1GenomeRow, expectedLayout: string, accession: string) {
-  const referenceStorage = parseObject(row.reference_storage_json, accession, 'reference storage mapping');
-  if (referenceStorage.layout !== expectedLayout) {
-    throw new GenomeCatalogUnavailableError(accession + ': storage layout does not match the active release.');
-  }
-  const files = referenceStorage.files && typeof referenceStorage.files === 'object' && !Array.isArray(referenceStorage.files)
-    ? referenceStorage.files as Record<string, unknown>
-    : null;
-  if (!files) throw new GenomeCatalogUnavailableError(accession + ': reference files are missing.');
-  for (const [key, label] of [['fasta', 'FASTA'], ['fai', 'FASTA index'], ['gzi', 'FASTA gzip index'], ['metadata', 'metadata']] as const) {
-    if (files[key] !== null && files[key] !== undefined) portalAssetPath(files[key], accession, label, true);
-  }
-  if (row.promoter_data_path !== null && row.promoter_data_path !== undefined) {
-    portalAssetPath(row.promoter_data_path, accession, 'promoter data');
-  }
-  if (row.promoter_index_path !== null && row.promoter_index_path !== undefined) {
-    portalAssetPath(row.promoter_index_path, accession, 'promoter index');
-  }
-  const hasPath = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
-  return hasPath(files.fasta)
-    && hasPath(files.fai)
-    && hasPath(files.gzi)
-    && hasPath(row.promoter_data_path)
-    && hasPath(row.promoter_index_path);
-}
-
 function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId: string): ReleaseGenome {
   const accession = String(row.accession);
   if (String(row.release_id) !== expectedReleaseId) {
@@ -597,19 +571,16 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
     ...referenceStorage,
     ...(expectedLayout === 'packed-v1' ? { assets: packedAssets } : {}),
   }, expectedLayout, expectedReleaseId, accession);
-  const annotationIndexed = row.annotation_status === 'ready'
-    && typeof row.annotation_data_path === 'string' && row.annotation_data_path.length > 0
-    && typeof row.annotation_index_path === 'string' && row.annotation_index_path.length > 0;
   const assets = {
     fasta: portalAssetPath(files?.fasta ?? accession + '/reference.fa.gz', accession, 'FASTA'),
     fastaFai: portalAssetPath(files?.fai ?? accession + '/reference.fa.gz.fai', accession, 'FASTA index'),
     fastaGzi: portalAssetPath(files?.gzi ?? accession + '/reference.fa.gz.gzi', accession, 'FASTA gzip index'),
     predictedPromoters: portalAssetPath(row.promoter_data_path, accession, 'promoter data'),
     predictedPromotersIndex: portalAssetPath(row.promoter_index_path, accession, 'promoter index'),
-    ncbiAnnotations: annotationIndexed
+    ncbiAnnotations: row.annotation_status === 'ready'
       ? portalAssetPath(row.annotation_data_path, accession, 'annotation data')
       : null,
-    ncbiAnnotationsIndex: annotationIndexed
+    ncbiAnnotationsIndex: row.annotation_status === 'ready'
       ? portalAssetPath(row.annotation_index_path, accession, 'annotation index')
       : null,
     metadata: portalAssetPath(files?.metadata, accession, 'metadata', true),
@@ -966,7 +937,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     if (!row) return null;
     const releaseId = String(release.release_id);
     const details = d1CatalogDetails(row, release);
-    if (!hasIndexedGenomeAssets(row, String(release.storage_layout), accession)) {
+    if (row.promoter_status !== 'ready') {
       const genome = d1RowToMetadataGenome(row, releaseId);
       const referenceStorage = parseJson<Record<string, unknown>>(row.reference_storage_json, {});
       const referenceChecksums = referenceStorage.checksums && typeof referenceStorage.checksums === 'object' && !Array.isArray(referenceStorage.checksums)

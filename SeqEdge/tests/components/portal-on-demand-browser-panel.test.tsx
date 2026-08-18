@@ -101,7 +101,7 @@ describe('on-demand genome browser', () => {
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the reference browser available when the promoter track fails', async () => {
+  it('marks only an inaccessible required file as failed', async () => {
     const withoutAnnotation = {
       ...plannedAssets,
       ncbiAnnotations: null,
@@ -119,8 +119,8 @@ describe('on-demand genome browser', () => {
       />,
     );
 
-    expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'false');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Genome asset is unavailable (HTTP 404).');
     expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersFailedAnnotationNot available');
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('prepared-browser')).not.toBeInTheDocument();
   });
 });

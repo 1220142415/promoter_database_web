@@ -36,10 +36,9 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         visibleRegionDownload: unindexed || Boolean(regionExportBase),
       },
     });
-    const tracks: Array<Record<string, unknown>> = [];
-    if (assembly.assets.predictedPromoters) {
-      const predictedTrackId = `${assembly.assemblyName}-predicted-promoters`;
-      tracks.push({
+    const predictedTrackId = `${assembly.assemblyName}-predicted-promoters`;
+    const tracks: Array<Record<string, unknown>> = [
+      {
         trackId: predictedTrackId,
         name: 'RAPPtor predicted promoter peaks',
         metadata: downloadMetadata(
@@ -65,8 +64,8 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
               }),
         },
         displays: [{ displayId: `${predictedTrackId}-display`, type: 'LinearBasicDisplay' }],
-      });
-    }
+      },
+    ];
 
     if (assembly.assets.ncbiAnnotations && (unindexed || assembly.assets.ncbiAnnotationsIndex)) {
       const ncbiTrackId = `${assembly.assemblyName}-ncbi-annotations`;

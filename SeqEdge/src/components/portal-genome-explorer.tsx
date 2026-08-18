@@ -9,6 +9,7 @@ import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
 import ArrowDownwardRoundedIcon from '@mui/icons-material/ArrowDownwardRounded';
 import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
+import CircularProgress from '@mui/material/CircularProgress';
 import { defaultGenomeSortDirection } from '@/lib/genome-search-query';
 import type {
   GenomeAnnotationFilter,
@@ -81,6 +82,7 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);
   const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [staleTaxonomyFrom, setStaleTaxonomyFrom] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const retryRef = useRef<NavigationRequest>({ kind: 'reset', cursor: null });
@@ -117,6 +119,7 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
       if (!response.ok) throw new Error('error' in body && body.error ? body.error : 'Genome catalog request failed.');
       const nextResult = body as GenomeSearchResponse;
       setResult(nextResult);
+      setStaleTaxonomyFrom(null);
       if (navigation.kind === 'reset') {
         setCurrentCursor(null);
         setCursorHistory([]);
@@ -154,6 +157,7 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
     setQuery('');
     setDebouncedQuery('');
     setTaxonomy(EMPTY_TAXONOMY);
+    setStaleTaxonomyFrom(null);
     setSource('');
     setAnnotationStatus('');
     setSortField('accession');
@@ -162,6 +166,7 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
 
   const updateTaxonomy = (rank: GenomeTaxonomyRank, value: string) => {
     const changedIndex = TAXONOMY_RANKS.findIndex((item) => item.key === rank);
+    setStaleTaxonomyFrom(value ? changedIndex : null);
     setTaxonomy((current) => {
       const next = { ...current, [rank]: value };
       TAXONOMY_RANKS.slice(changedIndex + 1).forEach((child) => { next[child.key] = ''; });
@@ -243,19 +248,28 @@ export default function PortalGenomeExplorer({ initialResult }: { initialResult:
       <div className="catalog-taxonomy-panel" role="group" aria-labelledby="taxonomy-filter-heading">
         <div className="catalog-taxonomy-heading" id="taxonomy-filter-heading">Taxonomy filters</div>
         <div className="catalog-taxonomy-grid">
-          {TAXONOMY_RANKS.map((rank, index) => (
-            <label key={rank.key}>
-              <span>{rank.label}</span>
-              <select
-                value={taxonomy[rank.key]}
-                disabled={index > 0 && !TAXONOMY_RANKS.slice(0, index).every((parent) => taxonomy[parent.key])}
-                onChange={(event) => updateTaxonomy(rank.key, event.target.value)}
-              >
-                <option value="">{rank.allLabel}</option>
-                {result.facets.taxonomy[rank.key].map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-          ))}
+          {TAXONOMY_RANKS.map((rank, index) => {
+            const missingParent = index > 0 && !TAXONOMY_RANKS.slice(0, index).every((parent) => taxonomy[parent.key]);
+            const waitingForFreshOptions = staleTaxonomyFrom !== null && index > staleTaxonomyFrom;
+            const loadingThisRank = isLoading && staleTaxonomyFrom !== null && index === staleTaxonomyFrom + 1;
+            return (
+              <label key={rank.key}>
+                <span>{rank.label}</span>
+                <span className="catalog-taxonomy-select">
+                  <select
+                    value={taxonomy[rank.key]}
+                    disabled={missingParent || waitingForFreshOptions}
+                    aria-busy={loadingThisRank || undefined}
+                    onChange={(event) => updateTaxonomy(rank.key, event.target.value)}
+                  >
+                    <option value="">{rank.allLabel}</option>
+                    {result.facets.taxonomy[rank.key].map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                  {loadingThisRank ? <CircularProgress className="catalog-taxonomy-spinner" size={16} thickness={5} aria-label={`Loading ${rank.label} options`} /> : null}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 

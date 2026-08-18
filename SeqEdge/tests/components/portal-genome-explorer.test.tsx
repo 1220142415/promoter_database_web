@@ -102,6 +102,26 @@ describe('portal genome explorer', () => {
     expect(screen.getByLabelText('Class')).toHaveValue('');
   });
 
+  it('locks stale taxonomy options while the next rank is loading', async () => {
+    let resolveRequest!: (value: { ok: true; json: () => Promise<GenomeSearchResponse> }) => void;
+    const fetchMock = vi.fn(() => new Promise<{ ok: true; json: () => Promise<GenomeSearchResponse> }>((resolve) => {
+      resolveRequest = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<PortalGenomeExplorer initialResult={response()} />);
+
+    await user.selectOptions(screen.getByLabelText('Domain'), 'Bacteria');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.getByLabelText('Phylum')).toBeDisabled();
+    expect(screen.getByLabelText('Class')).toBeDisabled();
+    expect(screen.getByRole('progressbar', { name: 'Loading Phylum options' })).toBeInTheDocument();
+
+    resolveRequest({ ok: true, json: async () => response(genomes.slice(0, 8), 8) });
+    await waitFor(() => expect(screen.getByLabelText('Phylum')).toBeEnabled());
+    expect(screen.queryByRole('progressbar', { name: 'Loading Phylum options' })).not.toBeInTheDocument();
+  });
+
   it('keeps rows and exposes a retry action after an API error', async () => {
     const fetchMock = vi.fn(async () => ({ ok: false, json: async () => ({ error: 'temporary outage' }) }));
     vi.stubGlobal('fetch', fetchMock);

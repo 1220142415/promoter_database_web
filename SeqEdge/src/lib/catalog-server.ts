@@ -62,6 +62,8 @@ function normalizeAssets(entry: JsonRecord, accession: string): ReleaseAssets {
     fastaGzi: normalizeAssetPath(stringValue(assets, ['fastaGzi', 'fasta_gzi', 'referenceGzi', 'reference_gzi']), accession, 'reference.fa.gz.gzi'),
     predictedPromoters: normalizeAssetPath(stringValue(assets, ['predictedPromoters', 'predicted_promoters', 'promoterGff3', 'promoter_gff3']), accession, 'predicted-promoters.gff3.gz'),
     predictedPromotersIndex: normalizeAssetPath(stringValue(assets, ['predictedPromotersIndex', 'predicted_promoters_index', 'promoterGff3Index', 'promoter_gff3_index']), accession, 'predicted-promoters.gff3.gz.tbi'),
+    promoterScoresPlus: stringValue(assets, ['promoterScoresPlus', 'promoter_scores_plus']),
+    promoterScoresMinus: stringValue(assets, ['promoterScoresMinus', 'promoter_scores_minus']),
     ncbiAnnotations,
     ncbiAnnotationsIndex: ncbiAnnotations ? ncbiAnnotationsIndex || `${ncbiAnnotations}.tbi` : null,
     metadata: stringValue(assets, ['metadata', 'metadataJson', 'metadata_json']) || `${accession}/metadata.json`,

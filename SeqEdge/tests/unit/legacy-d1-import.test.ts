@@ -24,6 +24,8 @@ describe('legacy D1 import', () => {
       fastaGzi: `${accession}/reference.fa.gz.gzi`,
       predictedPromoters: `${accession}/predicted-promoters.gff3.gz`,
       predictedPromotersIndex: `${accession}/predicted-promoters.gff3.gz.tbi`,
+      promoterScoresPlus: `${accession}/promoter-scores.plus.bw`,
+      promoterScoresMinus: `${accession}/promoter-scores.minus.bw`,
       ncbiAnnotations: `${accession}/ncbi-annotations.gff3.gz`,
       ncbiAnnotationsIndex: `${accession}/ncbi-annotations.gff3.gz.tbi`,
       metadata: `${accession}/metadata.json`,
@@ -52,6 +54,8 @@ describe('legacy D1 import', () => {
     expect(releaseSql).not.toContain('total_predicted_promoters');
     expect(genomeSql).toContain('reference_storage_json');
     expect(genomeSql.match(/INSERT INTO feature_sets /g)).toHaveLength(2);
+    expect(genomeSql).toContain('promoter-scores.plus.bw');
+    expect(genomeSql).toContain('promoter-scores.minus.bw');
     expect(genomeSql).not.toContain('predicted_promoter_count');
     expect(activateSql).toContain("active_release_id = excluded.active_release_id");
     expect(activateSql).not.toContain('UPDATE releases SET state');

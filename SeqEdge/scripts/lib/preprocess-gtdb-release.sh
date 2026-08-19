@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-release_root=${1:?usage: preprocess-gtdb-release.sh RELEASE_ROOT}
+release_root=${1:?usage: preprocess-gtdb-release.sh RELEASE_ROOT [SCORE_CONVERTER] [SCORE_ROOT]}
+score_converter=${2:-}
+score_root=${3:-}
 
 for tool in bgzip tabix samtools gzip; do
   command -v "$tool" >/dev/null 2>&1 || {
@@ -56,5 +58,24 @@ for object_root in "${objects[@]}"; do
     echo "indexed $count release objects" >&2
   fi
 done
+
+if [[ -n "$score_converter" || -n "$score_root" ]]; then
+  [[ -n "$score_converter" && -n "$score_root" ]] || {
+    echo "score converter and score root must be supplied together" >&2
+    exit 2
+  }
+  command -v python3 >/dev/null 2>&1 || {
+    echo "missing required score conversion tool: python3" >&2
+    exit 2
+  }
+  python3 -c 'import pyarrow, pyBigWig' >/dev/null 2>&1 || {
+    echo "score conversion requires the pyarrow and pyBigWig Python packages" >&2
+    exit 2
+  }
+  python3 "$score_converter" \
+    --score-root "$score_root" \
+    --release-root "$release_root" \
+    --stride 50
+fi
 
 echo "indexed $count release objects" >&2

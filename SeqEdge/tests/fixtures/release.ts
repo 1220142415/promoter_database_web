@@ -33,6 +33,8 @@ export function makeGenome(overrides: Partial<ReleaseGenome> = {}): ReleaseGenom
       fastaGzi: `${accession}/reference.fa.gz.gzi`,
       predictedPromoters: `${accession}/predicted-promoters.gff3.gz`,
       predictedPromotersIndex: `${accession}/predicted-promoters.gff3.gz.tbi`,
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
       ncbiAnnotations: null,
       ncbiAnnotationsIndex: null,
       metadata: `${accession}/metadata.json`,

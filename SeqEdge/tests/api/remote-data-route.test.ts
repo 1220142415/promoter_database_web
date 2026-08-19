@@ -53,6 +53,20 @@ describe('remote pilot asset proxy', () => {
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['HEAD', 'GET']);
   });
 
+  it('serves individual BigWig score assets with a stable content type', async () => {
+    process.env.HF_PILOT_ACCESSIONS = accession;
+    process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
+    global.fetch = vi.fn(async () => new Response('BW', {
+      headers: { 'Content-Length': '2', 'Content-Type': 'application/octet-stream' },
+    }));
+
+    const response = await GET(new Request('http://localhost/test'), context('promoter-scores.plus.bw'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/x-bigwig');
+    expect(await response.text()).toBe('BW');
+  });
+
   it('caches range metadata and responses by asset and range', async () => {
     process.env.HF_PILOT_ACCESSIONS = accession;
     process.env.HF_PILOT_STORAGE_BASE_URL = 'https://example.test/objects';
@@ -191,6 +205,33 @@ describe('remote pilot asset proxy', () => {
     expect(response.headers.get('content-range')).toBe('bytes 2-5/10');
     expect(response.headers.get('content-length')).toBe('4');
     expect(await response.text()).toBe('2345');
+    lookup.mockRestore();
+  });
+
+  it('serves packed BigWig fragments as range-addressable score assets', async () => {
+    process.env.HF_STORAGE_BASE_URL = 'https://example.test';
+    const repository = await import('@/lib/genome-catalog-repository');
+    const lookup = vi.spyOn(repository.genomeCatalogRepository, 'getByAccession').mockResolvedValue({
+      releaseId: '2026-08-11', assetBase: '/api/remote-data', genome: {} as never,
+      storage: { layout: 'packed-v1', logicalObjectPrefix: '00/' + accession, baseUrl: 'https://example.test', assets: {
+        'promoter-scores.minus.bw': {
+          packPath: 'releases/2026-08-11/packs/pack-00-000.bin', offset: 8192, length: 10,
+          sha256: 'c'.repeat(64), contentType: 'application/x-bigwig',
+        },
+      } },
+    });
+    global.fetch = vi.fn(async (_url, init) => {
+      expect(new Headers(init?.headers).get('range')).toBe('bytes=8194-8197');
+      return new Response('WIG!', { status: 206, headers: { 'Content-Range': 'bytes 8194-8197/9999', 'Content-Length': '4' } });
+    });
+    const response = await GET(
+      new Request('http://localhost/test', { headers: { range: 'bytes=2-5' } }),
+      context('promoter-scores.minus.bw'),
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-type')).toBe('application/x-bigwig');
+    expect(response.headers.get('content-range')).toBe('bytes 2-5/10');
+    expect(await response.text()).toBe('WIG!');
     lookup.mockRestore();
   });
 

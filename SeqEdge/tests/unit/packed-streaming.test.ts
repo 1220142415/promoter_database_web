@@ -22,6 +22,8 @@ async function createSourceRelease(projectRoot: string) {
   const files = {
     'metadata.json': Buffer.from('{"accession":"GCA_000000001.1"}\n'),
     'reference.fa.gz': Buffer.from('small-test-reference-bytes'),
+    'promoter-scores.plus.bw': Buffer.from('small-plus-bigwig-bytes'),
+    'promoter-scores.minus.bw': Buffer.from('small-minus-bigwig-bytes'),
   };
   for (const [name, bytes] of Object.entries(files)) await writeFile(path.join(objectRoot, name), bytes);
   const genome = {
@@ -41,6 +43,8 @@ async function createSourceRelease(projectRoot: string) {
     assets: {
       metadata: 'objects/' + accession + '/metadata.json',
       reference: 'objects/' + accession + '/reference.fa.gz',
+      promoterScoresPlus: 'objects/' + accession + '/promoter-scores.plus.bw',
+      promoterScoresMinus: 'objects/' + accession + '/promoter-scores.minus.bw',
     },
   };
   await writeFile(path.join(sourceRoot, 'catalog.json'), JSON.stringify({ summary: {}, genomes: [genome] }));
@@ -77,6 +81,8 @@ describe('streaming Pack lifecycle', () => {
     expect(releaseSql).not.toContain('total_predicted_promoters');
     expect(genomeSql).toContain('reference_storage_json');
     expect(genomeSql.match(/INSERT INTO feature_sets /g)).toHaveLength(2);
+    expect(genomeSql).toContain('promoter-scores.plus.bw');
+    expect(genomeSql).toContain('promoter-scores.minus.bw');
     expect(genomeSql).not.toContain('predicted_promoter_count');
   }, 30_000);
 
@@ -102,7 +108,7 @@ describe('streaming Pack lifecycle', () => {
     const plan = JSON.parse(await readFile(path.join(releaseRoot, 'pack-plan.json'), 'utf8'));
     expect(plan.materialization).toBe('plan-only');
     expect(plan.packs).toHaveLength(1);
-    expect(plan.packs[0].entries).toHaveLength(2);
+    expect(plan.packs[0].entries).toHaveLength(4);
     expect(plan.packs[0].entries[1].offset).toBe(4096);
     expect(plan.packs[0].entries.every((entry: { sourcePath: string; sha256: string }) =>
       entry.sourcePath.startsWith('.data/releases/' + fixture.source + '/objects/') && /^[0-9a-f]{64}$/.test(entry.sha256))).toBe(true);

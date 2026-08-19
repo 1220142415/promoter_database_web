@@ -13,6 +13,8 @@ const ALLOWED_FILES = new Set([
   'reference.fa.gz.gzi',
   'predicted-promoters.gff3.gz',
   'predicted-promoters.gff3.gz.tbi',
+  'promoter-scores.plus.bw',
+  'promoter-scores.minus.bw',
   'ncbi-annotations.gff3.gz',
   'ncbi-annotations.gff3.gz.tbi',
   'metadata.json',
@@ -24,6 +26,10 @@ const IMMUTABLE_FILES = new Set([
   'ncbi-annotations.gff3.gz.tbi',
   'metadata.json',
 ]);
+const CONTENT_TYPES: Record<string, string> = {
+  'promoter-scores.plus.bw': 'application/x-bigwig',
+  'promoter-scores.minus.bw': 'application/x-bigwig',
+};
 
 type EdgeCache = {
   match(request: Request): Promise<Response | undefined>;
@@ -144,7 +150,7 @@ function downloadHeaders(request: Request, file: string, response: Response, ran
     'Accept-Ranges': response.headers.get('accept-ranges') || 'bytes',
     'Cache-Control': cacheControl(file, ranged, Boolean(new URL(request.url).searchParams.get('release'))),
     'Content-Disposition': `attachment; filename="${downloadFilename}"`,
-    'Content-Type': response.headers.get('content-type') || 'application/octet-stream',
+    'Content-Type': CONTENT_TYPES[file] || response.headers.get('content-type') || 'application/octet-stream',
   });
   for (const name of ['content-length', 'content-range', 'etag', 'last-modified']) {
     const value = response.headers.get(name);

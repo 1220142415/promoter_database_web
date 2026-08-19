@@ -113,7 +113,7 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
 
         <div className="track-download-format" aria-label="Download format">
           <span>Format</span>
-          <strong>{settings.format === 'fasta' ? 'FASTA' : 'GFF3'}</strong>
+          <strong>{settings.format === 'fasta' ? 'FASTA' : settings.format === 'bigwig' ? 'BigWig' : 'GFF3'}</strong>
         </div>
 
         <TextField

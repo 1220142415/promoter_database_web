@@ -4,6 +4,7 @@ import {
   defaultTrackDownloadFilename,
   normalizeDownloadFilename,
   regionTrackDownloadUrl,
+  trackDownloadSettings,
   visibleTrackRegion,
   wholeTrackDownloadUrl,
   type TrackDownloadMetadata,
@@ -28,6 +29,19 @@ describe('track download helpers', () => {
     expect(defaultTrackDownloadFilename(metadata, 'whole', region)).toBe(
       'RAPPtor-promoters_GCA_000411415.1.gff3.gz',
     );
+  });
+
+  it('uses whole-file BigWig names for raw score tracks', () => {
+    const scores: TrackDownloadMetadata = {
+      ...metadata,
+      kind: 'scores-minus',
+      label: 'RAPPtor raw scores (- strand)',
+      wholeAssetUrl: '/api/local-data/GCA_000411415.1/promoter-scores.minus.bw',
+      visibleRegionDownload: false,
+    };
+    expect(trackDownloadSettings(scores.kind).format).toBe('bigwig');
+    expect(defaultTrackDownloadFilename(scores, 'whole', null)).toBe('RAPPtor-raw-scores-minus_GCA_000411415.1.bw');
+    expect(wholeTrackDownloadUrl(scores, 'minus_scores.bw')).toContain('filename=minus_scores.bw');
   });
 
   it('removes paths and unsafe characters while enforcing the required extension', () => {

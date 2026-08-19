@@ -18,6 +18,8 @@ const CONTENT_TYPES = {
   'reference.fa.gz.gzi': 'application/octet-stream',
   'predicted-promoters.gff3.gz': 'application/gzip',
   'predicted-promoters.gff3.gz.tbi': 'application/octet-stream',
+  'promoter-scores.plus.bw': 'application/x-bigwig',
+  'promoter-scores.minus.bw': 'application/x-bigwig',
   'ncbi-annotations.gff3.gz': 'application/gzip',
   'ncbi-annotations.gff3.gz.tbi': 'application/octet-stream',
   'metadata.json': 'application/json; charset=utf-8',
@@ -199,11 +201,25 @@ function genomeStatements(releaseId, genome) {
   ];
   const promoterPath = logicalAssetPath(genome, 'predicted-promoters.gff3.gz');
   const promoterReady = Boolean(promoterPath);
+  const promoterStorage = {
+    ...packedStorageForFiles(genome.storage, [
+      'predicted-promoters.gff3.gz',
+      'predicted-promoters.gff3.gz.tbi',
+      'promoter-scores.plus.bw',
+      'promoter-scores.minus.bw',
+    ]),
+    files: {
+      data: promoterPath,
+      index: logicalAssetPath(genome, 'predicted-promoters.gff3.gz.tbi'),
+      scoresPlus: logicalAssetPath(genome, 'promoter-scores.plus.bw'),
+      scoresMinus: logicalAssetPath(genome, 'promoter-scores.minus.bw'),
+    },
+  };
   statements.push('INSERT INTO feature_sets (release_id, accession, feature_type, evidence_type, count_unit, feature_count, status, is_default, source_id, source_version, provenance_json, data_path, index_path, storage_json) VALUES (' + [
     sqlString(releaseId), sqlString(genome.accession), "'promoter'", "'prediction'", "'peak'",
     promoterReady ? sqlNumber(genome.predictedPromoterCount) : 'NULL', sqlString(promoterReady ? 'ready' : 'missing'), '1', "'rapptor'", "'unrecorded'", "'{}'",
     sqlString(promoterPath), sqlString(logicalAssetPath(genome, 'predicted-promoters.gff3.gz.tbi')),
-    sqlString(JSON.stringify(packedStorageForFiles(genome.storage, ['predicted-promoters.gff3.gz', 'predicted-promoters.gff3.gz.tbi']))),
+    sqlString(JSON.stringify(promoterStorage)),
   ].join(', ') + ');');
   const annotationPath = logicalAssetPath(genome, 'ncbi-annotations.gff3.gz');
   const annotationStatus = genome.annotationStatus === 'available' && annotationPath

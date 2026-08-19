@@ -53,6 +53,15 @@ node scripts/build-gtdb-release.mjs --tool-mode native --force
 node scripts/validate-gtdb-release.mjs
 ```
 
+To include the step-50 raw RAPPtor scores, install the offline converter dependencies and pass the directory containing one Parquet file per release accession:
+
+```bash
+python3 -m pip install pyarrow pyBigWig
+node scripts/build-gtdb-release.mjs --tool-mode native --score-root /path/to/prediction_scores_step_50 --force
+```
+
+Each Parquet file name must contain its versioned `GCA_...` or `GCF_...` accession. The canonical schema is `Sequence_ID`, `Start`, `End`, `Score`, and `Strand`; RAPPtor `.sidecar.parquet` files with `Sequence_ID`, `Position`, `Score`, and `Strand` are also accepted, with `Position` interpreted as the 0-based 1 bp anchor start. Scores stay in `[0,1]`, and adjacent anchors on each contig and strand must be 50 bp apart. The builder writes `promoter-scores.plus.bw` and `promoter-scores.minus.bw`; it does not copy the Parquet input into the release. Without `--score-root` (and without an archive directory named `prediction_scores_step_50`), releases remain compatible and omit these optional assets.
+
 Generated large files are written to `.data/releases/2026-08-07/` and ignored by Git. The small application catalog is copied to `src/generated/release-catalog.json`.
 
 Each accession contains:
@@ -63,6 +72,8 @@ reference.fa.gz.fai
 reference.fa.gz.gzi
 predicted-promoters.gff3.gz
 predicted-promoters.gff3.gz.tbi
+promoter-scores.plus.bw          # when raw scores are supplied
+promoter-scores.minus.bw         # when raw scores are supplied
 ncbi-annotations.gff3.gz       # only when available
 ncbi-annotations.gff3.gz.tbi   # only when available
 metadata.json

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { createViewState, JBrowseLinearGenomeView } from '@jbrowse/react-linear-genome-view';
+import SeqEdgeMirroredScorePlugin from '@/jbrowse/mirrored-score-plugin';
 import SeqEdgeTrackDownloadPlugin from '@/jbrowse/track-download-plugin';
 import { visibleTrackRegion, type TrackDownloadMetadata } from '@/lib/track-download';
 import type { JBrowseReleaseAssembly } from '@/types/release';
@@ -25,6 +26,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
       kind: TrackDownloadMetadata['kind'],
       label: string,
       wholeAssetUrl: string,
+      visibleRegionDownload = unindexed || Boolean(regionExportBase),
     ): { seqEdgeDownload: TrackDownloadMetadata } => ({
       seqEdgeDownload: {
         kind,
@@ -33,12 +35,49 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         regionExportBase,
         wholeAssetUrl,
         downloadMode: unindexed ? 'browser' : 'remote',
-        visibleRegionDownload: unindexed || Boolean(regionExportBase),
+        visibleRegionDownload,
       },
     });
     const predictedTrackId = `${assembly.assemblyName}-predicted-promoters`;
-    const tracks: Array<Record<string, unknown>> = [
-      {
+    const tracks: Array<Record<string, unknown>> = [];
+    if (assembly.assets.promoterScoresPlus && assembly.assets.promoterScoresMinus) {
+      const trackId = `${assembly.assemblyName}-promoter-scores`;
+      const plusUrl = resolveAsset(assembly.assetBase, assembly.assets.promoterScoresPlus);
+      const minusUrl = resolveAsset(assembly.assetBase, assembly.assets.promoterScoresMinus);
+      tracks.push({
+        trackId,
+        name: 'RAPPtor raw scores (+ / - strands)',
+        metadata: {
+          seqEdgeMirroredScore: true,
+          seqEdgeDownloads: [
+            downloadMetadata('scores-plus', 'RAPPtor raw scores (+ strand)', plusUrl, false).seqEdgeDownload,
+            downloadMetadata('scores-minus', 'RAPPtor raw scores (- strand)', minusUrl, false).seqEdgeDownload,
+          ],
+        },
+        assemblyNames: [assembly.assemblyName],
+        type: 'MultiQuantitativeTrack',
+        adapter: {
+          type: 'MultiWiggleAdapter',
+          subadapters: [
+            { type: 'BigWigAdapter', source: 'plus', name: '+ strand', bigWigLocation: { uri: plusUrl } },
+            { type: 'BigWigAdapter', source: 'minus', name: '- strand', bigWigLocation: { uri: minusUrl } },
+          ],
+        },
+        displays: [{
+          displayId: `${trackId}-display`,
+          type: 'MultiLinearWiggleDisplay',
+          defaultRendering: 'xyplot',
+          autoscale: 'local',
+          minScore: 0,
+          maxScore: 1,
+          renderers: {
+            MultiXYPlotRenderer: { summaryScoreMode: 'max' },
+            MultiLineRenderer: { summaryScoreMode: 'max' },
+          },
+        }],
+      });
+    }
+    tracks.push({
         trackId: predictedTrackId,
         name: 'RAPPtor predicted promoter peaks',
         metadata: downloadMetadata(
@@ -64,8 +103,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
               }),
         },
         displays: [{ displayId: `${predictedTrackId}-display`, type: 'LinearBasicDisplay' }],
-      },
-    ];
+      });
 
     if (assembly.assets.ncbiAnnotations && (unindexed || assembly.assets.ncbiAnnotationsIndex)) {
       const ncbiTrackId = `${assembly.assemblyName}-ncbi-annotations`;
@@ -104,7 +142,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
       displays: (track.displays as Array<{ displayId: string; type: string }>).map((display) => ({
         type: display.type,
         configuration: display.displayId,
-        heightPreConfig: 170,
+        heightPreConfig: display.type === 'MultiLinearWiggleDisplay' ? 180 : 170,
       })),
     }));
 
@@ -136,7 +174,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         },
       },
       tracks,
-      plugins: [SeqEdgeTrackDownloadPlugin],
+      plugins: [SeqEdgeMirroredScorePlugin, SeqEdgeTrackDownloadPlugin],
       location: assembly.defaultLocus,
       defaultSession: {
         name: `${assembly.assemblyName} release view`,

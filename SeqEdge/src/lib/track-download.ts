@@ -1,6 +1,6 @@
-export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi';
+export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi' | 'scores-plus' | 'scores-minus';
 
-export type TrackDownloadFormat = 'fasta' | 'gff3';
+export type TrackDownloadFormat = 'fasta' | 'gff3' | 'bigwig';
 
 export type TrackDownloadScope = 'visible' | 'whole';
 
@@ -52,9 +52,21 @@ const KIND_SETTINGS: Record<TrackDownloadKind, {
     wholeExtension: '.gff3.gz',
     track: 'ncbi',
   },
+  'scores-plus': {
+    prefix: 'RAPPtor-raw-scores-plus',
+    format: 'bigwig',
+    regionExtension: '.bw',
+    wholeExtension: '.bw',
+  },
+  'scores-minus': {
+    prefix: 'RAPPtor-raw-scores-minus',
+    format: 'bigwig',
+    regionExtension: '.bw',
+    wholeExtension: '.bw',
+  },
 };
 
-const KNOWN_DATA_EXTENSION = /\.(?:gff3(?:\.gz)?|fa(?:sta)?(?:\.gz)?|fna(?:\.gz)?|bed|tsv|txt|gz)$/i;
+const KNOWN_DATA_EXTENSION = /\.(?:gff3(?:\.gz)?|fa(?:sta)?(?:\.gz)?|fna(?:\.gz)?|bed|bw|bigwig|tsv|txt|gz)$/i;
 
 export function trackDownloadSettings(kind: TrackDownloadKind) {
   return KIND_SETTINGS[kind];
@@ -64,7 +76,7 @@ export function isTrackDownloadMetadata(value: unknown): value is TrackDownloadM
   if (!value || typeof value !== 'object') return false;
   const metadata = value as Partial<TrackDownloadMetadata>;
   return (
-    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi')
+    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus')
     && typeof metadata.accession === 'string'
     && typeof metadata.label === 'string'
     && typeof metadata.regionExportBase === 'string'

@@ -32,6 +32,8 @@ type DialogSession = {
 const DOWNLOADABLE_DISPLAYS = new Set([
   'LinearBasicDisplay',
   'LinearReferenceSequenceDisplay',
+  'LinearWiggleDisplay',
+  'MultiLinearWiggleDisplay',
 ]);
 
 export default class SeqEdgeTrackDownloadPlugin extends Plugin {
@@ -48,9 +50,23 @@ export default class SeqEdgeTrackDownloadPlugin extends Plugin {
             trackMenuItems() {
               const items = superTrackMenuItems();
               const track = getContainingTrack(self);
-              const trackMetadata = getConf(track, 'metadata') as { seqEdgeDownload?: unknown };
-              const metadata = trackMetadata.seqEdgeDownload;
-              if (!isTrackDownloadMetadata(metadata)) return items;
+              const trackMetadata = getConf(track, 'metadata') as { seqEdgeDownload?: unknown; seqEdgeDownloads?: unknown };
+              const downloads = Array.isArray(trackMetadata.seqEdgeDownloads)
+                ? trackMetadata.seqEdgeDownloads.filter(isTrackDownloadMetadata)
+                : isTrackDownloadMetadata(trackMetadata.seqEdgeDownload)
+                  ? [trackMetadata.seqEdgeDownload]
+                  : [];
+              if (!downloads.length) return items;
+
+              const openDialog = (metadata: (typeof downloads)[number]) => {
+                const view = getContainingView(self) as unknown as LinearViewLike;
+                const session = getSession(self) as unknown as DialogSession;
+                const visibleRegion = metadata.visibleRegionDownload === false ? null : visibleTrackRegion(view);
+                session.queueDialog((doneCallback) => [
+                  TrackDownloadDialog,
+                  { handleClose: doneCallback, metadata, visibleRegion },
+                ]);
+              };
 
               return [
                 ...items,
@@ -58,15 +74,14 @@ export default class SeqEdgeTrackDownloadPlugin extends Plugin {
                   label: 'Download track data',
                   icon: DownloadRoundedIcon,
                   priority: 50,
-                  onClick: () => {
-                    const view = getContainingView(self) as unknown as LinearViewLike;
-                    const session = getSession(self) as unknown as DialogSession;
-                    const visibleRegion = metadata.visibleRegionDownload === false ? null : visibleTrackRegion(view);
-                    session.queueDialog((doneCallback) => [
-                      TrackDownloadDialog,
-                      { handleClose: doneCallback, metadata, visibleRegion },
-                    ]);
-                  },
+                  ...(downloads.length === 1
+                    ? { onClick: () => openDialog(downloads[0]) }
+                    : {
+                        subMenu: downloads.map((metadata) => ({
+                          label: metadata.kind === 'scores-plus' ? 'Plus strand BigWig' : 'Minus strand BigWig',
+                          onClick: () => openDialog(metadata),
+                        })),
+                      }),
                 },
               ];
             },

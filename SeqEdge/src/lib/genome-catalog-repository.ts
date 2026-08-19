@@ -535,6 +535,8 @@ function d1RowToMetadataGenome(row: D1GenomeRow, expectedReleaseId: string): Rel
       fastaGzi: '',
       predictedPromoters: '',
       predictedPromotersIndex: '',
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
       ncbiAnnotations: null,
       ncbiAnnotationsIndex: null,
       metadata: null,
@@ -555,6 +557,9 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
     throw new GenomeCatalogUnavailableError(accession + ': reference files are missing.');
   }
   const promoterStorage = parseJson<Record<string, unknown>>(row.promoter_storage_json, {});
+  const promoterFiles = promoterStorage.files && typeof promoterStorage.files === 'object' && !Array.isArray(promoterStorage.files)
+    ? promoterStorage.files as Record<string, unknown>
+    : null;
   const annotationStorage = parseJson<Record<string, unknown>>(row.annotation_storage_json, {});
   const packedAssets = {
     ...(referenceStorage.assets && typeof referenceStorage.assets === 'object' && !Array.isArray(referenceStorage.assets)
@@ -577,6 +582,8 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
     fastaGzi: portalAssetPath(files?.gzi ?? accession + '/reference.fa.gz.gzi', accession, 'FASTA gzip index'),
     predictedPromoters: portalAssetPath(row.promoter_data_path, accession, 'promoter data'),
     predictedPromotersIndex: portalAssetPath(row.promoter_index_path, accession, 'promoter index'),
+    promoterScoresPlus: portalAssetPath(promoterFiles?.scoresPlus, accession, 'plus-strand promoter scores', true),
+    promoterScoresMinus: portalAssetPath(promoterFiles?.scoresMinus, accession, 'minus-strand promoter scores', true),
     ncbiAnnotations: row.annotation_status === 'ready'
       ? portalAssetPath(row.annotation_data_path, accession, 'annotation data')
       : null,
@@ -973,6 +980,8 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
       fastaGzi: versionAsset(genome.assets.fastaGzi)!,
       predictedPromoters: versionAsset(genome.assets.predictedPromoters)!,
       predictedPromotersIndex: versionAsset(genome.assets.predictedPromotersIndex)!,
+      promoterScoresPlus: versionAsset(genome.assets.promoterScoresPlus),
+      promoterScoresMinus: versionAsset(genome.assets.promoterScoresMinus),
       ncbiAnnotations: versionAsset(genome.assets.ncbiAnnotations),
       ncbiAnnotationsIndex: versionAsset(genome.assets.ncbiAnnotationsIndex),
       metadata: versionAsset(genome.assets.metadata),

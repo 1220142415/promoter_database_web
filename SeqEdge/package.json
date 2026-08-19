@@ -30,6 +30,7 @@
         "hf:batch-plan": "node scripts/build-hf-batch-asset-plan.mjs",
         "test": "vitest run",
         "test:data": "node scripts/validate-gtdb-release.mjs --quick",
+        "test:scores": "python -m unittest discover -s tests/python -p test_*.py",
         "test:watch": "vitest",
         "test:unit": "vitest run tests/unit",
         "test:api": "vitest run tests/api",

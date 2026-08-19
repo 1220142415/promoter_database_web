@@ -55,6 +55,17 @@ async function isBgzf(path) {
   }
 }
 
+async function isBigWig(path) {
+  const handle = await open(path, 'r');
+  try {
+    const header = Buffer.alloc(4);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    return bytesRead === 4 && header.readUInt32LE(0) === 0x888ffc26;
+  } finally {
+    await handle.close();
+  }
+}
+
 function runIndexedRead(command, args, label) {
   let result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true });
   if (process.platform === 'win32' && result.status === null) {
@@ -113,6 +124,15 @@ async function main() {
     if (splitCount > 0) circularOriginSplitGenomes += 1;
 
     const requiredAssets = ['fasta', 'predictedPromoters', 'metadata'];
+    const hasScoreTracks = Boolean(genome.assets.promoterScoresPlus || genome.assets.promoterScoresMinus);
+    assert(
+      Boolean(genome.assets.promoterScoresPlus) === Boolean(genome.assets.promoterScoresMinus),
+      `${genome.accession}: raw score tracks must include both strands`,
+    );
+    if (release.rawScoreTracks) {
+      assert(hasScoreTracks, `${genome.accession}: release requires raw score tracks`);
+    }
+    if (hasScoreTracks) requiredAssets.push('promoterScoresPlus', 'promoterScoresMinus');
     if (release.indexed) requiredAssets.push('fastaFai', 'fastaGzi', 'predictedPromotersIndex');
     if (genome.annotationStatus === 'available') {
       annotated += 1;
@@ -131,6 +151,10 @@ async function main() {
       const details = await stat(join(options.release, 'objects', asset));
       assert(details.isFile() && details.size > 0, `${genome.accession}: empty ${key} asset`);
       assert(SHA256.test(genome.checksums[key]), `${genome.accession}: missing ${key} checksum`);
+    }
+    if (hasScoreTracks) {
+      assert(await isBigWig(join(options.release, 'objects', genome.assets.promoterScoresPlus)), `${genome.accession}: plus score asset is not BigWig`);
+      assert(await isBigWig(join(options.release, 'objects', genome.assets.promoterScoresMinus)), `${genome.accession}: minus score asset is not BigWig`);
     }
     if (release.indexed && !options.quick) {
       const fastaPath = join(options.release, 'objects', genome.assets.fasta);

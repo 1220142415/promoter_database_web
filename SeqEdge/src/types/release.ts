@@ -4,6 +4,8 @@ export interface ReleaseAssets {
   fastaGzi: string;
   predictedPromoters: string;
   predictedPromotersIndex: string;
+  promoterScoresPlus: string | null;
+  promoterScoresMinus: string | null;
   ncbiAnnotations: string | null;
   ncbiAnnotationsIndex: string | null;
   metadata: string | null;

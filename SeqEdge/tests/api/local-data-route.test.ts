@@ -15,6 +15,7 @@ beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'seqedge-local-data-'));
   await mkdir(join(root, accession), { recursive: true });
   await writeFile(join(root, accession, 'metadata.json'), '0123456789');
+  await writeFile(join(root, accession, 'promoter-scores.plus.bw'), 'BIGWIGDATA');
   process.env.LOCAL_DATA_ROOT = root;
 });
 
@@ -50,6 +51,17 @@ describe('local release asset route', () => {
     const response = await GET(new Request('http://localhost/test?filename=../renamed.txt'), context('metadata.json'));
     expect(response.status).toBe(200);
     expect(response.headers.get('content-disposition')).toContain('filename="renamed.json"');
+  });
+
+  it('serves BigWig score assets with byte ranges', async () => {
+    const response = await GET(
+      new Request('http://localhost/test', { headers: { range: 'bytes=0-3' } }),
+      context('promoter-scores.plus.bw'),
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-type')).toContain('application/x-bigwig');
+    expect(response.headers.get('content-range')).toBe('bytes 0-3/10');
+    expect(await response.text()).toBe('BIGW');
   });
 
   it.each([

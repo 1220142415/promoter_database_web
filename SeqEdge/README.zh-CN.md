@@ -53,6 +53,15 @@ node scripts/build-gtdb-release.mjs --tool-mode native --force
 node scripts/validate-gtdb-release.mjs
 ```
 
+如需加入 step=50 的 RAPPtor cutoff 前原始分数，先安装离线转换依赖，再传入每个待发布 accession 恰好一个 Parquet 的目录：
+
+```bash
+python3 -m pip install pyarrow pyBigWig
+node scripts/build-gtdb-release.mjs --tool-mode native --score-root /path/to/prediction_scores_step_50 --force
+```
+
+每个 Parquet 文件名必须包含带版本号的 `GCA_...` 或 `GCF_...` accession。标准格式包含 `Sequence_ID`、`Start`、`End`、`Score`、`Strand` 五列；RAPPtor 的 `.sidecar.parquet` 格式 `Sequence_ID`、`Position`、`Score`、`Strand` 也可以直接使用，其中 `Position` 按 0-based 的 1 bp anchor 起点解释。score 保持在 `[0,1]`，同一 contig/strand 的相邻 anchor 必须相差 50 bp。构建器生成 `promoter-scores.plus.bw` 和 `promoter-scores.minus.bw`，不会把 Parquet 复制进 release。未传 `--score-root` 且压缩包内没有 `prediction_scores_step_50` 目录时，旧 release 仍可正常构建，这两个可选资产为 `null`。
+
 大文件输出到 `.data/releases/2026-08-07/`，并被 Git 忽略。供网站构建使用的小型 catalog 会复制到 `src/generated/release-catalog.json`。
 
 每个 accession 的对象目录包含：
@@ -63,6 +72,8 @@ reference.fa.gz.fai
 reference.fa.gz.gzi
 predicted-promoters.gff3.gz
 predicted-promoters.gff3.gz.tbi
+promoter-scores.plus.bw          # 提供原始分数时生成
+promoter-scores.minus.bw         # 提供原始分数时生成
 ncbi-annotations.gff3.gz       # 仅可用时存在
 ncbi-annotations.gff3.gz.tbi   # 仅可用时存在
 metadata.json

@@ -98,6 +98,8 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
           fastaGzi: '',
           predictedPromoters: promoterUrl,
           predictedPromotersIndex: '',
+          promoterScoresPlus: null,
+          promoterScoresMinus: null,
           ncbiAnnotations: annotationUrl,
           ncbiAnnotationsIndex: null,
           metadata: null,

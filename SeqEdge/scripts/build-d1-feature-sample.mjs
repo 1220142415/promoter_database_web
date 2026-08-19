@@ -88,6 +88,14 @@ function genomeValues(releaseId, genome) {
 }
 
 function promoterFeatureValues(releaseId, genome) {
+  const storage = {
+    files: {
+      data: relativeAsset(genome.assets.predictedPromoters),
+      index: relativeAsset(genome.assets.predictedPromotersIndex),
+      scoresPlus: relativeAsset(genome.assets.promoterScoresPlus),
+      scoresMinus: relativeAsset(genome.assets.promoterScoresMinus),
+    },
+  };
   return [
     releaseId,
     genome.accession,
@@ -102,7 +110,7 @@ function promoterFeatureValues(releaseId, genome) {
     JSON.stringify({ catalogRelease: releaseId }),
     relativeAsset(genome.assets.predictedPromoters),
     relativeAsset(genome.assets.predictedPromotersIndex),
-    '{}',
+    JSON.stringify(storage),
   ];
 }
 

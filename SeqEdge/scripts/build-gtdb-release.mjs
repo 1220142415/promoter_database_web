@@ -39,6 +39,7 @@ function parseArgs(argv) {
     allowUnindexed: false,
     toolMode: 'auto',
     wslDistro: process.env.GTDB_WSL_DISTRO || 'Ubuntu',
+    scoreRoot: null,
     limit: null,
     publishStage: null,
   };
@@ -60,6 +61,7 @@ function parseArgs(argv) {
     else if (argument === '--allow-unindexed') options.allowUnindexed = true;
     else if (argument === '--tool-mode') options.toolMode = value();
     else if (argument === '--wsl-distro') options.wslDistro = value();
+    else if (argument === '--score-root') options.scoreRoot = resolve(value());
     else if (argument === '--limit') options.limit = Number(value());
     else if (argument === '--publish-stage') options.publishStage = resolve(value());
     else if (argument === '--help' || argument === '-h') {
@@ -71,6 +73,7 @@ function parseArgs(argv) {
         `  --no-app-catalog        Do not write the app catalog copy\n` +
         `  --tool-mode MODE        auto, native, wsl, or none\n` +
         `  --wsl-distro NAME       WSL distribution (default: Ubuntu)\n` +
+        `  --score-root PATH       Per-genome raw score Parquet directory (optional)\n` +
         `  --allow-unindexed       Build a non-publishable gzip-only fallback\n` +
         `  --preflight             Inspect inputs/tools without building\n` +
         `  --limit N               Build the first N accessions (smoke testing only)\n` +
@@ -108,6 +111,21 @@ function detectToolchain(options) {
   else if (options.toolMode === 'wsl') selected = wsl ? 'wsl' : null;
   else if (options.toolMode === 'auto') selected = native ? 'native' : wsl ? 'wsl' : null;
   return { native, wsl, selected };
+}
+
+function detectScoreRuntime(toolchain, options) {
+  const probe = ['-c', 'import pyarrow, pyBigWig'];
+  if (toolchain.selected === 'native') {
+    return spawnSync('python3', probe, { stdio: 'ignore', windowsHide: true }).status === 0;
+  }
+  if (toolchain.selected === 'wsl') {
+    return spawnSync(
+      'wsl.exe',
+      ['-d', options.wslDistro, 'python3', ...probe],
+      { stdio: 'ignore', windowsHide: true },
+    ).status === 0;
+  }
+  return null;
 }
 
 function run(command, args, settings = {}) {
@@ -412,22 +430,27 @@ function toWslPath(path, distro) {
   return result.stdout.trim();
 }
 
-async function preprocessRelease(stage, toolchain, options) {
+async function preprocessRelease(stage, toolchain, options, scoreRoot = null) {
   const helper = resolve(projectRoot, 'scripts', 'lib', 'preprocess-gtdb-release.sh');
+  const converter = resolve(projectRoot, 'scripts', 'convert-promoter-scores.py');
   if (toolchain.selected === 'native') {
-    await run('bash', [helper, stage]);
+    const nativeArgs = [stage];
+    if (scoreRoot) nativeArgs.push(converter, scoreRoot);
+    await run('bash', [helper, ...nativeArgs]);
   } else if (toolchain.selected === 'wsl') {
+    const helperArgs = [toWslPath(stage, options.wslDistro)];
+    if (scoreRoot) helperArgs.push(toWslPath(converter, options.wslDistro), toWslPath(scoreRoot, options.wslDistro));
     await run('wsl.exe', [
       '-d',
       options.wslDistro,
       'bash',
       toWslPath(helper, options.wslDistro),
-      toWslPath(stage, options.wslDistro),
+      ...helperArgs,
     ]);
   }
 }
 
-function assetPaths(accession, hasAnnotation, indexed) {
+function assetPaths(accession, hasAnnotation, indexed, scoreIndexed = false) {
   const prefix = accession;
   return {
     fasta: `${prefix}/reference.fa.gz`,
@@ -435,6 +458,8 @@ function assetPaths(accession, hasAnnotation, indexed) {
     fastaGzi: indexed ? `${prefix}/reference.fa.gz.gzi` : null,
     predictedPromoters: `${prefix}/predicted-promoters.gff3.gz`,
     predictedPromotersIndex: indexed ? `${prefix}/predicted-promoters.gff3.gz.tbi` : null,
+    promoterScoresPlus: scoreIndexed ? `${prefix}/promoter-scores.plus.bw` : null,
+    promoterScoresMinus: scoreIndexed ? `${prefix}/promoter-scores.minus.bw` : null,
     ncbiAnnotations: hasAnnotation ? `${prefix}/ncbi-annotations.gff3.gz` : null,
     ncbiAnnotationsIndex: hasAnnotation && indexed ? `${prefix}/ncbi-annotations.gff3.gz.tbi` : null,
     metadata: `${prefix}/metadata.json`,
@@ -542,6 +567,15 @@ async function build(options, toolchain) {
   try {
     console.error(`Extracting ${options.archive}`);
     await extractArchive(options.archive, extracted);
+    const scoreRoot = options.scoreRoot || join(extracted, 'prediction_scores_step_50');
+    const scoreEnabled = await exists(scoreRoot);
+    if (options.scoreRoot && !scoreEnabled) throw new Error(`score root does not exist: ${scoreRoot}`);
+    if (scoreEnabled) {
+      console.error(`Raw score Parquet directory: ${scoreRoot}`);
+      if (toolchain.selected && !detectScoreRuntime(toolchain, options)) {
+        throw new Error('raw score conversion requires Python 3 with pyarrow and pyBigWig in the selected toolchain');
+      }
+    }
     const taxonomyPath = join(extracted, 'filtered_genome_tax_bac', 'genome_tax_bac.filtered.tsv');
     const taxonomy = await loadTaxonomy(taxonomyPath);
     const sourceFastas = (await readdir(join(extracted, 'genomes'))).filter((name) => name.endsWith('_genomic.fna.gz'));
@@ -649,9 +683,10 @@ async function build(options, toolchain) {
     const indexed = Boolean(toolchain.selected);
     if (indexed) {
       console.error(`Preprocessing assets with ${toolchain.selected} bgzip/tabix/samtools`);
-      await preprocessRelease(stage, toolchain, options);
+      await preprocessRelease(stage, toolchain, options, scoreEnabled ? scoreRoot : null);
     } else {
       console.error('WARNING: building a gzip-only, non-publishable fallback without random-access indexes');
+      if (scoreEnabled) console.error('WARNING: raw score tracks are omitted because the release is not indexed');
     }
 
     const genomes = [];
@@ -665,7 +700,8 @@ async function build(options, toolchain) {
     for (const record of records) {
       const { accession, taxonomy: tax } = record;
       const hasAnnotation = record.annotationStatus === 'available';
-      const assets = assetPaths(accession, hasAnnotation, indexed);
+      const scoreIndexed = indexed && scoreEnabled;
+      const assets = assetPaths(accession, hasAnnotation, indexed, scoreIndexed);
       const checksums = {};
       for (const [key, asset] of Object.entries(assets)) {
         if (!asset || key === 'metadata') continue;
@@ -749,6 +785,7 @@ async function build(options, toolchain) {
       indexed,
       publishable: indexed && options.limit === null,
       preprocessing: indexed ? 'bgzip-tabix-samtools' : 'gzip-only-fallback',
+      rawScoreTracks: indexed && scoreEnabled ? { format: 'bigwig', strideBp: 50, promoterPeakCutoff: 0.9 } : null,
     };
     const catalog = {
       schemaVersion: 1,
@@ -829,16 +866,23 @@ async function main() {
   }
   if (!isAbsolute(options.archive) || !isAbsolute(options.output)) throw new Error('archive and output paths must resolve to absolute paths');
   if (!(await exists(options.archive))) throw new Error(`source archive does not exist: ${options.archive}`);
+  if (options.scoreRoot && !(await exists(options.scoreRoot))) throw new Error(`score root does not exist: ${options.scoreRoot}`);
   const archiveStats = await stat(options.archive);
   const toolchain = detectToolchain(options);
+  const scoreRuntime = options.scoreRoot && toolchain.selected ? detectScoreRuntime(toolchain, options) : null;
   console.log(JSON.stringify({
     archive: options.archive,
     archiveBytes: archiveStats.size,
     output: options.output,
     releaseDate: options.releaseDate,
     tools: toolchain,
+    scoreInput: options.scoreRoot,
+    scoreRuntime: options.scoreRoot ? { required: Boolean(toolchain.selected), available: scoreRuntime } : null,
     fallbackAllowed: options.allowUnindexed,
   }, null, 2));
+  if (options.scoreRoot && toolchain.selected && !scoreRuntime) {
+    throw new Error('raw score conversion requires Python 3 with pyarrow and pyBigWig in the selected toolchain');
+  }
   if (!options.preflightOnly) await build(options, toolchain);
 }
 

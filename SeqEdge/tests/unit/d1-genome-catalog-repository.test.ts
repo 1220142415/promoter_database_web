@@ -338,6 +338,25 @@ describe('D1 genome catalog repository', () => {
     expect(await repository.getByAccession('GCA_000000001')).toBeNull();
   });
 
+  it('maps promoter score files from D1 storage into versioned release assets', async () => {
+    const database = new FakeD1();
+    const accession = 'GCA_000000001.1';
+    database.rows[0].promoter_storage_json = JSON.stringify({
+      files: {
+        scoresPlus: `objects/${accession}/promoter-scores.plus.bw`,
+        scoresMinus: `objects/${accession}/promoter-scores.minus.bw`,
+      },
+    });
+    const repository = new D1GenomeCatalogRepository(database);
+
+    const match = await repository.getByAccession(accession);
+
+    expect(match?.genome.assets).toMatchObject({
+      promoterScoresPlus: `${accession}/promoter-scores.plus.bw?release=2026-08-07`,
+      promoterScoresMinus: `${accession}/promoter-scores.minus.bw?release=2026-08-07`,
+    });
+  });
+
   it('joins default feature sets for search, sorting, and annotation filters', async () => {
     const database = new FakeD1();
     const repository = new D1GenomeCatalogRepository(database);

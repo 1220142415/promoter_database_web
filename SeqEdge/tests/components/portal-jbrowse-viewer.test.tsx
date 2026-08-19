@@ -12,12 +12,16 @@ vi.mock('@jbrowse/react-linear-genome-view', () => ({
 
 import { createViewState } from '@jbrowse/react-linear-genome-view';
 
-function assembly(withNcbi: boolean) {
+function assembly(withNcbi: boolean, withScores = false) {
   const accession = withNcbi ? 'GCA_000411415.1' : 'GCA_000421325.1';
   const genome = makeGenome({ accession });
   if (withNcbi) {
     genome.assets.ncbiAnnotations = `${accession}/ncbi-annotations.gff3.gz`;
     genome.assets.ncbiAnnotationsIndex = `${accession}/ncbi-annotations.gff3.gz.tbi`;
+  }
+  if (withScores) {
+    genome.assets.promoterScoresPlus = `${accession}/promoter-scores.plus.bw`;
+    genome.assets.promoterScoresMinus = `${accession}/promoter-scores.minus.bw`;
   }
   return { assemblyName: accession, defaultLocus: `${accession}:1-10000`, assetBase: '/api/local-data', assets: genome.assets };
 }
@@ -43,7 +47,10 @@ describe('release JBrowse configuration', () => {
     ]);
     expect(config.tracks.map((track) => track.metadata.seqEdgeDownload.kind)).toEqual(['promoters', 'ncbi']);
     expect(config.tracks.every((track) => track.adapter.type === 'Gff3TabixAdapter')).toBe(true);
-    expect(config.plugins[0].name).toBe('SeqEdgeTrackDownloadPlugin');
+    expect(config.plugins.map((plugin) => plugin.name)).toEqual([
+      'SeqEdgeMirroredScorePlugin',
+      'SeqEdgeTrackDownloadPlugin',
+    ]);
     expect(config.defaultSession.view.tracks[0].displays[0].configuration).toBe(
       'GCA_000411415.1-reference-sequence-LinearReferenceSequenceDisplay',
     );
@@ -54,6 +61,52 @@ describe('release JBrowse configuration', () => {
     render(<PortalJBrowseViewer assembly={assembly(false)} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as { tracks: ReadonlyArray<{ name: string }> };
     expect(config.tracks.map((track) => track.name)).toEqual(['RAPPtor predicted promoter peaks']);
+  });
+
+  it('adds one fixed-scale mirrored raw score track before promoter peaks', () => {
+    render(<PortalJBrowseViewer assembly={assembly(true, true)} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: ReadonlyArray<{
+        name: string;
+        type: string;
+        adapter: Record<string, unknown>;
+        displays: ReadonlyArray<Record<string, unknown>>;
+        metadata: {
+          seqEdgeMirroredScore?: boolean;
+          seqEdgeDownloads?: ReadonlyArray<{ kind: string; visibleRegionDownload: boolean }>;
+        };
+      }>;
+      defaultSession: { view: { tracks: ReadonlyArray<{ displays: ReadonlyArray<{ heightPreConfig: number }> }> } };
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'RAPPtor raw scores (+ / - strands)',
+      'RAPPtor predicted promoter peaks',
+      'NCBI genome annotation',
+    ]);
+    expect(config.tracks[0].type).toBe('MultiQuantitativeTrack');
+    expect(config.tracks[0].adapter).toMatchObject({
+      type: 'MultiWiggleAdapter',
+      subadapters: [
+        { type: 'BigWigAdapter', source: 'plus', bigWigLocation: { uri: expect.stringContaining('promoter-scores.plus.bw') } },
+        { type: 'BigWigAdapter', source: 'minus', bigWigLocation: { uri: expect.stringContaining('promoter-scores.minus.bw') } },
+      ],
+    });
+    expect(config.tracks[0].displays[0]).toMatchObject({
+      type: 'MultiLinearWiggleDisplay',
+      defaultRendering: 'xyplot',
+      minScore: 0,
+      maxScore: 1,
+      renderers: {
+        MultiXYPlotRenderer: { summaryScoreMode: 'max' },
+        MultiLineRenderer: { summaryScoreMode: 'max' },
+      },
+    });
+    expect(config.tracks[0].metadata.seqEdgeMirroredScore).toBe(true);
+    expect(config.tracks[0].metadata.seqEdgeDownloads).toEqual([
+      expect.objectContaining({ kind: 'scores-plus', visibleRegionDownload: false }),
+      expect.objectContaining({ kind: 'scores-minus', visibleRegionDownload: false }),
+    ]);
+    expect(config.defaultSession.view.tracks.map((track) => track.displays[0].heightPreConfig)).toEqual([120, 180, 170, 170]);
   });
 
   it('uses whole-file adapters for a browser-prepared staged genome', () => {

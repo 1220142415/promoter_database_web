@@ -27,7 +27,12 @@ describe('SeqEdge JBrowse track download plugin', () => {
     new SeqEdgeTrackDownloadPlugin().install(pluginManager as never);
     expect(pluginManager.addToExtensionPoint).toHaveBeenCalledWith('Core-extendPluggableElement', expect.any(Function));
 
-    let extender: ((self: unknown) => { views: { trackMenuItems: () => Array<{ label?: string; onClick?: () => void }> } }) | undefined;
+    type MenuItem = {
+      label?: string;
+      onClick?: () => void;
+      subMenu?: Array<{ label?: string; onClick?: () => void }>;
+    };
+    let extender: ((self: unknown) => { views: { trackMenuItems: () => MenuItem[] } }) | undefined;
     const extendedModel = {};
     const extend = vi.fn((callback: typeof extender) => {
       extender = callback;
@@ -63,6 +68,44 @@ describe('SeqEdge JBrowse track download plugin', () => {
 
     mocks.getConf.mockReturnValue({});
     expect(extensionViews?.views.trackMenuItems().map((item) => item.label)).toEqual(['Existing action']);
+
+    const multiDisplay = {
+      name: 'MultiLinearWiggleDisplay',
+      stateModel: { extend },
+    };
+    extension?.(multiDisplay as never);
+    const multiViews = extender?.({ trackMenuItems: () => [{ label: 'Existing action' }] });
+    mocks.getConf.mockReturnValue({
+      seqEdgeDownloads: [
+        {
+          kind: 'scores-plus',
+          accession: 'GCA_000411415.1',
+          label: 'RAPPtor raw scores (+ strand)',
+          regionExportBase: '',
+          wholeAssetUrl: '/api/local-data/GCA_000411415.1/promoter-scores.plus.bw',
+          visibleRegionDownload: false,
+        },
+        {
+          kind: 'scores-minus',
+          accession: 'GCA_000411415.1',
+          label: 'RAPPtor raw scores (- strand)',
+          regionExportBase: '',
+          wholeAssetUrl: '/api/local-data/GCA_000411415.1/promoter-scores.minus.bw',
+          visibleRegionDownload: false,
+        },
+      ],
+    });
+    const multiItems = multiViews?.views.trackMenuItems() || [];
+    expect(multiItems[1].subMenu?.map((item) => item.label)).toEqual([
+      'Plus strand BigWig',
+      'Minus strand BigWig',
+    ]);
+    multiItems[1].subMenu?.[1].onClick?.();
+    expect(queueDialog).toHaveBeenCalledTimes(2);
+    const dialogFactory = queueDialog.mock.calls[1][0] as (done: () => void) => [unknown, { metadata: { kind: string }; visibleRegion: unknown }];
+    const [, dialogProps] = dialogFactory(vi.fn());
+    expect(dialogProps.metadata.kind).toBe('scores-minus');
+    expect(dialogProps.visibleRegion).toBeNull();
   });
 
   it('leaves unrelated display types unchanged', () => {
@@ -71,7 +114,7 @@ describe('SeqEdge JBrowse track download plugin', () => {
       addToExtensionPoint: vi.fn((_name: string, callback: typeof extension) => { extension = callback; }),
     };
     new SeqEdgeTrackDownloadPlugin().install(pluginManager as never);
-    const element = { name: 'LinearWiggleDisplay', stateModel: {} };
+    const element = { name: 'LinearPileupDisplay', stateModel: {} };
     expect(extension?.(element)).toBe(element);
   });
 });

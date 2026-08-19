@@ -56,10 +56,18 @@ function genomeStatements(releaseId, genome, storage) {
     'INSERT INTO genomes (release_id, accession, organism_name, strain, domain, phylum, class_name, order_name, family, genus, genome_source, assembly_level, genome_size_bp, gc_content, contig_count, completeness, contamination, default_locus, primary_sequence, reference_storage_json) VALUES (' + values.join(', ') + ');',
   ];
   const promoterReady = Boolean(genome.assets.predictedPromoters);
+  const promoterStorage = {
+    files: {
+      data: genome.assets.predictedPromoters,
+      index: genome.assets.predictedPromotersIndex,
+      scoresPlus: genome.assets.promoterScoresPlus || null,
+      scoresMinus: genome.assets.promoterScoresMinus || null,
+    },
+  };
   statements.push('INSERT INTO feature_sets (release_id, accession, feature_type, evidence_type, count_unit, feature_count, status, is_default, source_id, source_version, provenance_json, data_path, index_path, storage_json) VALUES (' + [
     sqlString(releaseId), sqlString(genome.accession), "'promoter'", "'prediction'", "'peak'",
     promoterReady ? sqlNumber(genome.predictedPromoterCount) : 'NULL', sqlString(promoterReady ? 'ready' : 'missing'), '1', "'rapptor'", "'unrecorded'", "'{}'",
-    sqlString(genome.assets.predictedPromoters), sqlString(genome.assets.predictedPromotersIndex), "'{}'",
+    sqlString(genome.assets.predictedPromoters), sqlString(genome.assets.predictedPromotersIndex), sqlString(JSON.stringify(promoterStorage)),
   ].join(', ') + ');');
   const annotationStatus = genome.annotationStatus === 'available' && genome.assets.ncbiAnnotations
     ? 'ready'

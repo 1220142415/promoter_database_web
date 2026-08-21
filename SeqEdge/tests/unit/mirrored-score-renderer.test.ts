@@ -53,6 +53,11 @@ function mockContext() {
 }
 
 describe('mirrored raw-score renderer', () => {
+  it('keeps the established biological strand palette', () => {
+    expect(PLUS_SCORE_COLOR).toBe('#0f766e');
+    expect(MINUS_SCORE_COLOR).toBe('#be123c');
+  });
+
   it('draws plus scores above and minus scores below the central baseline', () => {
     const plus = feature('plus', 'plus', 10, 0.8);
     const minus = feature('minus', 'minus', 20, 0.6);

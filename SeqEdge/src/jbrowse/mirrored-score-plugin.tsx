@@ -81,7 +81,7 @@ export const MirroredScoreTooltip = observer(function MirroredScoreTooltip({ mod
     <BaseTooltip clientPoint={{ x: clientMouseCoord[0] + 5, y: clientMouseCoord[1] }}>
       <div data-testid="mirrored-score-tooltip">
         {coordinateLabel(feature)}<br />
-        strand={strand}<br />
+        strand: {strand}<br />
         score={Number(score.toPrecision(6))}
       </div>
     </BaseTooltip>

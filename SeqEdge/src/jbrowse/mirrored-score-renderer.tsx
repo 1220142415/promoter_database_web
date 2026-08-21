@@ -7,6 +7,8 @@ import { checkStopToken } from '@jbrowse/core/util/stopToken';
 import { WiggleBaseRenderer } from '@jbrowse/plugin-wiggle';
 
 export const MIRRORED_SCORE_HEIGHT = 180;
+// Keep the original RAPPtor score palette.  Strand glyphs use this same
+// biological mapping; reversing the view must never swap these colors.
 export const PLUS_SCORE_COLOR = '#0f766e';
 export const MINUS_SCORE_COLOR = '#be123c';
 

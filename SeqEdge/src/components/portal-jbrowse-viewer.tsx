@@ -3,6 +3,10 @@
 import { useMemo } from 'react';
 import { createViewState, JBrowseLinearGenomeView } from '@jbrowse/react-linear-genome-view';
 import SeqEdgeMirroredScorePlugin from '@/jbrowse/mirrored-score-plugin';
+import SeqEdgeStrandFeaturePlugin, {
+  DIRECTIONAL_ANNOTATION_RENDERER,
+  PROMOTER_FEATURE_RENDERER,
+} from '@/jbrowse/strand-feature-plugin';
 import SeqEdgeTrackDownloadPlugin from '@/jbrowse/track-download-plugin';
 import { visibleTrackRegion, type TrackDownloadMetadata } from '@/lib/track-download';
 import type { JBrowseReleaseAssembly } from '@/types/release';
@@ -79,12 +83,15 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
     }
     tracks.push({
         trackId: predictedTrackId,
-        name: 'RAPPtor predicted promoter peaks',
-        metadata: downloadMetadata(
-          'promoters',
-          'RAPPtor predicted promoter peaks',
-          resolveAsset(assembly.assetBase, assembly.assets.predictedPromoters),
-        ),
+        name: 'RAPPtor predicted promoters',
+        metadata: {
+          ...downloadMetadata(
+            'promoters',
+            'RAPPtor predicted promoters',
+            resolveAsset(assembly.assetBase, assembly.assets.predictedPromoters),
+          ),
+          seqEdgeStrandFeatureMode: 'promoter',
+        },
         assemblyNames: [assembly.assemblyName],
         type: 'FeatureTrack',
         adapter: {
@@ -102,7 +109,17 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
                 },
               }),
         },
-        displays: [{ displayId: `${predictedTrackId}-display`, type: 'LinearBasicDisplay' }],
+        displays: [{
+          displayId: `${predictedTrackId}-display`,
+          type: 'LinearBasicDisplay',
+          renderer: {
+            type: PROMOTER_FEATURE_RENDERER,
+            height: 18,
+            showLabels: false,
+            showDescriptions: false,
+            maxFeatureGlyphExpansion: 24,
+          },
+        }],
       });
 
     if (assembly.assets.ncbiAnnotations && (unindexed || assembly.assets.ncbiAnnotationsIndex)) {
@@ -110,11 +127,14 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
       tracks.push({
         trackId: ncbiTrackId,
         name: 'NCBI genome annotation',
-        metadata: downloadMetadata(
-          'ncbi',
-          'NCBI genome annotation',
-          resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotations),
-        ),
+        metadata: {
+          ...downloadMetadata(
+            'ncbi',
+            'NCBI genome annotation',
+            resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotations),
+          ),
+          seqEdgeStrandFeatureMode: 'annotation',
+        },
         assemblyNames: [assembly.assemblyName],
         type: 'FeatureTrack',
         adapter: {
@@ -132,7 +152,14 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
                 },
               }),
         },
-        displays: [{ displayId: `${ncbiTrackId}-display`, type: 'LinearBasicDisplay' }],
+        displays: [{
+          displayId: `${ncbiTrackId}-display`,
+          type: 'LinearBasicDisplay',
+          renderer: {
+            type: DIRECTIONAL_ANNOTATION_RENDERER,
+            height: 10,
+          },
+        }],
       });
     }
 
@@ -174,7 +201,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         },
       },
       tracks,
-      plugins: [SeqEdgeMirroredScorePlugin, SeqEdgeTrackDownloadPlugin],
+      plugins: [SeqEdgeMirroredScorePlugin, SeqEdgeStrandFeaturePlugin, SeqEdgeTrackDownloadPlugin],
       location: assembly.defaultLocus,
       defaultSession: {
         name: `${assembly.assemblyName} release view`,

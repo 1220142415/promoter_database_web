@@ -34,7 +34,12 @@ describe('release JBrowse configuration', () => {
     expect(screen.getByTestId('mock-jbrowse')).toBeInTheDocument();
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
       assembly: { sequence: { adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string; visibleRegionDownload: boolean } } } };
-      tracks: ReadonlyArray<{ name: string; adapter: Record<string, unknown>; metadata: { seqEdgeDownload: { kind: string } } }>;
+      tracks: ReadonlyArray<{
+        name: string;
+        adapter: Record<string, unknown>;
+        displays: ReadonlyArray<{ renderer: { type: string } }>;
+        metadata: { seqEdgeDownload: { kind: string }; seqEdgeStrandFeatureMode: string };
+      }>;
       plugins: ReadonlyArray<{ name: string }>;
       defaultSession: { view: { tracks: ReadonlyArray<{ displays: ReadonlyArray<{ configuration: string; heightPreConfig: number }> }> } };
     };
@@ -42,13 +47,19 @@ describe('release JBrowse configuration', () => {
     expect(config.assembly.sequence.metadata.seqEdgeDownload.kind).toBe('reference');
     expect(config.assembly.sequence.metadata.seqEdgeDownload.visibleRegionDownload).toBe(false);
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'RAPPtor predicted promoter peaks',
+      'RAPPtor predicted promoters',
       'NCBI genome annotation',
     ]);
     expect(config.tracks.map((track) => track.metadata.seqEdgeDownload.kind)).toEqual(['promoters', 'ncbi']);
+    expect(config.tracks.map((track) => track.metadata.seqEdgeStrandFeatureMode)).toEqual(['promoter', 'annotation']);
+    expect(config.tracks.map((track) => track.displays[0].renderer.type)).toEqual([
+      'SeqEdgePromoterFeatureRenderer',
+      'SeqEdgeDirectionalAnnotationRenderer',
+    ]);
     expect(config.tracks.every((track) => track.adapter.type === 'Gff3TabixAdapter')).toBe(true);
     expect(config.plugins.map((plugin) => plugin.name)).toEqual([
       'SeqEdgeMirroredScorePlugin',
+      'SeqEdgeStrandFeaturePlugin',
       'SeqEdgeTrackDownloadPlugin',
     ]);
     expect(config.defaultSession.view.tracks[0].displays[0].configuration).toBe(
@@ -60,7 +71,7 @@ describe('release JBrowse configuration', () => {
   it('does not invent an NCBI track when the release has no NCBI asset', () => {
     render(<PortalJBrowseViewer assembly={assembly(false)} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as { tracks: ReadonlyArray<{ name: string }> };
-    expect(config.tracks.map((track) => track.name)).toEqual(['RAPPtor predicted promoter peaks']);
+    expect(config.tracks.map((track) => track.name)).toEqual(['RAPPtor predicted promoters']);
   });
 
   it('adds one fixed-scale mirrored raw score track before promoter peaks', () => {
@@ -80,7 +91,7 @@ describe('release JBrowse configuration', () => {
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
       'RAPPtor raw scores (+ / - strands)',
-      'RAPPtor predicted promoter peaks',
+      'RAPPtor predicted promoters',
       'NCBI genome annotation',
     ]);
     expect(config.tracks[0].type).toBe('MultiQuantitativeTrack');

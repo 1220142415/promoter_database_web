@@ -24,7 +24,7 @@ function request(pathname: string, headers: Record<string, string> = {}, method 
   };
 }
 
-const analyticsEnvKeys = ['SEQEDGE_ANALYTICS', 'SEQEDGE_ANALYTICS_PRECISION', 'SEQEDGE_ANALYTICS_RETENTION_DAYS', 'SEQEDGE_ANALYTICS_SALT'];
+const analyticsEnvKeys = ['SEQEDGE_ANALYTICS', 'SEQEDGE_ANALYTICS_PRECISION', 'SEQEDGE_ANALYTICS_RETENTION_DAYS', 'SEQEDGE_ANALYTICS_SALT', 'SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS'];
 const originalEnv = Object.fromEntries(analyticsEnvKeys.map((key) => [key, process.env[key]]));
 
 afterEach(() => {
@@ -90,13 +90,15 @@ describe('bot filtering', () => {
 
 describe('geolocation', () => {
   it('reads the Cloudflare request properties', () => {
-    const geo = resolveGeo({ country: 'de', city: 'Heidelberg', region: 'Baden-Wurttemberg', latitude: '49.41', longitude: '8.69' }, new Headers());
+    const geo = resolveGeo({ country: 'de', city: 'Heidelberg', region: 'Baden-Wurttemberg', latitude: '49.41', longitude: '8.69' }, new Headers(), 'city');
     expect(geo).toEqual({ countryCode: 'DE', city: 'Heidelberg', region: 'Baden-Wurttemberg', latitude: 49.41, longitude: 8.69 });
   });
 
-  it('falls back to the edge country header', () => {
-    expect(resolveGeo(null, new Headers({ 'cf-ipcountry': 'JP' })).countryCode).toBe('JP');
-    expect(resolveGeo(null, new Headers({ 'x-vercel-ip-country': 'CN' })).countryCode).toBe('CN');
+  it('only trusts edge and proxy geography from the matching runtime source', () => {
+    const headers = new Headers({ 'cf-ipcountry': 'JP', 'x-vercel-ip-country': 'CN', 'x-vercel-ip-city': 'Shanghai' });
+    expect(resolveGeo(null, headers).countryCode).toBe(UNKNOWN_COUNTRY);
+    expect(resolveGeo(null, headers, 'country', { cloudflare: true, proxyHeaders: false }).countryCode).toBe('JP');
+    expect(resolveGeo(null, headers, 'city', { cloudflare: false, proxyHeaders: true })).toMatchObject({ countryCode: 'CN', city: 'Shanghai' });
   });
 
   it('reports an unknown country without inventing a location', () => {
@@ -112,11 +114,18 @@ describe('geolocation', () => {
 describe('client address resolution', () => {
   it('prefers the edge address over forwarded headers', () => {
     const headers = new Headers({ 'cf-connecting-ip': '203.0.113.5', 'x-forwarded-for': '198.51.100.9, 10.0.0.1' });
-    expect(resolveClientAddress(headers)).toBe('203.0.113.5');
+    expect(resolveClientAddress(headers, { cloudflare: true, proxyHeaders: true })).toBe('203.0.113.5');
   });
 
-  it('takes the first forwarded hop when there is no edge address', () => {
-    expect(resolveClientAddress(new Headers({ 'x-forwarded-for': '198.51.100.9, 10.0.0.1' }))).toBe('198.51.100.9');
+  it('rejects spoofed forwarding headers unless proxy trust is explicit', () => {
+    const headers = new Headers({
+      'cf-connecting-ip': '203.0.113.5',
+      'x-real-ip': '198.51.100.8',
+      'x-forwarded-for': '198.51.100.9, 10.0.0.1',
+    });
+    expect(resolveClientAddress(headers)).toBeNull();
+    expect(resolveClientAddress(headers, { cloudflare: false, proxyHeaders: true })).toBe('198.51.100.8');
+    expect(resolveClientAddress(new Headers({ 'x-forwarded-for': '198.51.100.9, 10.0.0.1' }), { cloudflare: false, proxyHeaders: true })).toBe('198.51.100.9');
     expect(resolveClientAddress(new Headers())).toBeNull();
   });
 });
@@ -157,21 +166,27 @@ describe('presentation helpers', () => {
 });
 
 describe('settings', () => {
-  it('counts by default and switches off on request', () => {
+  it('only counts after an explicit on value', () => {
     delete process.env.SEQEDGE_ANALYTICS;
-    expect(readUsageSettings().enabled).toBe(true);
-    process.env.SEQEDGE_ANALYTICS = 'off';
     expect(readUsageSettings().enabled).toBe(false);
+    process.env.SEQEDGE_ANALYTICS = 'on';
+    expect(readUsageSettings().enabled).toBe(true);
+    process.env.SEQEDGE_ANALYTICS = 'ON';
+    expect(readUsageSettings().enabled).toBe(true);
     process.env.SEQEDGE_ANALYTICS = 'false';
     expect(readUsageSettings().enabled).toBe(false);
   });
 
   it('reads precision and retention overrides', () => {
-    process.env.SEQEDGE_ANALYTICS_PRECISION = 'country';
+    process.env.SEQEDGE_ANALYTICS_PRECISION = 'city';
     process.env.SEQEDGE_ANALYTICS_RETENTION_DAYS = '90';
-    expect(readUsageSettings()).toMatchObject({ precision: 'country', retentionDays: 90 });
+    process.env.SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS = 'on';
+    process.env.SEQEDGE_ANALYTICS_SALT = 'obsolete-fixed-salt';
+    expect(readUsageSettings()).toMatchObject({ precision: 'city', retentionDays: 90, trustProxyHeaders: true });
+    expect(readUsageSettings()).not.toHaveProperty('salt');
     delete process.env.SEQEDGE_ANALYTICS_PRECISION;
     delete process.env.SEQEDGE_ANALYTICS_RETENTION_DAYS;
-    expect(readUsageSettings()).toMatchObject({ precision: 'city', retentionDays: 400 });
+    delete process.env.SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS;
+    expect(readUsageSettings()).toMatchObject({ precision: 'country', retentionDays: 400, trustProxyHeaders: false });
   });
 });

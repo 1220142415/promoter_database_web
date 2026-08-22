@@ -58,7 +58,7 @@ function UsageBody({ report, rangeDays }: { report: UsageReport; rangeDays: numb
   return (
     <>
       <section className="usage-metrics" aria-label="Summary">
-        <div><span>Visitors</span><strong>{report.totals.visitors.toLocaleString()}</strong><small>Unique per day, summed over the range</small></div>
+        <div><span>Visitors</span><strong>{report.totals.visitors.toLocaleString()}</strong><small>Approximate daily uniques, summed over the range</small></div>
         <div><span>Page views</span><strong>{report.totals.views.toLocaleString()}</strong><small>Full page loads; in-app navigation is not counted</small></div>
         <div><span>Countries</span><strong>{report.totals.countries.toLocaleString()}</strong><small>With at least one visitor</small></div>
         <div><span>Cities</span><strong>{report.totals.cities.toLocaleString()}</strong><small>Top locations recorded</small></div>
@@ -176,9 +176,9 @@ export default async function UsageDashboardPage({ searchParams }: { searchParam
         <p className="portal-kicker">Usage analytics</p>
         <h1>Who is using SeqEdge</h1>
         <p>
-          Coarse location counts derived at the edge from the visitor address. No address is ever stored: each request is
-          reduced to a country, an optional city and a token that is salted with a key rotated every day and deleted
-          afterwards.
+          Coarse location counts derived at the edge from the visitor address. No address or user agent is ever stored:
+          each request is reduced to a country, an optional city, and an unlinkable token made with a random daily salt.
+          The visitor total is an approximate daily unique count, summed across the selected range.
         </p>
         <nav className="usage-ranges" aria-label="Reporting range">
           {RANGES.map((range) => (
@@ -197,8 +197,8 @@ export default async function UsageDashboardPage({ searchParams }: { searchParam
         {!settings.enabled && (
           <UsageNotice title="Collection is switched off">
             <p>
-              <code>SEQEDGE_ANALYTICS</code> is set to <code>{process.env.SEQEDGE_ANALYTICS}</code>. Previously recorded
-              days are still shown below; remove the variable to resume counting.
+              Set <code>SEQEDGE_ANALYTICS=on</code> to start counting. Its current value is{' '}
+              <code>{process.env.SEQEDGE_ANALYTICS ?? '(unset)'}</code>. Previously recorded days are still shown below.
             </p>
           </UsageNotice>
         )}
@@ -220,7 +220,8 @@ export default async function UsageDashboardPage({ searchParams }: { searchParam
         {report && (
           <p className="usage-footnote">
             Range {report.startDay} to {report.endDay} (UTC){report.firstRecordedDay ? `, first recorded day ${report.firstRecordedDay}` : ''}.
-            Retention {settings.retentionDays} days. Location precision: {settings.precision}.
+            Retention {settings.retentionDays} days. Location precision: {settings.precision}. Expired rows and daily salts
+            are removed on the next successful counted request or dashboard read.
           </p>
         )}
       </section>

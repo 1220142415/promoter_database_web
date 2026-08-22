@@ -15,6 +15,20 @@ export default defineConfig({
   },
   webServer: externalBaseUrl ? undefined : {
     command: 'npm run dev -- --hostname 127.0.0.1 --port 3100',
+    env: {
+      // The default suite deliberately exercises the deployment-safe state:
+      // no analytics credentials and no analytics collection. A real D1
+      // integration run must use an explicit external Cloudflare preview.
+      SEQEDGE_ANALYTICS: 'off',
+      SEQEDGE_ANALYTICS_PASSWORD: '',
+      SEQEDGE_ANALYTICS_USERNAME: '',
+      // Forward an explicitly selected local release into the managed server.
+      // Empty values preserve the application's normal generated-catalog
+      // fallback without committing a workstation-specific absolute path.
+      LOCAL_CATALOG_PATH: process.env.LOCAL_CATALOG_PATH || '',
+      LOCAL_DATA_ROOT: process.env.LOCAL_DATA_ROOT || '',
+      LOCAL_RELEASE_ROOT: process.env.LOCAL_RELEASE_ROOT || '',
+    },
     url: 'http://127.0.0.1:3100',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

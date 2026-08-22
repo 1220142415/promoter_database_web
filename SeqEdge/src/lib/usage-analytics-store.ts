@@ -7,7 +7,6 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 import {
   countryFlag,
   countryName,
-  deriveDailySalt,
   deriveVisitorHash,
   isCountablePageRequest,
   isLikelyBot,
@@ -19,7 +18,7 @@ import {
   UNKNOWN_COUNTRY,
   utcDay,
 } from '@/lib/usage-analytics';
-import type { CloudflareGeoProperties, UsageEvent, UsageSettings } from '@/lib/usage-analytics';
+import type { CloudflareGeoProperties, UsageEvent } from '@/lib/usage-analytics';
 import type {
   UsageCityRow,
   UsageCountryRow,
@@ -76,12 +75,10 @@ export function usageDatabase(): D1Database | null {
   return usageRuntime()?.env.SEQEDGE_DB ?? null;
 }
 
-async function resolveSalt(database: D1Database, settings: UsageSettings, day: string) {
+async function resolveSalt(database: D1Database, day: string) {
   if (cachedSalt?.day === day) return cachedSalt.salt;
 
-  const salt = settings.salt
-    ? await deriveDailySalt(settings.salt, day)
-    : await resolveStoredSalt(database, day);
+  const salt = await resolveStoredSalt(database, day);
   cachedSalt = { day, salt };
   return salt;
 }
@@ -102,14 +99,16 @@ async function resolveStoredSalt(database: D1Database, day: string) {
  */
 async function purgeExpired(database: D1Database, day: string, retentionDays: number) {
   if (lastPurgeDay === day) return;
-  lastPurgeDay = day;
-  const cutoff = shiftDay(day, -retentionDays);
+  // Today is the first retained date, so N days includes today plus N - 1
+  // preceding UTC dates. Likewise, two salt dates means today and yesterday.
+  const cutoff = shiftDay(day, -(retentionDays - 1));
   await database.batch([
     database.prepare('DELETE FROM analytics_visitor_day WHERE day < ?').bind(cutoff),
     database.prepare('DELETE FROM analytics_daily_geo WHERE day < ?').bind(cutoff),
     database.prepare('DELETE FROM analytics_daily_path WHERE day < ?').bind(cutoff),
-    database.prepare('DELETE FROM analytics_salt WHERE day < ?').bind(shiftDay(day, -SALT_RETENTION_DAYS)),
+    database.prepare('DELETE FROM analytics_salt WHERE day < ?').bind(shiftDay(day, -(SALT_RETENTION_DAYS - 1))),
   ]);
+  lastPurgeDay = day;
 }
 
 export async function writeUsageEvent(database: D1Database, event: UsageEvent) {
@@ -126,13 +125,15 @@ export async function recordUsage(
   request: CountableRequest,
   cf: CloudflareGeoProperties | undefined,
   settings = readUsageSettings(),
+  cloudflareRuntime = Boolean(cf),
 ) {
   const day = utcDay();
-  const geo = resolveGeo(cf, request.headers, settings.precision);
-  const salt = await resolveSalt(database, settings, day);
+  const trust = { cloudflare: cloudflareRuntime, proxyHeaders: settings.trustProxyHeaders };
+  const geo = resolveGeo(cloudflareRuntime ? cf : undefined, request.headers, settings.precision, trust);
+  const salt = await resolveSalt(database, day);
   const visitorHash = await deriveVisitorHash(
     salt,
-    resolveClientAddress(request.headers),
+    resolveClientAddress(request.headers, trust),
     request.headers.get('user-agent'),
     geo.countryCode,
   );
@@ -155,7 +156,11 @@ export function scheduleUsageCollection(request: CountableRequest) {
   const database = runtime?.env.SEQEDGE_DB;
   if (!runtime || !database) return;
 
-  const task = recordUsage(database, request, runtime.cf, settings).catch(() => undefined);
+  const task = recordUsage(database, request, runtime.cf, settings, true).catch(() => {
+    // Do not include the error, request, headers, address or user agent here:
+    // database errors can echo bound values and must not become a second log.
+    console.error(JSON.stringify({ event: 'usage_analytics_write_failed' }));
+  });
   if (runtime.ctx?.waitUntil) runtime.ctx.waitUntil(task);
 }
 
@@ -191,6 +196,10 @@ function buildDailySeries(startDay: string, endDay: string, views: Map<string, n
 export async function readUsageReport(database: D1Database, rangeDays: number): Promise<UsageReport> {
   const endDay = utcDay();
   const startDay = rangeDays > 0 ? shiftDay(endDay, -(rangeDays - 1)) : EARLIEST_DAY;
+
+  // Reading the protected dashboard is also an opportunity to enforce
+  // retention on otherwise quiet deployments.
+  await purgeExpired(database, endDay, readUsageSettings().retentionDays);
 
   const [
     countryViews,

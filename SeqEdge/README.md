@@ -258,31 +258,34 @@ npm run hf:batch-plan -- --input gtdb_genome_metadata_r214.tsv --output hf-batch
 
 ## Usage analytics
 
-The portal counts page views and daily unique visitors per country and city, so a deployment can report where in the world it is used. The location comes from the Cloudflare edge (`request.cf`), so no third-party geolocation service is called and no address is ever written down: each request is reduced to a country, an optional city, and a visitor token that is the SHA-256 of a salt, the address, and the user agent. The salt is generated per UTC day, kept in D1, and deleted after two days, which permanently unlinks every stored token.
+Usage analytics are disabled by default and start only when `SEQEDGE_ANALYTICS=on` is set. The default country-level report shows where a deployment is used; city-level collection requires `SEQEDGE_ANALYTICS_PRECISION=city`. On Cloudflare, location comes from the edge (`request.cf`), so no third-party geolocation service is called. No address or user agent is stored: each request is reduced to coarse location fields and an unlinkable visitor token made from the address, user agent, and a random per-UTC-day salt. Each successful counted request or dashboard read removes salts older than today's and yesterday's; cleanup waits while the deployment is idle.
 
 API traffic, genome Range requests, static assets, router prefetches, the admin section itself, and known crawlers are never counted. The write runs as a Cloudflare background task after the response is sent, so counting never delays a page. A view means a full page load; navigating inside the app with the Next.js router is an RSC fetch that is indistinguishable from the prefetches the router fires for every visible link, so those are left out rather than counted twice. Visitor counts are unaffected.
 
-Apply the migration once, then set the dashboard credentials:
+Apply the migration once, explicitly enable collection, then set the dashboard credentials:
 
 ```bash
 npx wrangler d1 migrations apply SEQEDGE_DB --remote
+npx wrangler secret put SEQEDGE_ANALYTICS
 npx wrangler secret put SEQEDGE_ANALYTICS_USERNAME
 npx wrangler secret put SEQEDGE_ANALYTICS_PASSWORD
 ```
+
+Set the value of `SEQEDGE_ANALYTICS` to `on`. Dashboard credentials control access to reports independently; they do not enable collection.
 
 `/admin/usage` then shows a world map, a country table, top cities, top pages, and a daily trend over 7 days, 30 days, 90 days, 12 months, or all time. `/api/admin/usage` returns the same report as JSON, or CSV with `?format=csv&dataset=countries|cities|paths|daily`. Both answer 404 until both credentials exist, and both use HTTP Basic authentication afterwards.
 
 | Variable | Effect |
 | --- | --- |
-| `SEQEDGE_ANALYTICS=off` | Stops counting. Days already recorded stay readable. |
+| `SEQEDGE_ANALYTICS=on` | Explicitly enables collection. Unset and all other values leave collection off; recorded days remain readable. |
 | `SEQEDGE_ANALYTICS_USERNAME`, `SEQEDGE_ANALYTICS_PASSWORD` | Reveal and protect the dashboard. Unset means 404 for every admin path. |
-| `SEQEDGE_ANALYTICS_PRECISION=country` | Record only the country: no city, region, or coordinates. |
-| `SEQEDGE_ANALYTICS_RETENTION_DAYS` | Days of history to keep, 400 by default. Older rows are deleted automatically. |
-| `SEQEDGE_ANALYTICS_SALT` | Derive each day's salt from a fixed secret instead of a stored random value. |
+| `SEQEDGE_ANALYTICS_PRECISION=city` | Opt in to city, region, and coordinates. The default is country only. |
+| `SEQEDGE_ANALYTICS_RETENTION_DAYS` | Days of history to keep, 400 by default. Expired rows are removed on the next successful counted request or dashboard read. |
+| `SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS=on` | Outside Cloudflare, trust IP and location headers from a controlled reverse proxy. Leave unset for direct or untrusted traffic. |
 
 The map is a build artifact: `npm run analytics:map` regenerates `src/generated/world-map.json` from Natural Earth 1:110m geometry (public domain, through `world-atlas`). It is projected at build time and rendered on the server as inline SVG, so the dashboard ships no client-side mapping library and stays within the portal Content Security Policy.
 
-A deployment that does not sit behind Cloudflare falls back to the `cf-ipcountry`, `x-vercel-ip-country`, and `x-forwarded-for` headers. Where a proxy supplies none of them the country is recorded as unknown.
+Cloudflare-provided address and `request.cf` data are trusted automatically. Outside Cloudflare, forwarded IP and location headers are ignored unless `SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS=on`; only enable it when a controlled proxy overwrites those headers. Otherwise location is recorded as unknown. Daily visitor totals are approximate: the same address and user-agent combination counts once per UTC day, and the range total is the sum of those daily values. Cleanup is request-driven, so an idle deployment does not promise deletion at an exact wall-clock time.
 
 ## Coordinate contract
 

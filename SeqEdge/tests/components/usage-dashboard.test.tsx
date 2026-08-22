@@ -8,10 +8,15 @@ import type { UsageReport } from '@/types/usage-analytics';
 
 const readUsageReport = vi.fn();
 const usageDatabase = vi.fn(() => ({}) as unknown as D1Database);
+const readUsageSettings = vi.fn(() => ({ enabled: true, precision: 'country' as const, retentionDays: 400 }));
 
 vi.mock('@/lib/usage-analytics-store', () => ({
   readUsageReport: (...args: unknown[]) => readUsageReport(...args),
   usageDatabase: () => usageDatabase(),
+}));
+
+vi.mock('@/lib/usage-analytics', () => ({
+  readUsageSettings: () => readUsageSettings(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -53,6 +58,7 @@ beforeEach(() => {
   process.env.SEQEDGE_ANALYTICS_PASSWORD = 'usage-password';
   readUsageReport.mockResolvedValue(report);
   usageDatabase.mockReturnValue({} as unknown as D1Database);
+  readUsageSettings.mockReturnValue({ enabled: true, precision: 'country', retentionDays: 400 });
 });
 
 afterEach(() => {
@@ -85,6 +91,19 @@ describe('usage dashboard', () => {
     await renderDashboard('90');
     expect(screen.getByRole('link', { name: 'Download CSV' })).toHaveAttribute('href', '/api/admin/usage?days=90&format=csv');
     expect(screen.getByRole('link', { name: 'View JSON' })).toHaveAttribute('href', '/api/admin/usage?days=90');
+  });
+
+  it('describes opt-in collection and approximate daily visitors accurately', async () => {
+    readUsageSettings.mockReturnValue({ enabled: false, precision: 'country', retentionDays: 400 });
+    delete process.env.SEQEDGE_ANALYTICS;
+    await renderDashboard();
+
+    expect(screen.getByRole('heading', { name: 'Collection is switched off' }).parentElement).toHaveTextContent(
+      'Set SEQEDGE_ANALYTICS=on to start counting',
+    );
+    expect(screen.getByText(/Approximate daily uniques, summed over the range/)).toBeInTheDocument();
+    expect(screen.getByText(/random daily salt/)).toBeInTheDocument();
+    expect(screen.getByText(/next successful counted request or dashboard read/)).toBeInTheDocument();
   });
 
   it('explains what to do when D1 is not bound', async () => {

@@ -71,9 +71,30 @@ describe('GET /api/admin/usage', () => {
     ].join('\n'));
   });
 
-  it('exports the requested dataset', async () => {
-    const response = await GET(new Request('http://localhost/api/admin/usage?format=csv&dataset=paths'));
-    expect(await response.text()).toBe('path,views\n"/genomes, all",50\n');
+  it.each([
+    ['cities', 'country_code,country_name,region,city,visitors,views\nDE,Germany,Baden-Wurttemberg,Heidelberg,5,30\n'],
+    ['paths', 'path,views\n"/genomes, all",50\n'],
+    ['daily', 'day,visitors,views\n2026-08-21,9,40\n'],
+  ])('exports the requested %s dataset', async (dataset, expected) => {
+    const response = await GET(new Request(`http://localhost/api/admin/usage?format=csv&dataset=${dataset}`));
+    expect(await response.text()).toBe(expected);
+  });
+
+  it.each([
+    ['=', '=HYPERLINK("https://example.invalid")', '"\'=HYPERLINK(""https://example.invalid"")",1'],
+    ['+', '+cmd|calc', "'+cmd|calc,1"],
+    ['-', '-2+3', "'-2+3,1"],
+    ['@', '@SUM(1,2)', '"\'@SUM(1,2)",1'],
+  ])('neutralizes CSV cells beginning with %s without changing JSON', async (_prefix, path, expectedRow) => {
+    const unsafeReport = { ...report, paths: [{ path, views: 1 }] };
+    readUsageReport.mockResolvedValue(unsafeReport);
+
+    const csvResponse = await GET(new Request('http://localhost/api/admin/usage?format=csv&dataset=paths'));
+    expect((await csvResponse.text()).split('\n')[1]).toBe(expectedRow);
+
+    const jsonResponse = await GET(new Request('http://localhost/api/admin/usage'));
+    const json = await jsonResponse.json() as UsageReport;
+    expect(json.paths[0]?.path).toBe(path);
   });
 
   it('reports a missing D1 binding', async () => {

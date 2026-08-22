@@ -10,7 +10,10 @@ const DATASETS = ['countries', 'cities', 'paths', 'daily'] as const;
 type Dataset = (typeof DATASETS)[number];
 
 function csvCell(value: string | number) {
-  const text = String(value);
+  const original = String(value);
+  // Keep spreadsheet applications from interpreting exported labels and paths
+  // as formulas while preserving their displayed text.
+  const text = /^[=+\-@]/.test(original) ? `'${original}` : original;
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

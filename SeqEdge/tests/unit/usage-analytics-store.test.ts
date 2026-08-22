@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { shiftDay, utcDay } from '@/lib/usage-analytics';
+
+const { getCloudflareContext } = vi.hoisted(() => ({ getCloudflareContext: vi.fn() }));
+
+vi.mock('@opennextjs/cloudflare', () => ({ getCloudflareContext }));
 
 interface RecordedStatement {
   sql: string;
@@ -36,15 +40,22 @@ class FakeD1 {
   batches: RecordedStatement[][] = [];
   firstRow: Record<string, unknown> | null = { salt: 'stored-daily-salt' };
   batchResults: Record<string, unknown>[][] = [];
+  purgeFailures = 0;
 
   prepare(sql: string) {
     return new FakeStatement(this, sql);
   }
 
   async batch(statements: FakeStatement[]) {
-    this.batches.push(statements.map((statement) => ({ sql: statement.sql, binds: statement.binds })));
-    this.statements.push(...statements.map((statement) => ({ sql: statement.sql, binds: statement.binds })));
-    return statements.map(() => ({ results: this.batchResults.shift() ?? [], success: true, meta: {} }));
+    const recorded = statements.map((statement) => ({ sql: statement.sql, binds: statement.binds }));
+    const isPurge = recorded.every((statement) => statement.sql.startsWith('DELETE'));
+    this.batches.push(recorded);
+    this.statements.push(...recorded);
+    if (isPurge && this.purgeFailures > 0) {
+      this.purgeFailures -= 1;
+      throw new Error('purge failed');
+    }
+    return statements.map(() => ({ results: isPurge ? [] : this.batchResults.shift() ?? [], success: true, meta: {} }));
   }
 }
 
@@ -61,16 +72,45 @@ function pageRequest(pathname = '/genomes', headers: Record<string, string> = {}
   };
 }
 
-const settings = { enabled: true, precision: 'city' as const, retentionDays: 400, salt: null };
+const settings = { enabled: true, precision: 'city' as const, retentionDays: 400, trustProxyHeaders: false };
+const originalAnalytics = process.env.SEQEDGE_ANALYTICS;
 
 let store: typeof import('@/lib/usage-analytics-store');
 
 beforeEach(async () => {
+  delete process.env.SEQEDGE_ANALYTICS;
   vi.resetModules();
+  getCloudflareContext.mockReset();
   store = await import('@/lib/usage-analytics-store');
 });
 
+afterEach(() => {
+  if (originalAnalytics === undefined) delete process.env.SEQEDGE_ANALYTICS;
+  else process.env.SEQEDGE_ANALYTICS = originalAnalytics;
+});
+
 describe('recording a page view', () => {
+  it('does not touch the runtime while analytics is not explicitly enabled', () => {
+    store.scheduleUsageCollection(pageRequest());
+    expect(getCloudflareContext).not.toHaveBeenCalled();
+  });
+
+  it('collects country-only data by default after explicit enablement', async () => {
+    process.env.SEQEDGE_ANALYTICS = 'on';
+    const database = new FakeD1();
+    let backgroundTask: Promise<unknown> | undefined;
+    getCloudflareContext.mockReturnValue({
+      env: { SEQEDGE_DB: database },
+      cf: { country: 'DE', region: 'Baden-Wurttemberg', city: 'Heidelberg' },
+      ctx: { waitUntil: (task: Promise<unknown>) => { backgroundTask = task; } },
+    });
+
+    store.scheduleUsageCollection(pageRequest());
+    await backgroundTask;
+
+    expect(database.batches[0][1].binds.slice(1)).toEqual(['DE', '', '', null, null]);
+  });
+
   it('writes the visitor token, the location and the path in one batch', async () => {
     const database = new FakeD1();
     await store.recordUsage(database as unknown as D1Database, pageRequest('/genomes/GCA_000411415.1'), { country: 'DE', city: 'Heidelberg', region: 'Baden-Wurttemberg', latitude: '49.41', longitude: '8.69' }, settings);
@@ -113,11 +153,51 @@ describe('recording a page view', () => {
     const purges = database.batches.filter((batch) => batch.some((statement) => statement.sql.startsWith('DELETE')));
     expect(purges).toHaveLength(1);
     expect(purges[0].map((statement) => statement.binds[0])).toEqual([
-      shiftDay(utcDay(), -90),
-      shiftDay(utcDay(), -90),
-      shiftDay(utcDay(), -90),
-      shiftDay(utcDay(), -2),
+      shiftDay(utcDay(), -89),
+      shiftDay(utcDay(), -89),
+      shiftDay(utcDay(), -89),
+      shiftDay(utcDay(), -1),
     ]);
+  });
+
+  it('retries retention cleanup after a failed purge', async () => {
+    const database = new FakeD1();
+    database.purgeFailures = 1;
+
+    await expect(store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, settings)).rejects.toThrow('purge failed');
+    await expect(store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, settings)).resolves.toBeUndefined();
+
+    const purges = database.batches.filter((batch) => batch.every((statement) => statement.sql.startsWith('DELETE')));
+    expect(purges).toHaveLength(2);
+  });
+
+  it('logs a fixed structured event when a background write fails', async () => {
+    process.env.SEQEDGE_ANALYTICS = 'on';
+    const database = new FakeD1();
+    database.firstRow = null;
+    const sensitiveError = new Error('203.0.113.5 Mozilla/5.0');
+    const prepare = database.prepare.bind(database);
+    vi.spyOn(database, 'prepare').mockImplementation((sql: string) => {
+      const statement = prepare(sql);
+      if (sql.startsWith('INSERT INTO analytics_salt')) {
+        statement.run = async () => { throw sensitiveError; };
+      }
+      return statement;
+    });
+    let backgroundTask: Promise<unknown> | undefined;
+    getCloudflareContext.mockReturnValue({
+      env: { SEQEDGE_DB: database },
+      cf: { country: 'DE' },
+      ctx: { waitUntil: (task: Promise<unknown>) => { backgroundTask = task; } },
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    store.scheduleUsageCollection(pageRequest());
+    await backgroundTask;
+
+    expect(error).toHaveBeenCalledWith('{"event":"usage_analytics_write_failed"}');
+    expect(JSON.stringify(error.mock.calls)).not.toContain('203.0.113.5');
+    expect(JSON.stringify(error.mock.calls)).not.toContain('Mozilla');
   });
 });
 
@@ -152,6 +232,7 @@ describe('reading the report', () => {
     ]);
     expect(report.firstRecordedDay).toBe('2026-08-01');
     expect(report.startDay).toBe(shiftDay(today, -6));
+    expect(database.batches[0].every((statement) => statement.sql.startsWith('DELETE'))).toBe(true);
   });
 
   it('reports every recorded day when the range is all time', async () => {
@@ -164,6 +245,21 @@ describe('reading the report', () => {
     expect(report.startDay).toBe(firstDay);
     expect(report.totals.views).toBe(0);
     expect(report.daily).toHaveLength(21);
-    expect(database.batches[0][0].binds[0]).toBe('0000-01-01');
+    expect(database.batches[1][0].binds[0]).toBe('0000-01-01');
+  });
+
+  it('enforces retention when the protected report is read without traffic', async () => {
+    const database = new FakeD1();
+    database.batchResults = [[], [], [], [], [], [], [], []];
+
+    await store.readUsageReport(database as unknown as D1Database, 30);
+
+    const purge = database.batches[0];
+    expect(purge.map((statement) => statement.binds[0])).toEqual([
+      shiftDay(utcDay(), -399),
+      shiftDay(utcDay(), -399),
+      shiftDay(utcDay(), -399),
+      shiftDay(utcDay(), -1),
+    ]);
   });
 });

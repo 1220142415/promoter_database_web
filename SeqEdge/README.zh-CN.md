@@ -247,31 +247,34 @@ D1 binding 固定为 `SEQEDGE_DB`。先应用 `migrations/0001_seqedge_catalog.s
 
 ## 访问统计
 
-门户按国家与城市统计页面浏览量和每日独立访客，用于说明这个部署在全球哪些地方被使用。位置直接来自 Cloudflare 边缘的 `request.cf`，因此不调用任何第三方 IP 定位服务，也不会记录任何 IP 地址：每个请求只保留国家、可选的城市，以及一个访客标识——它是「当日盐值 + 地址 + User-Agent」的 SHA-256。盐值按 UTC 日期生成、存在 D1 中并在两天后删除，删除后已存储的标识与地址之间再也无法关联。
+访问统计默认关闭，只有显式设置 `SEQEDGE_ANALYTICS=on` 才开始收集。默认仅按国家汇总，用于说明部署在全球哪些地方被使用；城市级统计必须显式设置 `SEQEDGE_ANALYTICS_PRECISION=city`。在 Cloudflare 上，位置直接来自边缘的 `request.cf`，不调用第三方 IP 定位服务。系统不存储 IP 地址或 User-Agent：每个请求只保留粗粒度位置和一个不可反查的访客标识，该标识由地址、User-Agent 与随机的 UTC 当日盐值生成。每次成功统计请求或后台读取都会删除早于今天和昨天的盐；部署空闲时清理也会等待。
 
 API 请求、基因组 Range 请求、静态资源、路由预取、后台页面本身以及已知爬虫都不计入。写入通过 Cloudflare 后台任务在响应发出之后执行，因此统计不会拖慢任何页面。「浏览量」指一次完整的页面加载；应用内用 Next.js 路由跳转产生的是 RSC 请求，与路由为每个可见链接发起的预取无法区分，因此宁可少算也不重复计数。访客数不受影响。
 
-先应用一次迁移，再配置后台账号：
+先应用一次迁移、显式开启收集，再配置后台账号：
 
 ```bash
 npx wrangler d1 migrations apply SEQEDGE_DB --remote
+npx wrangler secret put SEQEDGE_ANALYTICS
 npx wrangler secret put SEQEDGE_ANALYTICS_USERNAME
 npx wrangler secret put SEQEDGE_ANALYTICS_PASSWORD
 ```
+
+`SEQEDGE_ANALYTICS` 的值应设为 `on`。后台账号只控制报表访问权限，不会自动开启收集。
 
 随后 `/admin/usage` 提供世界地图、国家表、Top 城市、Top 页面和每日趋势，可切换 7 天、30 天、90 天、12 个月和全部时间。`/api/admin/usage` 返回同一份报表的 JSON；加上 `?format=csv&dataset=countries|cities|paths|daily` 导出 CSV。两个入口在账号未配置前一律返回 404，配置之后由 HTTP Basic 认证保护。
 
 | 变量 | 作用 |
 | --- | --- |
-| `SEQEDGE_ANALYTICS=off` | 停止统计。已记录的数据仍可查看。 |
+| `SEQEDGE_ANALYTICS=on` | 显式开启收集。未设置或其他值均保持关闭；已记录数据仍可查看。 |
 | `SEQEDGE_ANALYTICS_USERNAME`、`SEQEDGE_ANALYTICS_PASSWORD` | 显示并保护后台面板。未设置时所有 admin 路径返回 404。 |
-| `SEQEDGE_ANALYTICS_PRECISION=country` | 只记录国家，不记录城市、地区和经纬度。 |
-| `SEQEDGE_ANALYTICS_RETENTION_DAYS` | 保留天数，默认 400 天，更早的行会自动删除。 |
-| `SEQEDGE_ANALYTICS_SALT` | 用固定密钥推导每日盐值，替代随机生成并存储的方式。 |
+| `SEQEDGE_ANALYTICS_PRECISION=city` | 显式开启城市、地区和经纬度记录；默认只记录国家。 |
+| `SEQEDGE_ANALYTICS_RETENTION_DAYS` | 保留天数，默认 400 天；过期行在下一次成功统计请求或后台读取时清理。 |
+| `SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS=on` | 非 Cloudflare 部署可显式信任受控反向代理写入的 IP/位置头；直连或不可信流量不要开启。 |
 
 地图是构建期产物：`npm run analytics:map` 用 Natural Earth 1:110m 地理数据（公有领域，经 `world-atlas` 提供）重新生成 `src/generated/world-map.json`。投影在构建时完成，页面在服务端渲染为内联 SVG，因此后台面板不引入任何前端地图库，也不违反门户的 CSP。
 
-未部署在 Cloudflare 后面时，会依次回退到 `cf-ipcountry`、`x-vercel-ip-country` 和 `x-forwarded-for` 请求头；如果反向代理都不提供，则记为未知国家。
+Cloudflare 提供的地址和 `request.cf` 默认可信。非 Cloudflare 环境下，只有设置 `SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS=on` 才读取转发 IP 和位置请求头，而且只应在受控代理会覆盖这些请求头时开启；否则位置记为未知。每日访客数是近似值：同一地址与 User-Agent 组合在每个 UTC 日只计一次，时间范围内的访客总数是各日值之和。清理由请求触发，因此无流量时不承诺在某个墙上时间准时删除。
 
 ## 坐标约定
 

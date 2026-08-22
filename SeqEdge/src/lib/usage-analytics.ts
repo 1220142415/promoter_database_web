@@ -7,7 +7,12 @@ export interface UsageSettings {
   enabled: boolean;
   precision: UsagePrecision;
   retentionDays: number;
-  salt: string | null;
+  trustProxyHeaders: boolean;
+}
+
+export interface UsageHeaderTrust {
+  cloudflare: boolean;
+  proxyHeaders: boolean;
 }
 
 export interface UsageGeo {
@@ -56,19 +61,17 @@ function envValue(key: string): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function isDisabledValue(value: string | null) {
-  if (!value) return false;
-  const normalized = value.toLowerCase();
-  return normalized === 'off' || normalized === '0' || normalized === 'false' || normalized === 'disabled';
+function isEnabledValue(value: string | null) {
+  return value?.toLowerCase() === 'on';
 }
 
 export function readUsageSettings(): UsageSettings {
   const retention = Number(envValue('SEQEDGE_ANALYTICS_RETENTION_DAYS'));
   return {
-    enabled: !isDisabledValue(envValue('SEQEDGE_ANALYTICS')),
-    precision: envValue('SEQEDGE_ANALYTICS_PRECISION')?.toLowerCase() === 'country' ? 'country' : 'city',
+    enabled: isEnabledValue(envValue('SEQEDGE_ANALYTICS')),
+    precision: envValue('SEQEDGE_ANALYTICS_PRECISION')?.toLowerCase() === 'city' ? 'city' : 'country',
     retentionDays: Number.isFinite(retention) && retention > 0 ? Math.floor(retention) : DEFAULT_RETENTION_DAYS,
-    salt: envValue('SEQEDGE_ANALYTICS_SALT'),
+    trustProxyHeaders: isEnabledValue(envValue('SEQEDGE_ANALYTICS_TRUST_PROXY_HEADERS')),
   };
 }
 
@@ -127,8 +130,17 @@ export function normalizePath(pathname: string) {
   return segments.length ? '/' + segments.join('/') : '/';
 }
 
-export function resolveClientAddress(headers: { get(name: string): string | null }) {
-  const direct = headers.get('cf-connecting-ip') || headers.get('x-real-ip');
+export function resolveClientAddress(
+  headers: { get(name: string): string | null },
+  trust: UsageHeaderTrust = { cloudflare: false, proxyHeaders: false },
+) {
+  if (trust.cloudflare) {
+    const edgeAddress = headers.get('cf-connecting-ip');
+    if (edgeAddress?.trim()) return edgeAddress.trim();
+  }
+  if (!trust.proxyHeaders) return null;
+
+  const direct = headers.get('x-real-ip');
   if (direct?.trim()) return direct.trim();
   const forwarded = headers.get('x-forwarded-for');
   const first = forwarded?.split(',')[0]?.trim();
@@ -152,9 +164,14 @@ function decodeHeaderText(value: string | null) {
 export function resolveGeo(
   cf: CloudflareGeoProperties | null | undefined,
   headers: { get(name: string): string | null },
-  precision: UsagePrecision = 'city',
+  precision: UsagePrecision = 'country',
+  trust: UsageHeaderTrust = { cloudflare: Boolean(cf), proxyHeaders: false },
 ): UsageGeo {
-  const headerCountry = headers.get('cf-ipcountry') || headers.get('x-vercel-ip-country') || headers.get('x-appengine-country');
+  const edgeCountry = trust.cloudflare ? headers.get('cf-ipcountry') : null;
+  const proxyCountry = trust.proxyHeaders
+    ? headers.get('x-vercel-ip-country') || headers.get('x-appengine-country')
+    : null;
+  const headerCountry = edgeCountry || proxyCountry;
   const rawCountry = cleanText(cf?.country) || cleanText(headerCountry);
   const countryCode = COUNTRY_PATTERN.test(rawCountry) ? rawCountry.toUpperCase() : UNKNOWN_COUNTRY;
 
@@ -164,8 +181,8 @@ export function resolveGeo(
 
   return {
     countryCode,
-    region: cleanText(cf?.region) || cleanText(cf?.regionCode) || decodeHeaderText(headers.get('x-vercel-ip-country-region')),
-    city: cleanText(cf?.city) || decodeHeaderText(headers.get('x-vercel-ip-city')),
+    region: cleanText(cf?.region) || cleanText(cf?.regionCode) || (trust.proxyHeaders ? decodeHeaderText(headers.get('x-vercel-ip-country-region')) : ''),
+    city: cleanText(cf?.city) || (trust.proxyHeaders ? decodeHeaderText(headers.get('x-vercel-ip-city')) : ''),
     latitude: coordinate(cf?.latitude),
     longitude: coordinate(cf?.longitude),
   };
@@ -174,10 +191,6 @@ export function resolveGeo(
 async function sha256Hex(value: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-export async function deriveDailySalt(secret: string, day: string) {
-  return sha256Hex(secret + ':' + day);
 }
 
 /**

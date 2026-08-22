@@ -398,43 +398,42 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
   };
 
   return (
-    <div className="portal-browser" data-testid="jbrowse-viewer">
-      <div className="browser-share-toolbar">
-        <div className="browser-share-copy">
-          <strong>Share this genome view</strong>
-          <span>Position, zoom, direction and built-in track layout</span>
+    <div className="portal-browser-shell" data-testid="jbrowse-viewer">
+      <div className="browser-share-actions">
+        <div className="browser-share-feedback" aria-live="polite">
+          {!shareAvailable && shareUnavailableReason && (
+            <span id="browser-share-unavailable">{shareUnavailableReason}</span>
+          )}
+          {shareFeedback?.message && <span>{shareFeedback.message}</span>}
         </div>
         <button
           type="button"
           className="browser-share-button"
           onClick={() => void handleShare()}
           disabled={!shareAvailable}
+          aria-label="Share current view"
           aria-describedby={!shareAvailable ? 'browser-share-unavailable' : undefined}
-          title={shareAvailable ? 'Copy a link to the current genome view' : shareUnavailableReason}
+          title={shareAvailable ? 'Copy a link with this position, zoom, direction and track layout' : shareUnavailableReason}
         >
           <ShareRoundedIcon aria-hidden="true" />
-          Share current view
+          <span>Share view</span>
         </button>
       </div>
       {restoreMessage && <p className="browser-share-notice" role="status">{restoreMessage}</p>}
-      <div className="browser-share-feedback" aria-live="polite">
-        {!shareAvailable && shareUnavailableReason && (
-          <span id="browser-share-unavailable">{shareUnavailableReason}</span>
-        )}
-        {shareFeedback?.message && <span>{shareFeedback.message}</span>}
-        {shareFeedback?.manualUrl && (
-          <label>
-            <span>Share link</span>
-            <input
-              aria-label="Share link"
-              readOnly
-              value={shareFeedback.manualUrl}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-          </label>
-        )}
+      {shareFeedback?.manualUrl && (
+        <label className="browser-share-manual">
+          <span>Share link</span>
+          <input
+            aria-label="Share link"
+            readOnly
+            value={shareFeedback.manualUrl}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </label>
+      )}
+      <div className="portal-browser">
+        <JBrowseLinearGenomeView viewState={viewState} />
       </div>
-      <JBrowseLinearGenomeView viewState={viewState} />
     </div>
   );
 }

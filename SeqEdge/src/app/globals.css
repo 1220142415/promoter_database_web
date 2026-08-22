@@ -176,20 +176,18 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .detail-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .detail-section-heading h2 { font-size: 27px; }
 .detail-section-heading code { max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.portal-browser-shell { min-width: 0; }
 .portal-browser { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: white; }
-.browser-share-toolbar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 12px 10px 15px; border-bottom: 1px solid var(--line); background: #f7f9f8; }
-.browser-share-copy { min-width: 0; display: grid; gap: 2px; }
-.browser-share-copy strong { color: var(--ink); font-size: 13px; }
-.browser-share-copy span { color: var(--muted); font-size: 11px; line-height: 1.4; }
-.browser-share-button { min-height: 36px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--teal-dark); border-radius: 5px; padding: 7px 12px; background: var(--teal-dark); color: white; font-size: 12px; font-weight: 750; cursor: pointer; }
-.browser-share-button:hover:not(:disabled) { background: var(--teal); }
-.browser-share-button:disabled { border-color: var(--line-strong); background: #e7ecea; color: var(--muted); cursor: not-allowed; }
-.browser-share-button svg { width: 18px; height: 18px; }
-.browser-share-notice { margin: 0; padding: 9px 15px; border-bottom: 1px solid #ecd8ae; background: #fff8e8; color: #785718; font-size: 12px; line-height: 1.5; }
-.browser-share-feedback { min-height: 0; display: grid; gap: 7px; color: var(--teal-dark); font-size: 12px; font-weight: 700; }
-.browser-share-feedback:not(:empty) { padding: 9px 15px; border-bottom: 1px solid var(--line); background: #eff7f4; }
-.browser-share-feedback label { min-width: 0; display: grid; gap: 5px; color: var(--ink-soft); font-size: 11px; }
-.browser-share-feedback input { width: 100%; min-width: 0; height: 34px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 9px; background: white; color: var(--ink); font: 11px "SFMono-Regular", Consolas, monospace; }
+.browser-share-actions { min-height: 34px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 0 2px 8px; }
+.browser-share-feedback { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; color: var(--teal-dark); font-size: 11px; font-weight: 700; line-height: 1.4; text-align: right; }
+.browser-share-button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 11px; background: white; color: var(--teal-dark); box-shadow: 0 1px 2px rgba(23, 36, 34, .06); font-size: 12px; font-weight: 750; cursor: pointer; transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease; }
+.browser-share-button:hover:not(:disabled) { border-color: var(--teal); background: var(--teal-soft); box-shadow: 0 2px 5px rgba(19, 106, 91, .12); }
+.browser-share-button:focus-visible { outline: 3px solid rgba(24, 139, 118, .22); outline-offset: 2px; }
+.browser-share-button:disabled { border-color: var(--line); background: #f2f4f3; color: var(--muted); box-shadow: none; cursor: not-allowed; }
+.browser-share-button svg { width: 17px; height: 17px; }
+.browser-share-notice { margin: 0 0 8px; border: 1px solid #ecd8ae; border-radius: 5px; padding: 9px 12px; background: #fff8e8; color: #785718; font-size: 12px; line-height: 1.5; }
+.browser-share-manual { min-width: 0; display: grid; gap: 5px; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 5px; padding: 9px 11px; background: #eff7f4; color: var(--ink-soft); font-size: 11px; font-weight: 700; }
+.browser-share-manual input { width: 100%; min-width: 0; height: 34px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 9px; background: white; color: var(--ink); font: 11px "SFMono-Regular", Consolas, monospace; }
 .browser-loading { min-height: 420px; display: grid; place-items: center; border: 1px solid var(--line); color: var(--muted); }
 .genome-file-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; min-height: 38px; margin-bottom: 12px; padding: 0 3px 10px; border-bottom: 1px solid var(--line); }
 .genome-file-state { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
@@ -347,8 +345,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .genome-detail-page .detail-grid { width: 100%; padding-top: 14px; }
   .detail-section { border-left: 0; border-right: 0; border-radius: 0; padding: 18px 14px; }
   .release-stamp { min-width: 0; }
-  .browser-share-toolbar { align-items: stretch; flex-direction: column; gap: 9px; }
-  .browser-share-button { width: 100%; }
+  .browser-share-actions { grid-template-columns: minmax(0, 1fr) auto; margin-inline: 0; }
+  .browser-share-button { padding-inline: 10px; }
   .browser-loading { min-height: 480px; }
   .genome-metadata-section { padding-inline: 14px; }
   .genome-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -6,7 +6,7 @@ import type PluginManager from '@jbrowse/core/PluginManager';
 import { ConfigurationSchema, getConf } from '@jbrowse/core/configuration';
 import type { DisplayType, PluggableElementType } from '@jbrowse/core/pluggableElementTypes';
 import { BaseTooltip } from '@jbrowse/core/ui';
-import { getContainingTrack } from '@jbrowse/core/util';
+import { getContainingTrack, getContainingView, type Feature } from '@jbrowse/core/util';
 import { BaseLinearDisplayComponent } from '@jbrowse/plugin-linear-genome-view';
 import { observer } from 'mobx-react';
 import {
@@ -14,6 +14,7 @@ import {
   MirroredBarsRenderer,
   MirroredLinesRenderer,
   MirroredScoreRendering,
+  buildMirroredLinePaths,
   mirroredFeatureScore,
 } from '@/jbrowse/mirrored-score-renderer';
 
@@ -32,10 +33,18 @@ type MenuItem = {
 type MirroredDisplayModel = {
   height: number;
   rendererTypeNameSimple: string;
-  features: Map<string, unknown>;
+  features: {
+    get: (id: string) => Feature | undefined;
+    values: () => IterableIterator<Feature>;
+  };
   featureUnderMouse?: ScoreFeature;
   setFeatureUnderMouse: (feature: unknown) => void;
   setRendererType: (renderer: string) => void;
+};
+
+type LinearViewLike = {
+  offsetPx: number;
+  bpToPx: (location: { refName: string; coord: number }) => { offsetPx: number } | undefined;
 };
 
 type ScoreFeature = {
@@ -90,6 +99,17 @@ export const MirroredScoreTooltip = observer(function MirroredScoreTooltip({ mod
 
 const MirroredDisplayComponent = observer(function MirroredDisplayComponent(props: { model: MirroredDisplayModel }) {
   const { model } = props;
+  const view = getContainingView(model as never) as unknown as LinearViewLike;
+  const linePaths = model.rendererTypeNameSimple === 'multiline'
+    ? buildMirroredLinePaths(
+      model.features.values(),
+      (refName, coord) => {
+        const position = view.bpToPx({ refName, coord });
+        return position === undefined ? undefined : position.offsetPx - view.offsetPx;
+      },
+      model.height,
+    )
+    : [];
   return (
     <div style={{ position: 'relative', height: model.height }}>
       <BaseLinearDisplayComponent model={model as never} />
@@ -99,6 +119,17 @@ const MirroredDisplayComponent = observer(function MirroredDisplayComponent(prop
         width="100%"
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}
       >
+        {linePaths.map(({ color, d, refName, strand }) => (
+          <path
+            key={`${refName}:${strand}`}
+            data-testid={`mirrored-score-line-${strand === '+' ? 'plus' : 'minus'}`}
+            d={d}
+            fill="none"
+            stroke={color}
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
         <line x1="0" x2="100%" y1={model.height / 2} y2={model.height / 2} stroke="#475569" strokeWidth="1" />
         <g fill="#334155" fontFamily="system-ui, sans-serif" fontSize="10">
           <text x="4" y="11">1</text>

@@ -3,6 +3,7 @@ import type { Feature, Region } from '@jbrowse/core/util';
 import {
   MINUS_SCORE_COLOR,
   PLUS_SCORE_COLOR,
+  buildMirroredLinePaths,
   drawMirroredScores,
   findMirroredFeature,
   mirroredFeatureScore,
@@ -76,7 +77,7 @@ describe('mirrored raw-score renderer', () => {
     expect(mirroredScoreY(1, '-')).toBe(180);
   });
 
-  it('uses maxScore for zoomed summaries in both bars and lines', () => {
+  it('uses maxScore for zoomed summaries in bars and whole-view lines', () => {
     const plus = feature('summary-plus', 'plus', 10, 0.2, 0.9);
     const minus = feature('summary-minus', 'minus', 20, 0.1, 0.7);
     const features = new Map([[plus.id(), plus], [minus.id(), minus]]);
@@ -90,9 +91,42 @@ describe('mirrored raw-score renderer', () => {
 
     const lines = mockContext();
     drawMirroredScores(lines.context, { bpPerPx: 1, features, height: 180, regions: [region] }, 'lines');
-    expect(lines.strokeCalls).toEqual([PLUS_SCORE_COLOR, MINUS_SCORE_COLOR]);
-    expect(vi.mocked(lines.context.moveTo).mock.calls[0][1]).toBe(9);
-    expect(vi.mocked(lines.context.moveTo).mock.calls[1][1]).toBeCloseTo(153);
+    expect(lines.strokeCalls).toEqual([]);
+
+    const paths = buildMirroredLinePaths(features.values(), (_refName, coordinate) => coordinate);
+    expect(paths).toEqual([
+      expect.objectContaining({ color: PLUS_SCORE_COLOR, d: 'M10.5,9', strand: '+' }),
+      expect.objectContaining({ color: MINUS_SCORE_COLOR, d: 'M20.5,153', strand: '-' }),
+    ]);
+  });
+
+  it('connects score points loaded from separate tiles in one continuous path', () => {
+    const tile1 = [feature('plus-1', 'plus', 0, 0.2), feature('plus-2', 'plus', 50, 0.4)];
+    const tile2 = [feature('plus-3', 'plus', 100, 0.7), feature('plus-4', 'plus', 150, 0.5)];
+
+    const [path] = buildMirroredLinePaths([...tile1, ...tile2], (_refName, coordinate) => coordinate);
+
+    expect(path.d).toBe('M0.5,72L50.5,54L100.5,27L150.5,45');
+    expect(path.d.match(/M/g)).toHaveLength(1);
+    expect(path.d.match(/L/g)).toHaveLength(3);
+  });
+
+  it('sorts by screen position so reversed views stay continuous without swapping colors', () => {
+    const plus = feature('plus', 'plus', 10, 0.8);
+    const minus = feature('minus', 'minus', 20, 0.6);
+    const paths = buildMirroredLinePaths(
+      [plus, minus, feature('plus-2', 'plus', 30, 0.4)],
+      (_refName, coordinate) => 100 - coordinate,
+    );
+
+    expect(paths.find((path) => path.strand === '+')).toMatchObject({
+      color: PLUS_SCORE_COLOR,
+      d: 'M69.5,54L89.5,18',
+    });
+    expect(paths.find((path) => path.strand === '-')).toMatchObject({
+      color: MINUS_SCORE_COLOR,
+      d: 'M79.5,144',
+    });
   });
 
   it('uses x and y together for hover while keeping minus scores positive', () => {

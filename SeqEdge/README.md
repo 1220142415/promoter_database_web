@@ -256,6 +256,34 @@ For the numeric Hugging Face upload layout, generate the accession-to-batch plan
 npm run hf:batch-plan -- --input gtdb_genome_metadata_r214.tsv --output hf-batch-asset-plan
 ```
 
+## Usage analytics
+
+The portal counts page views and daily unique visitors per country and city, so a deployment can report where in the world it is used. The location comes from the Cloudflare edge (`request.cf`), so no third-party geolocation service is called and no address is ever written down: each request is reduced to a country, an optional city, and a visitor token that is the SHA-256 of a salt, the address, and the user agent. The salt is generated per UTC day, kept in D1, and deleted after two days, which permanently unlinks every stored token.
+
+API traffic, genome Range requests, static assets, router prefetches, the admin section itself, and known crawlers are never counted. The write runs as a Cloudflare background task after the response is sent, so counting never delays a page. A view means a full page load; navigating inside the app with the Next.js router is an RSC fetch that is indistinguishable from the prefetches the router fires for every visible link, so those are left out rather than counted twice. Visitor counts are unaffected.
+
+Apply the migration once, then set the dashboard credentials:
+
+```bash
+npx wrangler d1 migrations apply SEQEDGE_DB --remote
+npx wrangler secret put SEQEDGE_ANALYTICS_USERNAME
+npx wrangler secret put SEQEDGE_ANALYTICS_PASSWORD
+```
+
+`/admin/usage` then shows a world map, a country table, top cities, top pages, and a daily trend over 7 days, 30 days, 90 days, 12 months, or all time. `/api/admin/usage` returns the same report as JSON, or CSV with `?format=csv&dataset=countries|cities|paths|daily`. Both answer 404 until both credentials exist, and both use HTTP Basic authentication afterwards.
+
+| Variable | Effect |
+| --- | --- |
+| `SEQEDGE_ANALYTICS=off` | Stops counting. Days already recorded stay readable. |
+| `SEQEDGE_ANALYTICS_USERNAME`, `SEQEDGE_ANALYTICS_PASSWORD` | Reveal and protect the dashboard. Unset means 404 for every admin path. |
+| `SEQEDGE_ANALYTICS_PRECISION=country` | Record only the country: no city, region, or coordinates. |
+| `SEQEDGE_ANALYTICS_RETENTION_DAYS` | Days of history to keep, 400 by default. Older rows are deleted automatically. |
+| `SEQEDGE_ANALYTICS_SALT` | Derive each day's salt from a fixed secret instead of a stored random value. |
+
+The map is a build artifact: `npm run analytics:map` regenerates `src/generated/world-map.json` from Natural Earth 1:110m geometry (public domain, through `world-atlas`). It is projected at build time and rendered on the server as inline SVG, so the dashboard ships no client-side mapping library and stays within the portal Content Security Policy.
+
+A deployment that does not sit behind Cloudflare falls back to the `cf-ipcountry`, `x-vercel-ip-country`, and `x-forwarded-for` headers. Where a proxy supplies none of them the country is recorded as unknown.
+
 ## Coordinate contract
 
 Release GFF3 files retain 1-based, closed coordinates. RAPPtor peaks are point features with equal start and end positions. JBrowse displays user-facing 1-based locations. No BED or database coordinate conversion is performed by this release portal.

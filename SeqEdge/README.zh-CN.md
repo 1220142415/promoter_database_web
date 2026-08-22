@@ -245,6 +245,34 @@ D1 binding 固定为 `SEQEDGE_DB`。先应用 `migrations/0001_seqedge_catalog.s
 
 生产环境强制 D1；本地默认继续读取生成的 JSON catalog，只有显式设置 `SEQEDGE_CATALOG_BACKEND=d1` 才使用 D1。目录 API 不返回 Pack offset；只有受限的 `/api/remote-data/<accession>/<file>` 代理从 active release 查询映射并重写单段 Range。8 万规模仍按每个 D1 SQL 分片最多 500 个 genome 构建，不把完整 catalog 打入 Next.js bundle。
 
+## 访问统计
+
+门户按国家与城市统计页面浏览量和每日独立访客，用于说明这个部署在全球哪些地方被使用。位置直接来自 Cloudflare 边缘的 `request.cf`，因此不调用任何第三方 IP 定位服务，也不会记录任何 IP 地址：每个请求只保留国家、可选的城市，以及一个访客标识——它是「当日盐值 + 地址 + User-Agent」的 SHA-256。盐值按 UTC 日期生成、存在 D1 中并在两天后删除，删除后已存储的标识与地址之间再也无法关联。
+
+API 请求、基因组 Range 请求、静态资源、路由预取、后台页面本身以及已知爬虫都不计入。写入通过 Cloudflare 后台任务在响应发出之后执行，因此统计不会拖慢任何页面。「浏览量」指一次完整的页面加载；应用内用 Next.js 路由跳转产生的是 RSC 请求，与路由为每个可见链接发起的预取无法区分，因此宁可少算也不重复计数。访客数不受影响。
+
+先应用一次迁移，再配置后台账号：
+
+```bash
+npx wrangler d1 migrations apply SEQEDGE_DB --remote
+npx wrangler secret put SEQEDGE_ANALYTICS_USERNAME
+npx wrangler secret put SEQEDGE_ANALYTICS_PASSWORD
+```
+
+随后 `/admin/usage` 提供世界地图、国家表、Top 城市、Top 页面和每日趋势，可切换 7 天、30 天、90 天、12 个月和全部时间。`/api/admin/usage` 返回同一份报表的 JSON；加上 `?format=csv&dataset=countries|cities|paths|daily` 导出 CSV。两个入口在账号未配置前一律返回 404，配置之后由 HTTP Basic 认证保护。
+
+| 变量 | 作用 |
+| --- | --- |
+| `SEQEDGE_ANALYTICS=off` | 停止统计。已记录的数据仍可查看。 |
+| `SEQEDGE_ANALYTICS_USERNAME`、`SEQEDGE_ANALYTICS_PASSWORD` | 显示并保护后台面板。未设置时所有 admin 路径返回 404。 |
+| `SEQEDGE_ANALYTICS_PRECISION=country` | 只记录国家，不记录城市、地区和经纬度。 |
+| `SEQEDGE_ANALYTICS_RETENTION_DAYS` | 保留天数，默认 400 天，更早的行会自动删除。 |
+| `SEQEDGE_ANALYTICS_SALT` | 用固定密钥推导每日盐值，替代随机生成并存储的方式。 |
+
+地图是构建期产物：`npm run analytics:map` 用 Natural Earth 1:110m 地理数据（公有领域，经 `world-atlas` 提供）重新生成 `src/generated/world-map.json`。投影在构建时完成，页面在服务端渲染为内联 SVG，因此后台面板不引入任何前端地图库，也不违反门户的 CSP。
+
+未部署在 Cloudflare 后面时，会依次回退到 `cf-ipcountry`、`x-vercel-ip-country` 和 `x-forwarded-for` 请求头；如果反向代理都不提供，则记为未知国家。
+
 ## 坐标约定
 
 release GFF3 保留 1-based closed 坐标。RAPPtor 峰是 start 与 end 相等的点特征。JBrowse 也显示 1-based 位置。本门户不生成 BED，也不做数据库坐标转换。

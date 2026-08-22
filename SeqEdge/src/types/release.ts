@@ -90,6 +90,8 @@ export interface PhylumCount {
 
 export interface ReleaseCatalog {
   releaseId: string;
+  /** Whether the release assets include the indexes required by remote adapters. */
+  indexed?: boolean;
   releaseDate: string | null;
   generatedAt: string | null;
   description: string | null;

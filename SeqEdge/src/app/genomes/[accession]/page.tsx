@@ -88,7 +88,7 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
   const regionExportBase = process.env.NEXT_PUBLIC_REGION_EXPORT_BASE_URL
     || (process.env.NODE_ENV === 'production' ? undefined : '/api/local-region');
   const browserAssembly = match.resourceStatus !== 'staged' && assetBase && match.storage
-    ? { assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets }
+    ? { assemblyName: genome.accession, defaultLocus, assetBase, regionExportBase, assets: browserAssets, adapterMode: match.adapterMode }
     : null;
   const promoterDensityPerMb = genome.genomeSizeBp && genome.genomeSizeBp > 0
     ? genome.predictedPromoterCount * 1_000_000 / genome.genomeSizeBp
@@ -108,10 +108,10 @@ export default async function GenomeDetailPage({ params }: { params: Promise<{ a
               </div>
             </header>
             {browserAssembly
-              ? <><GenomeFileStatus states={{ reference: 'available', promoters: 'available', annotation: browserAssets.ncbiAnnotations ? 'available' : 'unavailable' }} /><PortalBrowserPanel assembly={browserAssembly} /></>
+              ? <><GenomeFileStatus states={{ reference: 'available', promoters: 'available', annotation: browserAssets.ncbiAnnotations ? 'available' : genome.annotationStatus === 'incompatible' ? 'incompatible' : 'unavailable' }} /><PortalBrowserPanel assembly={browserAssembly} /></>
               : match.plannedAssets
                 ? <PortalOnDemandBrowserPanel accession={genome.accession} releaseId={releaseId} plannedAssets={match.plannedAssets} />
-                : <><GenomeFileStatus states={{ reference: 'preparing', promoters: 'preparing', annotation: genome.annotationStatus === 'available' ? 'preparing' : 'unavailable' }} /><div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>The catalog metadata and feature counts are available. Reference and indexed track files will appear here after upload validation.</p></div></>}
+                : <><GenomeFileStatus states={{ reference: 'preparing', promoters: 'preparing', annotation: genome.annotationStatus === 'available' ? 'preparing' : genome.annotationStatus === 'incompatible' ? 'incompatible' : 'unavailable' }} /><div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>The catalog metadata and feature counts are available. Reference and indexed track files will appear here after upload validation.</p></div></>}
           </section>
         </div>
 

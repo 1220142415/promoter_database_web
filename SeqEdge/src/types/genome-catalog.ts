@@ -114,6 +114,7 @@ export interface GenomeCatalogMatch {
   assetBase: string | null;
   genome: ReleaseGenome;
   storage: GenomeStorageMap | null;
+  adapterMode?: 'indexed' | 'unindexed';
   resourceStatus?: 'ready' | 'staged';
   plannedAssets?: PlannedGenomeAssets | null;
   details?: GenomeCatalogDetails | null;

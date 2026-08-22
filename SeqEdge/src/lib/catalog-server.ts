@@ -13,7 +13,7 @@ import type {
 
 type JsonRecord = Record<string, unknown>;
 
-const CATALOG_PATH = join(process.cwd(), 'src', 'generated', 'release-catalog.json');
+const CATALOG_PATH = process.env.LOCAL_CATALOG_PATH || join(process.cwd(), 'src', 'generated', 'release-catalog.json');
 const DEFAULT_ASSET_BASE = '/api/local-data';
 let productionCatalogCache: ReleaseCatalogResult | null = null;
 
@@ -180,7 +180,11 @@ function normalizeTopPhyla(value: unknown): PhylumCount[] {
 function normalizeCatalog(raw: unknown): ReleaseCatalog {
   const root = asRecord(raw);
   const release = asRecord(root.release);
-  if (booleanValue(release, ['indexed']) === false || booleanValue(release, ['publishable']) === false) {
+  // The production catalog must be fully indexed and publishable. An
+  // explicit LOCAL_CATALOG_PATH is only used for local verification of a
+  // gzip-only release, where JBrowse is configured with unindexed adapters.
+  const localCatalogOverride = Boolean(process.env.LOCAL_CATALOG_PATH);
+  if (!localCatalogOverride && (booleanValue(release, ['indexed']) === false || booleanValue(release, ['publishable']) === false)) {
     throw new Error('The release is not indexed and cannot be published by the portal.');
   }
   const summary = asRecord(root.summary || root.stats || root.statistics);
@@ -242,6 +246,7 @@ function normalizeCatalog(raw: unknown): ReleaseCatalog {
 
   return {
     releaseId: stringValue(release, ['id', 'version', 'name']) || stringValue(root, ['releaseId', 'release_id', 'version']) || 'unversioned',
+    indexed: booleanValue(release, ['indexed']) ?? true,
     releaseDate: stringValue(release, ['date', 'releaseDate', 'release_date']) || stringValue(root, ['releaseDate', 'release_date']),
     generatedAt: stringValue(root, ['generatedAt', 'generated_at']) || stringValue(release, ['generatedAt', 'generated_at']),
     description: stringValue(release, ['description']) || stringValue(root, ['description']),

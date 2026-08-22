@@ -248,6 +248,7 @@ class JsonGenomeCatalogRepository implements GenomeCatalogRepository {
       releaseId: match.catalog.releaseId,
       assetBase: assetBaseForAccession(match.genome.accession, match.catalog.assetBase),
       genome: match.genome,
+      adapterMode: match.catalog.indexed === false ? 'unindexed' : 'indexed',
       storage: match.genome.storage || {
         layout: 'individual-v1',
         logicalObjectPrefix: match.genome.accession,
@@ -308,7 +309,11 @@ type D1TaxonomyMatchRow = {
 type D1TaxonomyMatch = Omit<D1TaxonomyMatchRow, 'query_token'>;
 
 async function configuredD1() {
-  const requested = process.env.SEQEDGE_CATALOG_BACKEND === 'd1' || process.env.NODE_ENV === 'production';
+  // A local catalog override is an explicit development/test escape hatch. It
+  // must win over the production default so the standalone server can render
+  // the browser without a Cloudflare worker binding.
+  const requested = !process.env.LOCAL_CATALOG_PATH
+    && (process.env.SEQEDGE_CATALOG_BACKEND === 'd1' || process.env.NODE_ENV === 'production');
   if (!requested) return null;
   try {
     const { getCloudflareContext } = await import('@opennextjs/cloudflare');

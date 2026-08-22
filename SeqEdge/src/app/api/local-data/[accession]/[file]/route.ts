@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const ACCESSION_PATTERN = /^GC[AF]_\d{9}\.\d+$/;
 const ALLOWED_FILES = new Set([
+  'reference.fa',
   'reference.fa.gz',
   'reference.fa.gz.fai',
   'reference.fa.gz.gzi',
@@ -24,6 +25,7 @@ const ALLOWED_FILES = new Set([
 ]);
 
 const CONTENT_TYPES: Record<string, string> = {
+  'reference.fa': 'text/plain; charset=utf-8',
   'reference.fa.gz': 'application/gzip',
   'reference.fa.gz.fai': 'text/plain; charset=utf-8',
   'reference.fa.gz.gzi': 'application/octet-stream',

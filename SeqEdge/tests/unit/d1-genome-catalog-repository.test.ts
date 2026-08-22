@@ -456,6 +456,8 @@ describe('D1 genome catalog repository', () => {
     expect(match?.plannedAssets?.cacheVersions).toEqual({
       reference: 'a'.repeat(64),
       predictedPromoters: 'b'.repeat(64),
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
       ncbiAnnotations: 'c'.repeat(64),
     });
   });

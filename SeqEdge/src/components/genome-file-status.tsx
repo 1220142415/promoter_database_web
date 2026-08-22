@@ -3,7 +3,7 @@ import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutlineRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 
-export type GenomeFileState = 'available' | 'preparing' | 'unavailable' | 'failed';
+export type GenomeFileState = 'available' | 'preparing' | 'unavailable' | 'failed' | 'incompatible';
 
 type Props = {
   states: {
@@ -18,6 +18,7 @@ const stateLabels: Record<GenomeFileState, string> = {
   preparing: 'Preparing',
   unavailable: 'Not available',
   failed: 'Failed',
+  incompatible: 'incompatible',
 };
 
 const stateIcons = {
@@ -25,6 +26,7 @@ const stateIcons = {
   preparing: ScheduleRoundedIcon,
   unavailable: RemoveCircleOutlineRoundedIcon,
   failed: ErrorOutlineRoundedIcon,
+  incompatible: ErrorOutlineRoundedIcon,
 };
 
 export default function GenomeFileStatus({ states }: Props) {

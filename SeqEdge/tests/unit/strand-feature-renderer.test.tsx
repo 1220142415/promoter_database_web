@@ -186,14 +186,14 @@ describe('strand feature SVG output', () => {
     expect(glyph?.querySelector('[data-role="promoter-flag"]')?.getAttribute('points')).toContain(String(220.5 - PROMOTER_FLAG_LENGTH));
   });
 
-  it('renders legacy promoter peaks as point-compatible glyphs without a false anchor', () => {
+  it('renders legacy promoter peaks as point-compatible bodies without an overlapping arrow or false anchor', () => {
     const peak = feature('peak', 'promoter_peak', -1, 50, 51);
     const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
     const glyph = container.querySelector('[data-feature-id="peak"]');
     expect(glyph).toHaveAttribute('data-formal-promoter', 'false');
     expect(glyph?.querySelector('[data-role="promoter-body"]')).toHaveAttribute('width', '3');
     expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toBeNull();
-    expect(glyph?.querySelector('[data-role="promoter-arrow"]')).toBeInTheDocument();
+    expect(glyph?.querySelector('[data-role="promoter-arrow"]')).toBeNull();
   });
 
   it('does not fake a formal promoter flag at a clipped anchor', () => {
@@ -246,7 +246,7 @@ describe('strand feature SVG output', () => {
       .toHaveAttribute('points', '16,17 19,14.5 19,19.5');
   });
 
-  it('keeps a three-pixel body and uses an internal marker when the endpoint is clipped', () => {
+  it('keeps the minimum body and omits arrows that cannot be separated or lack a real endpoint', () => {
     const narrow = feature('narrow', 'tRNA', 1, 10, 11);
     const { container } = render(
       <svg>
@@ -255,24 +255,22 @@ describe('strand feature SVG output', () => {
     );
     const narrowGlyph = container.querySelector('[data-feature-id="narrow"]');
     expect(narrowGlyph?.querySelector('[data-role="feature-body"]')).toHaveAttribute('width', '3');
-    expect(narrowGlyph?.querySelector('[data-role="feature-arrow"]')).toBeInTheDocument();
+    expect(narrowGlyph?.querySelector('[data-role="feature-arrow"]')).toBeNull();
 
-    const clipped = feature('clipped', 'gene', 1, 10, 100);
+    const clippedPlus = feature('clipped-plus', 'gene', 1, 10, 100);
+    const clippedMinus = feature('clipped-minus', 'gene', -1, 40, 100);
     const { container: clippedContainer } = render(
       <svg>
-        <DirectionalGlyph feature={clipped} region={{ ...forwardRegion, end: 50 }} bpPerPx={1} top={0} />
+        <DirectionalGlyph feature={clippedPlus} region={{ ...forwardRegion, end: 50 }} bpPerPx={1} top={0} />
+        <DirectionalGlyph feature={clippedMinus} region={{ ...forwardRegion, start: 50, end: 150 }} bpPerPx={1} top={12} />
       </svg>,
     );
-    const clippedArrow = clippedContainer.querySelector('[data-feature-id="clipped"] [data-role="feature-arrow"]');
-    expect(clippedArrow).toHaveAttribute('data-clipped-marker', 'true');
-    expect(clippedArrow).toHaveAttribute('x1', '27');
-    expect(clippedArrow).toHaveAttribute('x2', '33');
-    expect(clippedArrow).toHaveAttribute('stroke-width', '1.5');
-    expect(clippedContainer.querySelector('[data-feature-id="clipped"] [data-role="feature-arrow-head"]'))
-      .toHaveAttribute('points', '33,5 30,2.5 30,7.5');
+    expect(clippedContainer.querySelector('[data-feature-id="clipped-plus"] [data-role="feature-arrow"]')).toBeNull();
+    expect(clippedContainer.querySelector('[data-feature-id="clipped-minus"] [data-role="feature-arrow"]')).toBeNull();
+    expect(clippedContainer.querySelector('[data-clipped-marker]')).toBeNull();
   });
 
-  it('keeps true endpoint arrows inside the SVG at both block boundaries', () => {
+  it('reserves body space for true endpoint arrows at both SVG boundaries', () => {
     const plus = feature('plus-boundary', 'gene', 1, 200, 300);
     const minus = feature('minus-boundary', 'gene', -1, 0, 100);
     const { container } = render(
@@ -281,16 +279,39 @@ describe('strand feature SVG output', () => {
         <DirectionalGlyph feature={minus} region={forwardRegion} bpPerPx={1} top={12} />
       </svg>,
     );
+    const plusBody = container.querySelector('[data-feature-id="plus-boundary"] [data-role="feature-body"]');
+    const minusBody = container.querySelector('[data-feature-id="minus-boundary"] [data-role="feature-body"]');
     const plusArrow = container.querySelector('[data-feature-id="plus-boundary"] [data-role="feature-arrow"]');
     const minusArrow = container.querySelector('[data-feature-id="minus-boundary"] [data-role="feature-arrow"]');
+    expect(plusBody).toHaveAttribute('x', '200');
+    expect(plusBody).toHaveAttribute('width', '94');
     expect(plusArrow).toHaveAttribute('x1', '294');
     expect(plusArrow).toHaveAttribute('x2', '300');
+    expect(minusBody).toHaveAttribute('x', '6');
+    expect(minusBody).toHaveAttribute('width', '94');
     expect(minusArrow).toHaveAttribute('x1', '6');
     expect(minusArrow).toHaveAttribute('x2', '0');
     expect(container.querySelector('[data-feature-id="plus-boundary"] [data-role="feature-arrow-head"]'))
       .toHaveAttribute('points', '300,5 297,2.5 297,7.5');
     expect(container.querySelector('[data-feature-id="minus-boundary"] [data-role="feature-arrow-head"]'))
       .toHaveAttribute('points', '0,17 3,14.5 3,19.5');
+  });
+
+  it('keeps a reversed-view endpoint arrow outside the unchanged strand-colored body', () => {
+    const plus = feature('plus-reversed', 'gene', 1, 10, 60);
+    const { container } = render(
+      <svg>
+        <DirectionalGlyph feature={plus} region={{ ...forwardRegion, reversed: true }} bpPerPx={1} top={0} />
+      </svg>,
+    );
+    const glyph = container.querySelector('[data-feature-id="plus-reversed"]');
+    const body = glyph?.querySelector('[data-role="feature-body"]');
+    const arrow = glyph?.querySelector('[data-role="feature-arrow"]');
+    expect(glyph).toHaveAttribute('data-screen-direction', '-1');
+    expect(body).toHaveAttribute('fill', PLUS_STRAND_COLOR);
+    expect(body).toHaveAttribute('x', '240');
+    expect(arrow).toHaveAttribute('x1', '240');
+    expect(arrow).toHaveAttribute('x2', '234');
   });
 
   it('deduplicates nearby parent and child arrows but keeps distinct endpoints', () => {

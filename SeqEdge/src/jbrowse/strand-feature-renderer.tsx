@@ -209,7 +209,6 @@ function arrowEndpoint(feature: Feature, direction: NormalizedStrand, interval: 
 
 type ArrowPlacement = {
   tip: number;
-  clippedMarker: boolean;
 };
 
 function annotationArrowPlacement(
@@ -218,26 +217,13 @@ function annotationArrowPlacement(
   interval: ReturnType<typeof screenInterval>,
 ): ArrowPlacement | undefined {
   const endpoint = arrowEndpoint(feature, direction, interval);
-  if (endpoint !== undefined) {
-    const outsideTip = endpoint + direction * FEATURE_ARROW_LENGTH;
-    return {
-      // Prefer the compact endpoint-outside style used by NCBI: the colored
-      // body ends first, followed by a short black shaft and a small head.
-      // At an SVG edge there is no room outside, so fall back to the old
-      // inward-facing geometry instead of clipping the arrow away.
-      tip: endpointInViewport(outsideTip, interval.viewportWidth) ? outsideTip : endpoint,
-      clippedMarker: false,
-    };
-  }
-  if (!direction || !interval.visible || interval.width < FEATURE_ARROW_LENGTH * 2) return undefined;
-
-  // A feature can span multiple JBrowse blocks. When its biological endpoint
-  // is outside this block, put a direction marker in the middle of the visible
-  // body instead of pretending that the clipped block edge is the endpoint.
-  const center = (interval.left + interval.right) / 2;
+  if (endpoint === undefined) return undefined;
+  const outsideTip = endpoint + direction * FEATURE_ARROW_LENGTH;
   return {
-    tip: center + direction * FEATURE_ARROW_LENGTH / 2,
-    clippedMarker: true,
+    // Prefer an arrow beyond the biological endpoint. At an SVG boundary the
+    // arrow remains inside the viewport and the colored body is shortened
+    // below so the arrow never overlays it.
+    tip: endpointInViewport(outsideTip, interval.viewportWidth) ? outsideTip : endpoint,
   };
 }
 
@@ -247,7 +233,6 @@ function attachedArrow(
   height: number,
   direction: NormalizedStrand,
   role = 'feature-arrow',
-  clippedMarker = false,
 ) {
   if (!direction) return null;
   const tail = tip - direction * FEATURE_ARROW_LENGTH;
@@ -257,7 +242,6 @@ function attachedArrow(
   return <>
     <line
       data-role={role}
-      data-clipped-marker={clippedMarker ? 'true' : 'false'}
       x1={tail}
       x2={tip}
       y1={centerY}
@@ -267,11 +251,28 @@ function attachedArrow(
     />
     <polygon
       data-role={`${role}-head`}
-      data-clipped-marker={clippedMarker ? 'true' : 'false'}
       points={`${tip},${centerY} ${headBase},${centerY - halfHeadHeight} ${headBase},${centerY + halfHeadHeight}`}
       fill={ARROW_COLOR}
     />
   </>;
+}
+
+function separateArrowFromBody(
+  interval: ReturnType<typeof screenInterval>,
+  direction: NormalizedStrand,
+  placement?: ArrowPlacement,
+) {
+  if (!direction || !placement) {
+    return { left: interval.left, right: interval.right, placement: undefined };
+  }
+
+  const tail = placement.tip - direction * FEATURE_ARROW_LENGTH;
+  const left = direction === -1 ? Math.max(interval.left, tail) : interval.left;
+  const right = direction === 1 ? Math.min(interval.right, tail) : interval.right;
+  if (right - left < MIN_FEATURE_PIXEL_WIDTH) {
+    return { left: interval.left, right: interval.right, placement: undefined };
+  }
+  return { left, right, placement };
 }
 
 function promoterFlag(anchorX: number, top: number, direction: NormalizedStrand, color: string) {
@@ -334,19 +335,22 @@ function renderPromoterFeature(
     || displayModel?.featureUnderMouse?.id?.() === id;
   const bodyY = formal ? top + PROMOTER_BODY_TOP_OFFSET : top + 7;
   const bodyHeight = formal ? PROMOTER_BODY_HEIGHT : 10;
-  const bodyRect = { x: interval.left, y: bodyY, width: interval.width, height: bodyHeight };
-  const endpoint = arrowEndpoint(feature, direction, interval);
-  const outsideTip = endpoint === undefined ? undefined : endpoint + direction * FEATURE_ARROW_LENGTH;
-  const arrowTip = outsideTip !== undefined && endpointInViewport(outsideTip, interval.viewportWidth)
-    ? outsideTip
-    : endpoint;
+  const arrowGeometry = formal
+    ? { left: interval.left, right: interval.right, placement: undefined }
+    : separateArrowFromBody(interval, direction, annotationArrowPlacement(feature, direction, interval));
+  const bodyRect = {
+    x: arrowGeometry.left,
+    y: bodyY,
+    width: arrowGeometry.right - arrowGeometry.left,
+    height: bodyHeight,
+  };
   const flagTipX = anchorX === undefined ? undefined : anchorX + direction * PROMOTER_FLAG_LENGTH;
   const visualLeft = formal && anchorVisible && flagTipX !== undefined
     ? Math.min(showBody ? interval.left : anchorX!, anchorX!, flagTipX)
-    : interval.left;
+    : arrowGeometry.left;
   const visualRight = formal && anchorVisible && flagTipX !== undefined
     ? Math.max(showBody ? interval.right : anchorX!, anchorX!, flagTipX)
-    : interval.right;
+    : arrowGeometry.right;
   const visualTop = formal && anchorVisible ? top + PROMOTER_FLAG_TOP_OFFSET : bodyY;
   const visualBottom = formal && anchorVisible
     ? Math.max(top + PROMOTER_FLAG_TOP_OFFSET + PROMOTER_FLAG_POLE_HEIGHT, showBody ? bodyY + bodyHeight : 0)
@@ -364,7 +368,9 @@ function renderPromoterFeature(
       <title>{formal ? 'Predicted promoter (100 bp); anchor at 80th base' : 'Predicted promoter peak'}</title>
       {showBody ? <rect data-role="promoter-body" {...bodyRect} fill={color} fillOpacity={1} /> : null}
       {formal && anchorVisible ? promoterFlag(anchorX!, top, direction, color) : null}
-      {!formal && arrowTip !== undefined ? attachedArrow(arrowTip, bodyY, bodyHeight, direction, 'promoter-arrow') : null}
+      {!formal && arrowGeometry.placement
+        ? attachedArrow(arrowGeometry.placement.tip, bodyY, bodyHeight, direction, 'promoter-arrow')
+        : null}
       {hovered ? <rect data-role="promoter-hover" x={visualLeft} y={visualTop} width={visualRight - visualLeft} height={visualBottom - visualTop} fill="#000000" fillOpacity="0.12" /> : null}
       {selected ? <rect data-role="promoter-selected" x={visualLeft - 1} y={visualTop - 1} width={visualRight - visualLeft + 2} height={visualBottom - visualTop + 2} fill="none" stroke="#00b8ff" strokeWidth="2" /> : null}
     </g>
@@ -426,16 +432,13 @@ function annotationArrowPlacements(tree: Feature[], region: Region, bpPerPx: num
     return placement ? [{ feature, direction, placement, index }] : [];
   });
 
-  // Prefer real endpoints over clipped-body markers, then keep the parent to
-  // child order. Gene/CDS/exon records commonly share an endpoint; drawing all
-  // of them produces an unreadable stack of identical black arrows.
-  candidates.sort((left, right) => (
-    Number(left.placement.clippedMarker) - Number(right.placement.clippedMarker)
-    || left.index - right.index
-  ));
+  // Gene/CDS/exon records commonly share an endpoint; drawing all of them
+  // produces an unreadable stack of identical black arrows.
+  candidates.sort((left, right) => left.index - right.index);
 
   const accepted: Array<{ direction: NormalizedStrand; placement: ArrowPlacement }> = [];
-  const placements = new Map<string, ArrowPlacement>();
+  const bodyPlacements = new Map(candidates.map((candidate) => [String(candidate.feature.id()), candidate.placement]));
+  const arrowPlacements = new Map<string, ArrowPlacement>();
   for (const candidate of candidates) {
     const overlaps = accepted.some((current) => (
       current.direction === candidate.direction
@@ -443,9 +446,9 @@ function annotationArrowPlacements(tree: Feature[], region: Region, bpPerPx: num
     ));
     if (overlaps) continue;
     accepted.push(candidate);
-    placements.set(String(candidate.feature.id()), candidate.placement);
+    arrowPlacements.set(String(candidate.feature.id()), candidate.placement);
   }
-  return placements;
+  return { bodyPlacements, arrowPlacements };
 }
 
 export const DirectionalGlyph = observer(function DirectionalGlyph({
@@ -457,6 +460,7 @@ export const DirectionalGlyph = observer(function DirectionalGlyph({
   root = false,
   arrowPlacement,
   arrowOnly = false,
+  bodyOnly = false,
 }: {
   feature: Feature;
   region: Region;
@@ -466,6 +470,7 @@ export const DirectionalGlyph = observer(function DirectionalGlyph({
   root?: boolean;
   arrowPlacement?: ArrowPlacement | null;
   arrowOnly?: boolean;
+  bodyOnly?: boolean;
 }) {
   if (isRegionFeature(feature)) return null;
   const type = String(feature.get('type') || '').toLowerCase();
@@ -484,6 +489,7 @@ export const DirectionalGlyph = observer(function DirectionalGlyph({
   const resolvedArrowPlacement = arrowPlacement === undefined
     ? annotationArrowPlacement(feature, direction, interval)
     : arrowPlacement || undefined;
+  const arrowGeometry = separateArrowFromBody(interval, direction, resolvedArrowPlacement);
 
   return (
     <g
@@ -494,12 +500,12 @@ export const DirectionalGlyph = observer(function DirectionalGlyph({
       data-screen-direction={direction}
       data-arrow-overlay={arrowOnly ? 'true' : undefined}
     >
-      {!arrowOnly ? <rect data-role="feature-body" x={interval.left} y={y} width={interval.width} height={height} fill={color} /> : null}
-      {resolvedArrowPlacement
-        ? attachedArrow(resolvedArrowPlacement.tip, y, height, direction, 'feature-arrow', resolvedArrowPlacement.clippedMarker)
+      {!arrowOnly ? <rect data-role="feature-body" x={arrowGeometry.left} y={y} width={arrowGeometry.right - arrowGeometry.left} height={height} fill={color} /> : null}
+      {!bodyOnly && arrowGeometry.placement
+        ? attachedArrow(arrowGeometry.placement.tip, y, height, direction, 'feature-arrow')
         : null}
-      {!arrowOnly && hovered ? <rect data-role="feature-hover" x={interval.left} y={y} width={interval.width} height={height} fill="#000000" fillOpacity="0.12" /> : null}
-      {!arrowOnly && selected ? <rect data-role="feature-selected" x={interval.left - 1} y={y - 1} width={interval.width + 2} height={height + 2} fill="none" stroke="#00b8ff" strokeWidth="2" /> : null}
+      {!arrowOnly && hovered ? <rect data-role="feature-hover" x={arrowGeometry.left} y={y} width={arrowGeometry.right - arrowGeometry.left} height={height} fill="#000000" fillOpacity="0.12" /> : null}
+      {!arrowOnly && selected ? <rect data-role="feature-selected" x={arrowGeometry.left - 1} y={y - 1} width={arrowGeometry.right - arrowGeometry.left + 2} height={height + 2} fill="none" stroke="#00b8ff" strokeWidth="2" /> : null}
     </g>
   );
 });
@@ -517,7 +523,7 @@ function renderAnnotationFeature(
   const label = featureName(feature);
 
   const tree = annotationFeatureTree(feature);
-  const arrowPlacements = annotationArrowPlacements(tree, region, bpPerPx);
+  const { bodyPlacements, arrowPlacements } = annotationArrowPlacements(tree, region, bpPerPx);
 
   return (
     <g key={id} data-annotation-root={id} data-layout-id={layoutId} data-direct-feature-id={id}>
@@ -530,7 +536,8 @@ function renderAnnotationFeature(
           top={top}
           displayModel={displayModel}
           root={index === 0}
-          arrowPlacement={null}
+          arrowPlacement={bodyPlacements.get(String(part.id())) || null}
+          bodyOnly
         />
       ))}
       {tree.map((part, index) => {
@@ -671,10 +678,20 @@ export const DirectionalAnnotationRendering = observer(function DirectionalAnnot
     const labelWidth = measureText(label, 11);
     const labelPlacement = annotationLabelPlacement(feature, region, props.bpPerPx, labelWidth);
     const direction = screenDirection(feature.get('strand'), region.reversed);
-    const arrowLeft = direction === -1 ? Math.max(0, interval.left - FEATURE_ARROW_LENGTH) : interval.left;
-    const arrowRight = direction === 1
-      ? Math.min(interval.viewportWidth, interval.right + FEATURE_ARROW_LENGTH)
-      : interval.right;
+    const arrowGeometry = separateArrowFromBody(
+      interval,
+      direction,
+      annotationArrowPlacement(feature, direction, interval),
+    );
+    const arrowTail = arrowGeometry.placement
+      ? arrowGeometry.placement.tip - direction * FEATURE_ARROW_LENGTH
+      : undefined;
+    const arrowLeft = arrowGeometry.placement
+      ? Math.min(arrowGeometry.left, arrowGeometry.placement.tip, arrowTail!)
+      : arrowGeometry.left;
+    const arrowRight = arrowGeometry.placement
+      ? Math.max(arrowGeometry.right, arrowGeometry.placement.tip, arrowTail!)
+      : arrowGeometry.right;
     const collisionLeft = Math.min(arrowLeft, labelPlacement.visible ? labelPlacement.x : arrowLeft);
     const collisionRight = Math.max(arrowRight, labelPlacement.visible
       ? labelPlacement.x + labelPlacement.width

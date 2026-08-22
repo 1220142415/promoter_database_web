@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createViewState, JBrowseLinearGenomeView } from '@jbrowse/react-linear-genome-view';
+import { createViewState } from '@jbrowse/react-linear-genome-view';
 import ShareRoundedIcon from '@mui/icons-material/ShareRounded';
+import SeqEdgeJBrowseLinearView from '@/components/seqedge-jbrowse-linear-view';
 import SeqEdgeMirroredScorePlugin from '@/jbrowse/mirrored-score-plugin';
 import SeqEdgeStrandFeaturePlugin, {
   DIRECTIONAL_ANNOTATION_RENDERER,
@@ -432,7 +433,7 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         </label>
       )}
       <div className="portal-browser">
-        <JBrowseLinearGenomeView viewState={viewState} />
+        <SeqEdgeJBrowseLinearView viewState={viewState} />
       </div>
     </div>
   );

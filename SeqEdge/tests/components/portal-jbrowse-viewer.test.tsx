@@ -8,7 +8,10 @@ import { makeGenome } from '../fixtures/release';
 
 vi.mock('@jbrowse/react-linear-genome-view', () => ({
   createViewState: vi.fn(() => ({ configured: true })),
-  JBrowseLinearGenomeView: () => <div data-testid="mock-jbrowse" />,
+}));
+
+vi.mock('@/components/seqedge-jbrowse-linear-view', () => ({
+  default: () => <div data-testid="mock-jbrowse" />,
 }));
 
 import { createViewState } from '@jbrowse/react-linear-genome-view';

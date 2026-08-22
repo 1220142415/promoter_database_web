@@ -6,8 +6,15 @@ import PortalOnDemandBrowserPanel from '@/components/portal-on-demand-browser-pa
 import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/lib/on-demand-genome-assets';
 
 vi.mock('@/components/portal-browser-panel', () => ({
-  default: ({ assembly }: { assembly: { defaultLocus: string; assets: { ncbiAnnotations: string | null } } }) => (
-    <div data-testid="prepared-browser" data-locus={assembly.defaultLocus} data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))} />
+  default: ({ assembly }: { assembly: { defaultLocus: string; assets: { promoterScoresPlus: string | null; promoterScoresMinus: string | null; ncbiAnnotations: string | null } } }) => (
+    <div
+      data-testid="prepared-browser"
+      data-locus={assembly.defaultLocus}
+      data-scores={String(Boolean(assembly.assets.promoterScoresPlus && assembly.assets.promoterScoresMinus))}
+      data-score-plus={assembly.assets.promoterScoresPlus || ''}
+      data-score-minus={assembly.assets.promoterScoresMinus || ''}
+      data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))}
+    />
   ),
 }));
 
@@ -20,10 +27,14 @@ vi.mock('@/lib/on-demand-genome-assets', () => ({
 const plannedAssets = {
   reference: 'https://huggingface.co/reference.fna.gz',
   predictedPromoters: 'https://huggingface.co/promoters.gff3',
+  promoterScoresPlus: 'https://huggingface.co/promoter-scores.plus.bw',
+  promoterScoresMinus: 'https://huggingface.co/promoter-scores.minus.bw',
   ncbiAnnotations: 'https://huggingface.co/annotation.gff3.gz',
   cacheVersions: {
     reference: 'a'.repeat(64),
     predictedPromoters: 'b'.repeat(64),
+    promoterScoresPlus: 'd'.repeat(64),
+    promoterScoresMinus: 'e'.repeat(64),
     ncbiAnnotations: 'c'.repeat(64),
   },
   batch: '000',
@@ -66,6 +77,9 @@ describe('on-demand genome browser', () => {
     );
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-locus', 'NC_000001.1:1-10000');
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-scores', 'true');
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-plus', plannedAssets.promoterScoresPlus);
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-minus', plannedAssets.promoterScoresMinus);
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');
     expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableAnnotationAvailable');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
@@ -76,6 +90,30 @@ describe('on-demand genome browser', () => {
     ]);
     expect(maybeDecompressGzip).toHaveBeenCalledTimes(3);
     expect(firstFastaRefName).toHaveBeenCalled();
+  });
+
+  it('keeps legacy releases working without direct score URLs', async () => {
+    const withoutScores = {
+      ...plannedAssets,
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
+      cacheVersions: {
+        ...plannedAssets.cacheVersions,
+        promoterScoresPlus: null,
+        promoterScoresMinus: null,
+      },
+    };
+
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_000007325.1"
+        releaseId="SeqEdge 2026-08-13"
+        plannedAssets={withoutScores}
+      />,
+    );
+
+    expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-scores', 'false');
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
   });
 
   it('marks an intentionally absent annotation without requesting it', async () => {

@@ -15,6 +15,7 @@ beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'seqedge-local-data-'));
   await mkdir(join(root, accession), { recursive: true });
   await writeFile(join(root, accession, 'metadata.json'), '0123456789');
+  await writeFile(join(root, accession, 'reference.fa'), '>contig_1\nACGT\n');
   await writeFile(join(root, accession, 'promoter-scores.plus.bw'), 'BIGWIGDATA');
   process.env.LOCAL_DATA_ROOT = root;
 });
@@ -45,6 +46,13 @@ describe('local release asset route', () => {
     expect(head.status).toBe(200);
     expect(head.body).toBeNull();
     expect(head.headers.get('content-length')).toBe('10');
+  });
+
+  it('serves the plain FASTA used by an explicit unindexed local release', async () => {
+    const response = await GET(new Request('http://localhost/test'), context('reference.fa'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(await response.text()).toBe('>contig_1\nACGT\n');
   });
 
   it('uses a sanitized requested attachment filename with the original file extension', async () => {

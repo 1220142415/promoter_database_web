@@ -216,8 +216,16 @@ describe('genome detail release contract', () => {
     staged.plannedAssets = {
       reference: 'https://huggingface.co/reference.fa.gz',
       predictedPromoters: 'https://huggingface.co/promoters.gff3',
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
       ncbiAnnotations: 'https://huggingface.co/annotations.gff3.gz',
-      cacheVersions: { reference: null, predictedPromoters: null, ncbiAnnotations: null },
+      cacheVersions: {
+        reference: null,
+        predictedPromoters: null,
+        promoterScoresPlus: null,
+        promoterScoresMinus: null,
+        ncbiAnnotations: null,
+      },
       batch: '000',
     };
     vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(staged);

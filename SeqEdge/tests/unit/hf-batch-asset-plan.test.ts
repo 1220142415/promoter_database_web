@@ -34,10 +34,16 @@ describe('Hugging Face batch asset plan', () => {
       '--repo', 'owner/repository',
       '--batch-size', '2',
       '--expected-count', '3',
+      '--score-batches', '000',
     ]);
 
     const plan = JSON.parse(await readFile(path.join(output, 'asset-layout.json'), 'utf8'));
     expect(plan).toMatchObject({ layout: 'promoter-batch-v1', totalGenomes: 3, batchSize: 2 });
+    expect(plan.promoterScoreBatches).toEqual(['000']);
+    expect(plan.fileTemplates).toMatchObject({
+      promoterScoresPlus: '{batch}/promoter_bw/{accession}/promoter-scores.plus.bw',
+      promoterScoresMinus: '{batch}/promoter_bw/{accession}/promoter-scores.minus.bw',
+    });
     expect(plan.batches).toEqual([
       expect.objectContaining({ id: '000', firstAccession: 'GCA_000000001.1', lastAccession: 'GCA_000000002.1', count: 2, status: 'staged' }),
       expect.objectContaining({ id: '001', firstAccession: 'GCA_000000003.1', lastAccession: 'GCA_000000003.1', count: 1, status: 'staged' }),
@@ -46,6 +52,8 @@ describe('Hugging Face batch asset plan', () => {
     const links = await readFile(path.join(output, 'asset-links.tsv'), 'utf8');
     expect(links.trim().split('\n')).toHaveLength(4);
     expect(links).toContain('https://huggingface.co/datasets/owner/repository/resolve/main/001/genomes/GCA_000000003.1_genomic.fna.gz');
+    expect(links).toContain('https://huggingface.co/datasets/owner/repository/resolve/main/000/promoter_bw/GCA_000000001.1/promoter-scores.plus.bw');
+    expect(links).toContain('GCA_000000003.1\t001\thttps://huggingface.co/datasets/owner/repository/resolve/main/001/genomes/GCA_000000003.1_genomic.fna.gz\thttps://huggingface.co/datasets/owner/repository/resolve/main/001/promoter_gff/GCA_000000003.1.promoters_up80_down20_gt_0.9.gff3\t\t\t');
 
     const sql = await readFile(path.join(output, 'update-release-asset-layout.sql'), 'utf8');
     expect(sql).toContain("hf_repository = 'owner/repository'");

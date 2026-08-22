@@ -1,10 +1,14 @@
 export interface PlannedGenomeAssets {
   reference: string;
   predictedPromoters: string;
+  promoterScoresPlus: string | null;
+  promoterScoresMinus: string | null;
   ncbiAnnotations: string | null;
   cacheVersions: {
     reference: string | null;
     predictedPromoters: string | null;
+    promoterScoresPlus: string | null;
+    promoterScoresMinus: string | null;
     ncbiAnnotations: string | null;
   };
   batch: string;
@@ -22,6 +26,7 @@ type AssetLayout = {
   layout: string;
   baseUrl: string;
   fileTemplates: Record<string, unknown>;
+  promoterScoreBatches?: unknown;
   batches: BatchRange[];
 };
 
@@ -41,7 +46,7 @@ function validLayout(value: unknown): value is AssetLayout {
   } catch {
     return false;
   }
-  return layout.batches.every((batch) => {
+  const validBatches = layout.batches.every((batch) => {
     if (!batch || typeof batch !== 'object' || Array.isArray(batch)) return false;
     const range = batch as Record<string, unknown>;
     return typeof range.id === 'string' && BATCH_PATTERN.test(range.id)
@@ -49,6 +54,7 @@ function validLayout(value: unknown): value is AssetLayout {
       && typeof range.lastAccession === 'string' && ACCESSION_PATTERN.test(range.lastAccession)
       && range.firstAccession <= range.lastAccession;
   });
+  return validBatches;
 }
 
 function renderPath(template: unknown, accession: string, batch: string) {
@@ -59,6 +65,13 @@ function renderPath(template: unknown, accession: string, batch: string) {
 
 function cacheVersion(value: unknown) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : null;
+}
+
+function validPromoterScoreBatches(value: unknown, knownBatches: Set<string>): string[] | null {
+  if (!Array.isArray(value) || value.some((batch) => typeof batch !== 'string' || !BATCH_PATTERN.test(batch))) return null;
+  const batches = value as string[];
+  if (new Set(batches).size !== batches.length || batches.some((batch) => !knownBatches.has(batch))) return null;
+  return batches;
 }
 
 export function plannedHfBatchAssets(
@@ -82,6 +95,16 @@ export function plannedHfBatchAssets(
   if (!range) return null;
   const reference = renderPath(layout.fileTemplates.reference, accession, range.id);
   const predictedPromoters = renderPath(layout.fileTemplates.predictedPromoters, accession, range.id);
+  const knownBatches = new Set(layout.batches.map((batch) => batch.id));
+  const promoterScoreBatches = validPromoterScoreBatches(layout.promoterScoreBatches, knownBatches);
+  const scoreBatchAvailable = promoterScoreBatches?.includes(range.id) === true;
+  const candidateScoresPlus = scoreBatchAvailable
+    ? renderPath(layout.fileTemplates.promoterScoresPlus, accession, range.id)
+    : null;
+  const candidateScoresMinus = scoreBatchAvailable
+    ? renderPath(layout.fileTemplates.promoterScoresMinus, accession, range.id)
+    : null;
+  const hasPromoterScores = Boolean(candidateScoresPlus && candidateScoresMinus);
   const ncbiAnnotations = includeNcbiAnnotations
     ? renderPath(layout.fileTemplates.ncbiAnnotations, accession, range.id)
     : null;
@@ -90,10 +113,14 @@ export function plannedHfBatchAssets(
   return {
     reference: `${base}/${reference}`,
     predictedPromoters: `${base}/${predictedPromoters}`,
+    promoterScoresPlus: hasPromoterScores ? `${base}/${candidateScoresPlus}` : null,
+    promoterScoresMinus: hasPromoterScores ? `${base}/${candidateScoresMinus}` : null,
     ncbiAnnotations: ncbiAnnotations ? `${base}/${ncbiAnnotations}` : null,
     cacheVersions: {
       reference: cacheVersion(versions.reference),
       predictedPromoters: cacheVersion(versions.predictedPromoters),
+      promoterScoresPlus: hasPromoterScores ? cacheVersion(versions.promoterScoresPlus) : null,
+      promoterScoresMinus: hasPromoterScores ? cacheVersion(versions.promoterScoresMinus) : null,
       ncbiAnnotations: ncbiAnnotations ? cacheVersion(versions.ncbiAnnotations) : null,
     },
     batch: range.id,

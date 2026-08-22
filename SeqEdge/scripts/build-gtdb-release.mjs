@@ -15,10 +15,12 @@ import {
 } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
+import { pipeline } from 'node:stream/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createGunzip, createGzip } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
+import { buildHfBatchSample } from './lib/hf-batch-release.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultReleaseDate = '2026-08-07';
@@ -42,6 +44,9 @@ function parseArgs(argv) {
     scoreRoot: null,
     limit: null,
     publishStage: null,
+    hfBatchRoot: null,
+    accessions: null,
+    metadataCatalog: defaultAppCatalog,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -64,6 +69,9 @@ function parseArgs(argv) {
     else if (argument === '--score-root') options.scoreRoot = resolve(value());
     else if (argument === '--limit') options.limit = Number(value());
     else if (argument === '--publish-stage') options.publishStage = resolve(value());
+    else if (argument === '--hf-batch-root') options.hfBatchRoot = resolve(value());
+    else if (argument === '--accessions') options.accessions = value().split(',').map((entry) => entry.trim()).filter(Boolean);
+    else if (argument === '--metadata-catalog') options.metadataCatalog = resolve(value());
     else if (argument === '--help' || argument === '-h') {
       console.log(`Usage: node scripts/build-gtdb-release.mjs [options]\n\n` +
         `  --archive PATH          Source tar.gz (default: ../gtdb_selected_data_20260807.tar.gz)\n` +
@@ -78,6 +86,9 @@ function parseArgs(argv) {
         `  --preflight             Inspect inputs/tools without building\n` +
         `  --limit N               Build the first N accessions (smoke testing only)\n` +
         `  --publish-stage PATH    Publish a preserved, completed stage without rebuilding\n` +
+        `  --hf-batch-root PATH    Formal HF checkout containing 000-032 batch directories\n` +
+        `  --accessions A,B        Accessions to build from formal HF batches\n` +
+        `  --metadata-catalog PATH Existing catalog used for taxonomy metadata in HF sample mode\n` +
         `  --force                 Replace an existing release after a successful build`);
       process.exit(0);
     } else throw new Error(`unknown argument: ${argument}`);
@@ -85,6 +96,9 @@ function parseArgs(argv) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(options.releaseDate)) throw new Error('release date must be YYYY-MM-DD');
   if (!['auto', 'native', 'wsl', 'none'].includes(options.toolMode)) throw new Error('tool mode must be auto, native, wsl, or none');
   if (options.limit !== null && (!Number.isSafeInteger(options.limit) || options.limit < 1)) throw new Error('--limit must be a positive integer');
+  if (options.accessions && options.accessions.some((accession) => !ACCESSION.test(accession))) throw new Error('--accessions contains an invalid accession');
+  if (options.hfBatchRoot && !options.accessions?.length) throw new Error('--hf-batch-root requires --accessions');
+  if (!options.hfBatchRoot && options.accessions) throw new Error('--accessions requires --hf-batch-root');
   return options;
 }
 
@@ -309,13 +323,14 @@ async function normalizeGff(source, destination, { expectedType = null, sequence
     if (fields[2] === 'CDS' && !['0', '1', '2'].includes(fields[7])) throw new Error(`${source}: CDS phase must be 0, 1, or 2`);
     const attributes = parseGffAttributes(fields[8]);
     if (fields[2] === 'region' && attributes.Is_circular === 'true') circularSequences.add(fields[0]);
-    if (expectedType === 'promoter_peak') {
+    if (expectedType === 'promoter_peak' || expectedType === 'promoter') {
       const score = Number(fields[5]);
       if (!Number.isFinite(score) || score <= 0.9 || score > 1) throw new Error(`${source}: promoter score is outside (0.9, 1]`);
-      if (start !== end) throw new Error(`${source}: promoter_peak must be a point feature`);
+      if (expectedType === 'promoter_peak' && start !== end) throw new Error(`${source}: promoter_peak must be a point feature`);
+      if (expectedType === 'promoter' && end - start + 1 !== 100) throw new Error(`${source}: promoter must span exactly 100 bp`);
       if (!['+', '-'].includes(fields[6])) throw new Error(`${source}: promoter strand must be + or -`);
-      if (!attributes.ID) throw new Error(`${source}: promoter_peak is missing ID`);
-      const attributeScore = Number(attributes.prediction_score);
+      if (!attributes.ID) throw new Error(`${source}: ${expectedType} is missing ID`);
+      const attributeScore = attributes.prediction_score === undefined ? score : Number(attributes.prediction_score);
       if (!Number.isFinite(attributeScore) || Math.abs(attributeScore - score) > 1e-9) {
         throw new Error(`${source}: prediction_score does not match the GFF3 score`);
       }
@@ -453,7 +468,10 @@ async function preprocessRelease(stage, toolchain, options, scoreRoot = null) {
 function assetPaths(accession, hasAnnotation, indexed, scoreIndexed = false) {
   const prefix = accession;
   return {
-    fasta: `${prefix}/reference.fa.gz`,
+    // The deliberate local fallback uses an uncompressed FASTA because
+    // JBrowse's UnindexedFastaAdapter reads text directly. Formal releases
+    // continue to expose the bgzip FASTA and its indexes.
+    fasta: indexed ? `${prefix}/reference.fa.gz` : `${prefix}/reference.fa`,
     fastaFai: indexed ? `${prefix}/reference.fa.gz.fai` : null,
     fastaGzi: indexed ? `${prefix}/reference.fa.gz.gzi` : null,
     predictedPromoters: `${prefix}/predicted-promoters.gff3.gz`,
@@ -464,6 +482,10 @@ function assetPaths(accession, hasAnnotation, indexed, scoreIndexed = false) {
     ncbiAnnotationsIndex: hasAnnotation && indexed ? `${prefix}/ncbi-annotations.gff3.gz.tbi` : null,
     metadata: `${prefix}/metadata.json`,
   };
+}
+
+async function expandGzip(source, destination) {
+  await pipeline(createReadStream(source).pipe(createGunzip()), createWriteStream(destination));
 }
 
 async function validatePreservedStage(stage) {
@@ -636,6 +658,7 @@ async function build(options, toolchain) {
 
       const fasta = await parseFasta(sourceFasta);
       await copyFile(sourceFasta, join(objectRoot, 'reference.fa.gz'));
+      if (!toolchain.selected) await expandGzip(sourceFasta, join(objectRoot, 'reference.fa'));
       const predictions = await normalizeGff(sourcePrediction, join(objectRoot, 'predicted-promoters.gff3.gz'), {
         expectedType: 'promoter_peak',
         sequences: fasta.sequenceLengths,
@@ -862,6 +885,38 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.publishStage) {
     await publishPreservedStage(options);
+    return;
+  }
+  if (options.hfBatchRoot) {
+    if (!(await exists(options.hfBatchRoot))) throw new Error(`HF batch root does not exist: ${options.hfBatchRoot}`);
+    if (!(await exists(options.metadataCatalog))) throw new Error(`metadata catalog does not exist: ${options.metadataCatalog}`);
+    const toolchain = detectToolchain(options);
+    const hfOptions = {
+      projectRoot,
+      inputRoot: options.hfBatchRoot,
+      accessions: options.accessions,
+      metadataCatalog: options.metadataCatalog,
+      appCatalog: options.appCatalog,
+      output: options.output,
+      releaseDate: options.releaseDate,
+      force: options.force,
+      preflightOnly: options.preflightOnly,
+      allowUnindexed: options.allowUnindexed,
+      wslDistro: options.wslDistro,
+    };
+    const result = await buildHfBatchSample(hfOptions, {
+      NcbiAnnotationCompatibilityError,
+      assetPaths,
+      hashFile,
+      normalizeGff,
+      parseFasta,
+      preprocessRelease,
+      replaceRelease,
+      toolchain,
+      expandGzip,
+      writeJson,
+    });
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
   if (!isAbsolute(options.archive) || !isAbsolute(options.output)) throw new Error('archive and output paths must resolve to absolute paths');

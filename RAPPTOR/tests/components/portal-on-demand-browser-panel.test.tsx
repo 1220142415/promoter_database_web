@@ -47,7 +47,9 @@ describe('on-demand genome browser', () => {
       static createObjectURL = vi.fn()
         .mockReturnValueOnce('blob:reference')
         .mockReturnValueOnce('blob:promoters')
-        .mockReturnValueOnce('blob:annotation');
+        .mockReturnValueOnce('blob:annotation')
+        .mockReturnValueOnce('blob:scores-plus')
+        .mockReturnValueOnce('blob:scores-minus');
 
       static revokeObjectURL = vi.fn();
     }
@@ -58,7 +60,9 @@ describe('on-demand genome browser', () => {
     vi.mocked(loadCachedGenomeAsset)
       .mockResolvedValueOnce(new Blob(['reference']))
       .mockResolvedValueOnce(new Blob(['promoters']))
-      .mockResolvedValueOnce(new Blob(['annotation']));
+      .mockResolvedValueOnce(new Blob(['annotation']))
+      .mockResolvedValueOnce(new Blob(['scores-plus']))
+      .mockResolvedValueOnce(new Blob(['scores-minus']));
     vi.mocked(maybeDecompressGzip)
       .mockResolvedValueOnce(reference)
       .mockResolvedValueOnce(new Blob(['promoters']))
@@ -78,15 +82,23 @@ describe('on-demand genome browser', () => {
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-locus', 'NC_000001.1:1-10000');
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-scores', 'true');
-    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-plus', plannedAssets.promoterScoresPlus);
-    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-minus', plannedAssets.promoterScoresMinus);
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute(
+      'data-score-plus',
+      'blob:scores-plus',
+    );
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute(
+      'data-score-minus',
+      'blob:scores-minus',
+    );
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableAnnotationAvailable');
-    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableScoresAvailableAnnotationAvailable');
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(5);
     expect(vi.mocked(loadCachedGenomeAsset).mock.calls.map(([url, key]) => [url, key])).toEqual([
       [plannedAssets.reference, `RAPPTOR 2026-08-13/GCA_000007325.1/reference/${'a'.repeat(64)}`],
       [plannedAssets.predictedPromoters, `RAPPTOR 2026-08-13/GCA_000007325.1/promoters/${'b'.repeat(64)}`],
       [plannedAssets.ncbiAnnotations, `RAPPTOR 2026-08-13/GCA_000007325.1/ncbi/${'c'.repeat(64)}`],
+      [plannedAssets.promoterScoresPlus, `RAPPTOR 2026-08-13/GCA_000007325.1/scores-plus/${'d'.repeat(64)}`],
+      [plannedAssets.promoterScoresMinus, `RAPPTOR 2026-08-13/GCA_000007325.1/scores-minus/${'e'.repeat(64)}`],
     ]);
     expect(maybeDecompressGzip).toHaveBeenCalledTimes(3);
     expect(firstFastaRefName).toHaveBeenCalled();
@@ -114,6 +126,7 @@ describe('on-demand genome browser', () => {
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-scores', 'false');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ScoresNot available');
   });
 
   it('marks an intentionally absent annotation without requesting it', async () => {
@@ -124,7 +137,9 @@ describe('on-demand genome browser', () => {
     };
     vi.mocked(loadCachedGenomeAsset).mockReset()
       .mockResolvedValueOnce(new Blob(['reference']))
-      .mockResolvedValueOnce(new Blob(['promoters']));
+      .mockResolvedValueOnce(new Blob(['promoters']))
+      .mockResolvedValueOnce(new Blob(['scores-plus']))
+      .mockResolvedValueOnce(new Blob(['scores-minus']));
 
     render(
       <PortalOnDemandBrowserPanel
@@ -135,15 +150,22 @@ describe('on-demand genome browser', () => {
     );
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'false');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableAnnotationNot available');
-    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableScoresAvailableAnnotationNot available');
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(4);
   });
 
   it('marks only an inaccessible required file as failed', async () => {
     const withoutAnnotation = {
       ...plannedAssets,
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
       ncbiAnnotations: null,
-      cacheVersions: { ...plannedAssets.cacheVersions, ncbiAnnotations: null },
+      cacheVersions: {
+        ...plannedAssets.cacheVersions,
+        promoterScoresPlus: null,
+        promoterScoresMinus: null,
+        ncbiAnnotations: null,
+      },
     };
     vi.mocked(loadCachedGenomeAsset).mockReset()
       .mockResolvedValueOnce(new Blob(['reference']))
@@ -158,7 +180,7 @@ describe('on-demand genome browser', () => {
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Genome asset is unavailable (HTTP 404).');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersFailedAnnotationNot available');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersFailedScoresNot availableAnnotationNot available');
     expect(screen.queryByTestId('prepared-browser')).not.toBeInTheDocument();
   });
 });

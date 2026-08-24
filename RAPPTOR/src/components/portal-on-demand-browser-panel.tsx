@@ -14,12 +14,13 @@ type Props = {
   plannedAssets: PlannedGenomeAssets;
 };
 
-type FileStates = { reference: GenomeFileState; promoters: GenomeFileState; annotation: GenomeFileState };
+type FileStates = { reference: GenomeFileState; promoters: GenomeFileState; scores: GenomeFileState; annotation: GenomeFileState };
 
-function initialFileStates(hasAnnotation: boolean): FileStates {
+function initialFileStates(hasAnnotation: boolean, hasScores: boolean): FileStates {
   return {
     reference: 'preparing',
     promoters: 'preparing',
+    scores: hasScores ? 'preparing' : 'unavailable',
     annotation: hasAnnotation ? 'preparing' : 'unavailable',
   };
 }
@@ -36,7 +37,8 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
   const [error, setError] = useState('');
-  const [fileStates, setFileStates] = useState<FileStates>(() => initialFileStates(Boolean(plannedAssets.ncbiAnnotations)));
+  const hasScores = Boolean(plannedAssets.promoterScoresPlus && plannedAssets.promoterScoresMinus);
+  const [fileStates, setFileStates] = useState<FileStates>(() => initialFileStates(Boolean(plannedAssets.ncbiAnnotations), hasScores));
   const objectUrls = useRef<string[]>([]);
   const abortController = useRef<AbortController | null>(null);
 
@@ -54,7 +56,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     setAssembly(null);
     setStatus('loading');
     setError('');
-    setFileStates(initialFileStates(Boolean(plannedAssets.ncbiAnnotations)));
+    setFileStates(initialFileStates(Boolean(plannedAssets.ncbiAnnotations), hasScores));
     try {
       const cachePrefix = `${releaseId}/${accession}`;
       const load = async (kind: keyof FileStates, url: string, cacheKey: string) => {
@@ -67,12 +69,35 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
           throw cause;
         }
       };
-      const [compressedReference, promoters, annotation] = await Promise.all([
+      const loadScores = async () => {
+        if (!plannedAssets.promoterScoresPlus || !plannedAssets.promoterScoresMinus) return [null, null] as const;
+        try {
+          const scores = await Promise.all([
+            loadCachedGenomeAsset(
+              plannedAssets.promoterScoresPlus,
+              assetCacheKey(cachePrefix, 'scores-plus', plannedAssets.promoterScoresPlus, plannedAssets.cacheVersions.promoterScoresPlus),
+              controller.signal,
+            ),
+            loadCachedGenomeAsset(
+              plannedAssets.promoterScoresMinus,
+              assetCacheKey(cachePrefix, 'scores-minus', plannedAssets.promoterScoresMinus, plannedAssets.cacheVersions.promoterScoresMinus),
+              controller.signal,
+            ),
+          ]);
+          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, scores: 'available' }));
+          return scores;
+        } catch (cause) {
+          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, scores: 'failed' }));
+          throw cause;
+        }
+      };
+      const [compressedReference, promoters, annotation, scores] = await Promise.all([
         load('reference', plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference)),
         load('promoters', plannedAssets.predictedPromoters, assetCacheKey(cachePrefix, 'promoters', plannedAssets.predictedPromoters, plannedAssets.cacheVersions.predictedPromoters)),
         plannedAssets.ncbiAnnotations
           ? load('annotation', plannedAssets.ncbiAnnotations, assetCacheKey(cachePrefix, 'ncbi', plannedAssets.ncbiAnnotations, plannedAssets.cacheVersions.ncbiAnnotations)).catch(() => null)
           : Promise.resolve(null),
+        loadScores(),
       ]);
       const [reference, promoterGff, annotationGff] = await Promise.all([
         maybeDecompressGzip(compressedReference),
@@ -86,7 +111,9 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       const fastaUrl = objectUrl(reference, 'text/plain');
       const promoterUrl = objectUrl(promoterGff, 'text/plain');
       const annotationUrl = annotationGff ? objectUrl(annotationGff, 'text/plain') : null;
-      objectUrls.current = [fastaUrl, promoterUrl, ...(annotationUrl ? [annotationUrl] : [])];
+      const scorePlusUrl = scores[0] ? objectUrl(scores[0], 'application/x-bigwig') : null;
+      const scoreMinusUrl = scores[1] ? objectUrl(scores[1], 'application/x-bigwig') : null;
+      objectUrls.current = [fastaUrl, promoterUrl, ...(annotationUrl ? [annotationUrl] : []), ...(scorePlusUrl ? [scorePlusUrl] : []), ...(scoreMinusUrl ? [scoreMinusUrl] : [])];
       setAssembly({
         assemblyName: accession,
         defaultLocus: `${refName}:1-10000`,
@@ -98,8 +125,8 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
           fastaGzi: '',
           predictedPromoters: promoterUrl,
           predictedPromotersIndex: '',
-          promoterScoresPlus: plannedAssets.promoterScoresPlus,
-          promoterScoresMinus: plannedAssets.promoterScoresMinus,
+          promoterScoresPlus: scorePlusUrl,
+          promoterScoresMinus: scoreMinusUrl,
           ncbiAnnotations: annotationUrl,
           ncbiAnnotationsIndex: null,
           metadata: null,
@@ -110,7 +137,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       setError(cause instanceof Error ? cause.message : 'Genome files could not be prepared.');
       setStatus('error');
     }
-  }, [accession, plannedAssets, releaseId]);
+  }, [accession, hasScores, plannedAssets, releaseId]);
 
   useEffect(() => {
     void prepare();

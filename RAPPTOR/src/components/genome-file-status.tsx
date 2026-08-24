@@ -9,6 +9,7 @@ type Props = {
   states: {
     reference: GenomeFileState;
     promoters: GenomeFileState;
+    scores?: GenomeFileState;
     annotation: GenomeFileState;
   };
 };
@@ -33,6 +34,7 @@ export default function GenomeFileStatus({ states }: Props) {
   const files = [
     { label: 'Reference', state: states.reference },
     { label: 'Promoters', state: states.promoters },
+    ...(states.scores ? [{ label: 'Scores', state: states.scores }] : []),
     { label: 'Annotation', state: states.annotation },
   ];
 

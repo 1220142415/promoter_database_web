@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PortalJBrowseViewer from '@/components/portal-jbrowse-viewer';
+import GenomeFileStatus from '@/components/genome-file-status';
 import { makeGenome } from '../fixtures/release';
 
 vi.mock('@jbrowse/react-linear-genome-view', () => ({
@@ -83,6 +84,17 @@ describe('release JBrowse configuration', () => {
     });
     vi.mocked(createViewState).mockReset();
     vi.mocked(createViewState).mockImplementation(() => makeStateTree() as never);
+  });
+
+  it('places Share view in the genome file status bar when available', async () => {
+    render(<>
+      <GenomeFileStatus states={{ reference: 'available', promoters: 'available', annotation: 'available' }} />
+      <PortalJBrowseViewer assembly={assembly(true)} />
+    </>);
+
+    const slot = screen.getByTestId('genome-file-status-share');
+    await waitFor(() => expect(within(slot).getByRole('button', { name: 'Share current view' })).toBeInTheDocument());
+    expect(screen.getByTestId('jbrowse-viewer')).not.toContainElement(within(slot).getByRole('button'));
   });
 
   it('configures BGZF reference, predicted promoter, and optional NCBI tracks', () => {

@@ -40,16 +40,19 @@ export default function GenomeFileStatus({ states }: Props) {
 
   return (
     <div className="genome-file-status" aria-label="Genome files">
-      {files.map(({ label, state }) => {
-        const Icon = stateIcons[state];
-        return (
-          <span className={`genome-file-state genome-file-state-${state}`} key={label}>
-            <Icon aria-hidden="true" fontSize="small" />
-            <span>{label}</span>
-            <strong>{stateLabels[state]}</strong>
-          </span>
-        );
-      })}
+      <div className="genome-file-status-items">
+        {files.map(({ label, state }) => {
+          const Icon = stateIcons[state];
+          return (
+            <span className={`genome-file-state genome-file-state-${state}`} key={label}>
+              <Icon aria-hidden="true" fontSize="small" />
+              <span>{label}</span>
+              <strong>{stateLabels[state]}</strong>
+            </span>
+          );
+        })}
+      </div>
+      <div className="genome-file-status-share" data-testid="genome-file-status-share" />
     </div>
   );
 }

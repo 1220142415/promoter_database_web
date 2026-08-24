@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createViewState } from '@jbrowse/react-linear-genome-view';
 import ShareRoundedIcon from '@mui/icons-material/ShareRounded';
 import RapptorJBrowseLinearView from '@/components/rapptor-jbrowse-linear-view';
@@ -58,11 +59,16 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
   );
   const [restoreMessage, setRestoreMessage] = useState('');
   const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
+  const [shareTarget, setShareTarget] = useState<Element | null>(null);
   const initializationPromises = useRef(new WeakMap<object, Promise<string[]>>());
   const parsedShare = useMemo(
     () => parseJBrowseShareParams(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search)),
     [],
   );
+
+  useEffect(() => {
+    setShareTarget(document.querySelector('.genome-file-status-share'));
+  }, []);
 
   const { viewState, trackRegistry, initialWarnings } = useMemo(() => {
     const unindexed = assembly.adapterMode === 'unindexed';
@@ -398,9 +404,8 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
     }
   };
 
-  return (
-    <div className="portal-browser-shell" data-testid="jbrowse-viewer">
-      <div className="browser-share-actions">
+  const shareActions = (
+    <div className="browser-share-actions">
         <div className="browser-share-feedback" aria-live="polite">
           {!shareAvailable && shareUnavailableReason && (
             <span id="browser-share-unavailable">{shareUnavailableReason}</span>
@@ -419,7 +424,12 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
           <ShareRoundedIcon aria-hidden="true" />
           <span>Share view</span>
         </button>
-      </div>
+    </div>
+  );
+
+  return (
+    <div className="portal-browser-shell" data-testid="jbrowse-viewer">
+      {shareTarget ? createPortal(shareActions, shareTarget) : shareActions}
       {restoreMessage && <p className="browser-share-notice" role="status">{restoreMessage}</p>}
       {shareFeedback?.manualUrl && (
         <label className="browser-share-manual">

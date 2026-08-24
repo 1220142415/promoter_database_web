@@ -200,7 +200,11 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .browser-share-manual { min-width: 0; display: grid; gap: 5px; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 5px; padding: 9px 11px; background: #eff7f4; color: var(--ink-soft); font-size: 11px; font-weight: 700; }
 .browser-share-manual input { width: 100%; min-width: 0; height: 34px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 9px; background: white; color: var(--ink); font: 11px "SFMono-Regular", Consolas, monospace; }
 .browser-loading { min-height: 420px; display: grid; place-items: center; border: 1px solid var(--line); color: var(--muted); }
-.genome-file-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; min-height: 38px; margin-bottom: 12px; padding: 0 3px 10px; border-bottom: 1px solid var(--line); }
+.genome-file-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; min-height: 38px; margin-bottom: 12px; padding: 0 3px 10px; border-bottom: 1px solid var(--line); }
+.genome-file-status-items { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; }
+.genome-file-status-share { min-width: 0; margin-left: auto; }
+.genome-file-status-share:empty { display: none; }
+.genome-file-status-share .browser-share-actions { min-height: 34px; margin: 0; }
 .genome-file-state { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
 .genome-file-state svg { width: 16px; height: 16px; }
 .genome-file-state strong { font-weight: 750; }

@@ -11,9 +11,10 @@ const links = [
   { href: '/genomes', label: 'Genomes' },
 ];
 
-export default function PortalHeader() {
+export default function PortalHeader({ showUsage = false }: { showUsage?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const visibleLinks = showUsage ? [...links, { href: '/usage', label: 'Usage' }] : links;
 
   return (
     <header className="portal-header">
@@ -23,7 +24,7 @@ export default function PortalHeader() {
           <span>RAPPTOR</span>
         </Link>
         <nav className={open ? 'portal-nav is-open' : 'portal-nav'} aria-label="Primary navigation">
-          {links.map((link) => {
+          {visibleLinks.map((link) => {
             const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
             return <Link key={link.href} href={link.href} className={active ? 'is-active' : ''} onClick={() => setOpen(false)}>{link.label}</Link>;
           })}

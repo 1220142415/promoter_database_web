@@ -24,11 +24,12 @@ vi.mock('next/link', () => ({
 describe('portal header', () => {
   it('opens and closes the mobile navigation with an accessible toggle', async () => {
     const user = userEvent.setup();
-    render(<PortalHeader />);
+    render(<PortalHeader showUsage />);
 
     const open = screen.getByRole('button', { name: 'Open navigation' });
     expect(open).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('link', { name: 'Genomes' })).toHaveClass('is-active');
+    expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage');
     expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
 
     await user.click(open);
@@ -37,5 +38,10 @@ describe('portal header', () => {
 
     await user.click(screen.getByRole('link', { name: 'Overview' }));
     expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('hides usage when the public report is switched off', () => {
+    render(<PortalHeader />);
+    expect(screen.queryByRole('link', { name: 'Usage' })).not.toBeInTheDocument();
   });
 });

@@ -11,6 +11,11 @@ binding = "ASSETS"
 enabled = true
 head_sampling_rate = 1
 
+[vars]
+RAPPTOR_ANALYTICS = "on"
+RAPPTOR_ANALYTICS_PRECISION = "city"
+RAPPTOR_USAGE_PUBLIC_PAGE = "on"
+
 [[d1_databases]]
 binding = "RAPPTOR_DB"
 database_name = "rapptor-catalog"

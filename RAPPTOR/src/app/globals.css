@@ -183,7 +183,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .rapptor-jbrowse-layout { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .rapptor-jbrowse-layout--details { grid-template-columns: minmax(0, 1fr) minmax(320px, 384px); gap: 10px; }
 .rapptor-jbrowse-view { min-width: 0; }
-.rapptor-feature-details { position: fixed; z-index: 20; top: 76px; right: max(24px, calc((100vw - 1180px) / 2)); width: 384px; min-width: 0; max-height: calc(100vh - 96px); overflow: hidden; border: 1px solid var(--line-strong); border-radius: 7px !important; background: #f8faf9 !important; color: var(--ink); }
+.rapptor-feature-details { position: sticky; top: 12px; width: 100%; min-width: 0; max-height: calc(100vh - 24px); overflow: hidden; border: 1px solid var(--line-strong); border-radius: 7px !important; background: #f8faf9 !important; color: var(--ink); }
 .rapptor-feature-details-header { min-height: 48px !important; display: flex; gap: 10px; border-bottom: 1px solid var(--line); padding: 0 9px 0 14px !important; background: white; }
 .rapptor-feature-details-heading { min-width: 0; flex: 1; overflow: hidden; }
 .rapptor-feature-details-heading .MuiTypography-root { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font: 750 16px/1.25 Arial, sans-serif; }

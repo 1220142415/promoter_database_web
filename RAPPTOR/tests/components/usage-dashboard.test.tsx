@@ -164,4 +164,15 @@ describe('usage world map', () => {
     expect(screen.getByRole('img', { name: /World map shading 0 countries/ })).toBeInTheDocument();
     expect(screen.getByText('No visitors yet')).toBeInTheDocument();
   });
+
+  it('includes Singapore and Japan in the generated map', () => {
+    const countries = [
+      { code: 'JP', name: 'Japan', flag: '🇯🇵', views: 4, visitors: 4, share: 0.8 },
+      { code: 'SG', name: 'Singapore', flag: '🇸🇬', views: 1, visitors: 1, share: 0.2 },
+    ];
+    const { container } = render(<UsageWorldMap countries={countries} />);
+
+    expect(container.querySelectorAll('.usage-map-country.is-measured')).toHaveLength(2);
+    expect([...container.querySelectorAll('title')].some((node) => node.textContent === 'Singapore: 1 visitors, 1 page views')).toBe(true);
+  });
 });

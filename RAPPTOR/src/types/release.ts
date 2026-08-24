@@ -50,6 +50,8 @@ export interface ReleaseGenome {
   completeness: number | null;
   contamination: number | null;
   predictedPromoterCount: number;
+  experimentalPromoterCount?: number;
+  experimentalDatasetCount?: number;
   annotationStatus: 'available' | 'missing' | 'incompatible';
   annotationFeatureCount: number;
   annotationCircularOriginSplitCount?: number;
@@ -77,6 +79,10 @@ export interface ActiveReleaseSummary {
   totalCircularOriginSplitFeatures: number;
   totalCircularOriginSplitGenomes: number;
   totalExperimentalTss: number;
+  totalExperimentalGenomes?: number;
+  totalExperimentalPromoters?: number;
+  totalExperimentalDatasets?: number;
+  totalEvidencePublications?: number;
   topPhyla: PhylumCount[];
   releaseAssetBaseUrl: string | null;
   manifestIndexPath: string | null;
@@ -109,6 +115,10 @@ export interface ReleaseCatalog {
   totalCircularOriginSplitFeatures: number;
   totalCircularOriginSplitGenomes: number;
   totalExperimentalTss: number;
+  totalExperimentalGenomes?: number;
+  totalExperimentalPromoters?: number;
+  totalExperimentalDatasets?: number;
+  totalEvidencePublications?: number;
   topPhyla: PhylumCount[];
 }
 

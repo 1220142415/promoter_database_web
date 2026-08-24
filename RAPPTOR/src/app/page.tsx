@@ -51,6 +51,8 @@ export default function HomePage() {
           <div><PublicRoundedIcon aria-hidden="true" /><span>Genomes</span><strong>{catalog.totalGenomes.toLocaleString()}</strong></div>
           <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{catalog.totalPredictedPromoters.toLocaleString()}</strong></div>
           <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
+          <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div>
+          <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{(catalog.totalEvidencePublications || 0).toLocaleString()}</strong></div>
           <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>

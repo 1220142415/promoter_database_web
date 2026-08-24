@@ -22,6 +22,9 @@ const releaseRow = {
     totalCircularOriginSplitFeatures: 4,
     totalCircularOriginSplitGenomes: 2,
     totalExperimentalTss: 3,
+    totalExperimentalGenomes: 1,
+    totalExperimentalPromoters: 7,
+    totalExperimentalDatasets: 2,
     topPhyla: [{ name: 'Bacillota', count: 2 }],
     assetLayout: {
       layout: 'promoter-batch-v1',
@@ -79,6 +82,9 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
     strain_heterogeneity: 0,
     mimag_quality: 'high',
     assembly_source_url: `https://www.ncbi.nlm.nih.gov/datasets/genome/${accession}/`,
+    reference_namespace: 'ncbi_assembly',
+    reference_accession: accession,
+    reference_provenance_json: '{"catalogSource":"GTDB R214.1"}',
     reference_storage_json: JSON.stringify({
       layout: 'individual-v1',
       files: {
@@ -90,6 +96,9 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
       checksums: { fasta: 'a'.repeat(64) },
     }),
     predicted_promoter_count: promoters,
+    experimental_evidence_json: accession.endsWith('1.1')
+      ? '{"experimentalPromoters":7,"experimentalTss":3,"datasets":2}'
+      : '{"experimentalPromoters":0,"experimentalTss":0,"datasets":0}',
     promoter_feature_count: promoters,
     promoter_status: 'ready',
     promoter_definition_id: 'promoter:rappter-v1:gt-0.9',
@@ -293,6 +302,9 @@ describe('D1 genome catalog repository', () => {
       totalCircularOriginSplitFeatures: 4,
       totalCircularOriginSplitGenomes: 2,
       totalExperimentalTss: 3,
+      totalExperimentalGenomes: 1,
+      totalExperimentalPromoters: 7,
+      totalExperimentalDatasets: 2,
       topPhyla: [{ name: 'Bacillota', count: 2 }],
     });
 
@@ -312,6 +324,9 @@ describe('D1 genome catalog repository', () => {
       },
     });
     expect(match?.details).toMatchObject({
+      referenceNamespace: 'ncbi_assembly',
+      referenceAccession: 'GCA_000000001.1',
+      referenceProvenance: { catalogSource: 'GTDB R214.1' },
       ncbiOrganismName: 'Bacillus test organism',
       ncbiTaxId: 1234,
       contigN50: 1_500_000,
@@ -365,6 +380,7 @@ describe('D1 genome catalog repository', () => {
       q: 'bacillus subtilis',
       source: 'NCBI GenBank',
       annotation: 'unavailable',
+      evidence: 'available',
       sort: 'promoters',
       direction: 'desc',
       taxonomy: { domain: 'Bacteria', phylum: 'Bacillota', class: '', order: '', family: '', genus: '' },
@@ -373,8 +389,11 @@ describe('D1 genome catalog repository', () => {
     expect(result.facets.taxonomy.genus).toEqual(['Bacillus']);
     const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
     expect(pageQuery.query).toContain("p.feature_type = 'promoter'");
+    expect(pageQuery.query).toContain("p.evidence_type = 'prediction'");
+    expect(pageQuery.query).toContain('experimental_evidence_json');
     expect(pageQuery.query).toContain("a.feature_type = 'gene_annotation'");
     expect(pageQuery.query).toContain("COALESCE(a.status, 'missing') NOT IN ('ready', 'staged')");
+    expect(pageQuery.query).toContain('EXISTS (SELECT 1 FROM feature_sets e');
     expect(pageQuery.query).toContain('COALESCE(filtered.predicted_promoter_count, 0) DESC');
     expect(pageQuery.query).toContain('st.token >= ? AND st.token < ?');
     expect(pageQuery.query).toContain('g.accession IN (SELECT st.accession');
@@ -416,6 +435,7 @@ describe('D1 genome catalog repository', () => {
         predictedPromoters: 1_888_109_477,
         annotationAvailable: 53_285,
         annotationMissing: 27_504,
+        totalExperimentalGenomes: 0,
         topPhyla: [{ name: 'Pseudomonadota', count: 21_693 }],
       }),
     };

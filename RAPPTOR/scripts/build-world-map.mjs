@@ -3,7 +3,7 @@
 // alpha-2 country, projected once at build time so the usage dashboard can render
 // a choropleth on the server with no client-side mapping library.
 //
-// Geometry: Natural Earth 1:110m via the world-atlas package (public domain).
+// Geometry: Natural Earth 1:110m plus missing microstates from 1:50m.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -13,6 +13,7 @@ import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import countries from 'i18n-iso-countries';
 import { feature } from 'topojson-client';
 
+import detailedTopology from 'world-atlas/countries-50m.json' with { type: 'json' };
 import topology from 'world-atlas/countries-110m.json' with { type: 'json' };
 
 const WIDTH = 960;
@@ -74,6 +75,7 @@ function alpha2ForGeometry(geometry) {
 
 function build() {
   const collection = feature(topology, topology.objects.countries);
+  const detailedCollection = feature(detailedTopology, detailedTopology.objects.countries);
   const context = new RoundedPathContext(PRECISION);
   const projection = geoNaturalEarth1().fitExtent([[2, 2], [WIDTH - 2, HEIGHT - 2]], { type: 'Sphere' });
   const path = geoPath(projection, context);
@@ -83,23 +85,27 @@ function build() {
 
   const byCode = new Map();
   const skipped = [];
-  for (const item of collection.features) {
+  const append = (items, allowedCodes) => items.forEach((item) => {
     const code = alpha2ForGeometry(item);
     if (!code) {
       skipped.push(item.properties?.name || item.id);
-      continue;
+      return;
     }
+    if (allowedCodes && !allowedCodes.has(code)) return;
     path(item);
     const d = context.toString();
-    if (!d) continue;
+    if (!d) return;
     const existing = byCode.get(code);
     if (existing) existing.d += d;
     else byCode.set(code, { code, name: countries.getName(code, 'en') || item.properties?.name || code, d });
-  }
+  });
+  append(collection.features);
+  const detailedCodes = new Set(detailedCollection.features.map(alpha2ForGeometry).filter(Boolean));
+  append(detailedCollection.features, new Set([...detailedCodes].filter((code) => !byCode.has(code))));
 
   const payload = {
     generatedAt: new Date().toISOString(),
-    source: 'Natural Earth 1:110m via world-atlas (public domain)',
+    source: 'Natural Earth 1:110m with 1:50m microstate fallback via world-atlas (public domain)',
     projection: 'naturalEarth1',
     width: WIDTH,
     height: HEIGHT,

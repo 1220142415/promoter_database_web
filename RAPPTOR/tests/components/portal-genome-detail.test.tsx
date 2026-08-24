@@ -27,6 +27,9 @@ function match(accession: string, status: 'available' | 'missing' | 'incompatibl
 
 function details(): GenomeCatalogDetails {
   return {
+    referenceNamespace: 'ncbi_assembly',
+    referenceAccession: 'GCA_000411415.1',
+    referenceProvenance: {},
     ncbiOrganismName: 'Bacillus test organism',
     ncbiTaxId: 12_345,
     assemblyName: 'ASM12345v1',

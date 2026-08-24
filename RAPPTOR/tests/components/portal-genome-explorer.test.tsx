@@ -87,14 +87,22 @@ describe('portal genome explorer', () => {
     expect(fetchMock.mock.calls.at(-1)?.[0]).not.toContain('cursor=');
   });
 
+  it('requests genomes with cataloged experimental data', async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    render(<GenomeExplorer initialResult={response()} />);
+
+    await user.selectOptions(screen.getByLabelText('Experimental data'), 'available');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('evidence=available');
+  });
+
   it('resets descendants and requests server-side filter values', async () => {
     const fetchMock = installFetch(response(genomes.slice(0, 8), 8));
     const user = userEvent.setup();
     render(<GenomeExplorer initialResult={response()} />);
 
-    expect(screen.getByLabelText('Phylum')).toBeDisabled();
-    await user.selectOptions(screen.getByLabelText('Domain'), 'Bacteria');
-    await waitFor(() => expect(screen.getByLabelText('Phylum')).toBeEnabled());
+    expect(screen.getByLabelText('Phylum')).toBeEnabled();
     await user.selectOptions(screen.getByLabelText('Phylum'), 'Pseudomonadota');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const lastUrl = fetchMock.mock.calls.at(-1)?.[0] as string;
@@ -114,15 +122,15 @@ describe('portal genome explorer', () => {
     const user = userEvent.setup();
     render(<GenomeExplorer initialResult={response()} />);
 
-    await user.selectOptions(screen.getByLabelText('Domain'), 'Bacteria');
+    await user.selectOptions(screen.getByLabelText('Phylum'), 'Pseudomonadota');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.getByLabelText('Phylum')).toBeDisabled();
     expect(screen.getByLabelText('Class')).toBeDisabled();
-    expect(screen.getByRole('progressbar', { name: 'Loading Phylum options' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Order')).toBeDisabled();
+    expect(screen.getByRole('progressbar', { name: 'Loading Class options' })).toBeInTheDocument();
 
     resolveRequest({ ok: true, json: async () => response(genomes.slice(0, 8), 8) });
-    await waitFor(() => expect(screen.getByLabelText('Phylum')).toBeEnabled());
-    expect(screen.queryByRole('progressbar', { name: 'Loading Phylum options' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Class')).toBeEnabled());
+    expect(screen.queryByRole('progressbar', { name: 'Loading Class options' })).not.toBeInTheDocument();
   });
 
   it('keeps rows and exposes a retry action after an API error', async () => {

@@ -1,0 +1,65 @@
+﻿# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+__pycache__/
+*.py[cod]
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/test-results/
+/playwright-report/
+
+# next.js
+/.next/
+/.next-*/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.local.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Cloudflare / OpenNext
+.open-next/
+.wrangler/
+/worker-configuration.d.ts
+
+# scratch / debug output
+_*.txt
+tsc-out*.txt
+commit-out.txt
+build-cf.log
+server-*.log
+
+# Demo data shipped in older versions - not needed for production
+public/demo-data/
+
+# Local GTDB release builds (large generated artifacts)
+/.data/

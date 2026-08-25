@@ -77,7 +77,10 @@ export default function HomePage() {
       <section className="portal-section evidence-band" id="evidence">
         <div className="portal-shell evidence-layout">
           <div><p className="portal-kicker">Evidence boundaries</p><h2>Predictions and observations stay separate</h2></div>
-          <p>RAPPtor promoter peaks are model predictions. This release contains no experimental transcription start-site dataset, and NCBI feature annotations do not validate predicted peaks.</p>
+          <div className="evidence-copy">
+            <p>RAPPtor promoter peaks are model predictions. Literature-derived transcription start-site observations remain distinct evidence tracks in the unified genome catalog and are not counted as prediction validation or included in prediction-release statistics.</p>
+            <Link href="/genomes?evidence=experimental" className="evidence-link">Browse genomes with experimental evidence <ArrowForwardRoundedIcon fontSize="small" /></Link>
+          </div>
         </div>
       </section>
 

@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PortalGenomeExplorer from '@/components/portal-genome-explorer';
 import { makeGenome, makeSearchResponse } from '../fixtures/release';
-import type { GenomeSearchResponse } from '@/types/genome-catalog';
+import type { UnifiedGenomeSearchResponse } from '@/types/unified-genome';
 
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
 
@@ -23,9 +23,34 @@ const genomes = Array.from({ length: 30 }, (_, index) => makeGenome({
   annotationStatus: index % 5 === 0 ? 'available' : 'missing',
 }));
 
-function response(items = genomes.slice(0, 25), total = genomes.length): GenomeSearchResponse {
+function response(items = genomes.slice(0, 25), total = genomes.length): UnifiedGenomeSearchResponse {
   const value = makeSearchResponse(genomes, items);
-  return { ...value, total, pageInfo: { nextCursor: items.length < total ? 'next-cursor' : null, hasNext: items.length < total } };
+  return {
+    releases: { predictionReleaseId: 'prediction-1', experimentalReleaseId: 'experimental-1', compositeRevision: 'combined-1' },
+    items: value.items.map((row, index) => ({
+      ...row,
+      canonicalAccession: row.accession,
+      aliases: [row.accession],
+      predictionAccession: row.accession,
+      experimentalAccession: index === 0 ? row.accession.replace('GCA_', 'GCF_') : null,
+      evidenceState: index === 0 ? 'both' as const : 'prediction_only' as const,
+      experimentalObservationCount: index === 0 ? 5 : 0,
+      experimentalStudyCount: index === 0 ? 2 : 0,
+    })),
+    total,
+    facets: { ...value.facets, evidence: { prediction_only: Math.max(0, total - 1), experimental_only: 0, both: total ? 1 : 0 } },
+    stats: {
+      totalGenomes: genomes.length,
+      predictionGenomes: genomes.length,
+      experimentalGenomes: 1,
+      bothGenomes: 1,
+      totalPredictedPromoters: genomes.reduce((sum, genome) => sum + genome.predictedPromoterCount, 0),
+      totalExperimentalObservations: 5,
+      totalExperimentalStudies: 2,
+      totalExperimentalPublications: 2,
+    },
+    pageInfo: { nextCursor: items.length < total ? 'next-cursor' : null, hasNext: items.length < total },
+  };
 }
 
 function installFetch(initial = response()) {
@@ -106,8 +131,8 @@ describe('portal genome explorer', () => {
   });
 
   it('locks stale taxonomy options while the next rank is loading', async () => {
-    let resolveRequest!: (value: { ok: true; json: () => Promise<GenomeSearchResponse> }) => void;
-    const fetchMock = vi.fn(() => new Promise<{ ok: true; json: () => Promise<GenomeSearchResponse> }>((resolve) => {
+    let resolveRequest!: (value: { ok: true; json: () => Promise<UnifiedGenomeSearchResponse> }) => void;
+    const fetchMock = vi.fn(() => new Promise<{ ok: true; json: () => Promise<UnifiedGenomeSearchResponse> }>((resolve) => {
       resolveRequest = resolve;
     }));
     vi.stubGlobal('fetch', fetchMock);
@@ -135,5 +160,48 @@ describe('portal genome explorer', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('temporary outage'));
     expect(screen.getByRole('link', { name: 'GCA_000411415.1' })).toBeInTheDocument();
     expect(within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('filters by evidence without presenting a separate experimental tab', async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    render(<PortalGenomeExplorer initialResult={response()} />);
+
+    expect(screen.getByText('2 studies · 5 TSS')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'GCA_000411415.1' }).closest('tr')?.querySelector('td[data-predicted-promoters]'))
+      .toHaveAttribute('data-predicted-promoters', '0');
+    await user.selectOptions(screen.getByLabelText('Evidence'), 'experimental');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('evidence=experimental');
+  });
+
+  it('uses assembly keys and links experimental mismatch variants explicitly', () => {
+    const result = response([genomes[0]], 2);
+    const predictionRow = {
+      ...result.items[0],
+      assemblyKey: `${result.items[0].canonicalAccession}::prediction`,
+      assemblySource: 'prediction' as const,
+      assemblyCompatibility: 'mismatch' as const,
+      overlayAllowed: false,
+      evidenceState: 'prediction_only' as const,
+      experimentalAccession: null,
+    };
+    const experimentalRow = {
+      ...result.items[0],
+      assemblyKey: `${result.items[0].canonicalAccession}::experimental`,
+      assemblySource: 'experimental' as const,
+      assemblyCompatibility: 'mismatch' as const,
+      overlayAllowed: false,
+      evidenceState: 'experimental_only' as const,
+      predictionAccession: null,
+      experimentalAccession: result.items[0].canonicalAccession.replace('GCA_', 'GCF_'),
+    };
+    result.items = [predictionRow, experimentalRow];
+    render(<PortalGenomeExplorer initialResult={result} />);
+
+    const links = screen.getAllByRole('link', { name: result.items[0].canonicalAccession });
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAttribute('href', `/genomes/${result.items[0].canonicalAccession}`);
+    expect(links[1]).toHaveAttribute('href', `/genomes/${result.items[0].canonicalAccession}?assembly=experimental`);
   });
 });

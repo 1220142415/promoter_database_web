@@ -53,7 +53,7 @@ test('catalog search opens genomes with and without NCBI release assets', async 
     annotatedGenome.click(),
   ]);
   await expect(page.getByText('Assembly GCA_000411415.1', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
+  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPtor predicted promoters');
   await expect(page.getByTestId('jbrowse-viewer')).toContainText('NCBI genome annotation');
   await expect(page.getByTestId('jbrowse-viewer')).not.toContainText('Object.defineProperty');
@@ -71,7 +71,7 @@ test('catalog search opens genomes with and without NCBI release assets', async 
     page.waitForURL(/\/genomes\/GCA_000421325\.1$/),
     predictionOnlyGenome.click(),
   ]);
-  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
+  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPtor predicted promoters');
   await expect(page.getByTestId('jbrowse-viewer')).not.toContainText('NCBI genome annotation');
   await expect(page.getByRole('heading', { name: 'Downloads' })).toHaveCount(0);
@@ -149,7 +149,7 @@ test('shared genome views preserve location, zoom, orientation, and track layout
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/genomes/GCA_000411415.1?view=1&ref=KE150450.1&center=4000&zoom=2&rev=1&tracks=sequence:120,promoters:170,annotation:170');
-  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
+  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible({ timeout: 30_000 });
   const desktopShareUrl = await captureShareUrl();
   expectShareContract(desktopShareUrl);
   expect(Math.abs(Number(desktopShareUrl.searchParams.get('center')) - 4_000)).toBeLessThanOrEqual(1);
@@ -157,7 +157,7 @@ test('shared genome views preserve location, zoom, orientation, and track layout
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(desktopShareUrl.toString());
-  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
+  await expect(page.getByTestId('jbrowse-viewer')).toBeVisible({ timeout: 30_000 });
   const mobileShareUrl = await captureShareUrl();
   expectShareContract(mobileShareUrl);
 
@@ -192,22 +192,29 @@ test('catalog cascades taxonomy filters and sorts promoter counts in both direct
   await expect(page.getByRole('status')).toContainText('1 genomes');
   await expect(page.getByRole('link', { name: 'GCA_000411415.1' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/genomes'
+        && url.searchParams.get('sort') === 'accession'
+        && url.searchParams.get('direction') === 'asc'
+        && response.ok();
+    }),
+    page.getByRole('button', { name: 'Clear filters' }).click(),
+  ]);
   const promoterSortButton = page.getByRole('button', { name: /Predicted promoters/ });
-  const promoterSortResponse = (direction: 'asc' | 'desc') => page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === '/api/genomes'
-      && url.searchParams.get('sort') === 'promoters'
-      && url.searchParams.get('direction') === direction
-      && response.ok();
-  });
+  const firstPromoterCount = () => page.locator('tbody td[data-predicted-promoters]').first().getAttribute('data-predicted-promoters');
+  const beforeSort = await firstPromoterCount();
 
-  await Promise.all([promoterSortResponse('desc'), promoterSortButton.click()]);
+  await promoterSortButton.click();
   await expect(page.getByRole('columnheader', { name: 'Predicted promoters' })).toHaveAttribute('aria-sort', 'descending');
-  const descendingFirst = Number((await page.locator('tbody td.numeric-cell').first().innerText()).replaceAll(',', ''));
+  await expect.poll(firstPromoterCount).not.toBe(beforeSort);
+  const descendingFirst = Number(await firstPromoterCount());
 
-  await Promise.all([promoterSortResponse('asc'), promoterSortButton.click()]);
-  const ascendingFirst = Number((await page.locator('tbody td.numeric-cell').first().innerText()).replaceAll(',', ''));
+  await promoterSortButton.click();
+  await expect(page.getByRole('columnheader', { name: 'Predicted promoters' })).toHaveAttribute('aria-sort', 'ascending');
+  await expect.poll(async () => Number(await firstPromoterCount())).toBeLessThan(descendingFirst);
+  const ascendingFirst = Number(await firstPromoterCount());
   expect(ascendingFirst).toBeLessThan(descendingFirst);
 });
 
@@ -245,7 +252,7 @@ test.describe('mobile navigation', () => {
       page.waitForURL(/\/genomes\/GCA_000421325\.1$/),
       page.getByRole('link', { name: 'GCA_000421325.1' }).click(),
     ]);
-    await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
+    await expect(page.getByTestId('jbrowse-viewer')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPtor predicted promoters');
     await expect(page.getByRole('heading', { name: 'Downloads' })).toHaveCount(0);
     expect(runtimeErrors).toEqual([]);

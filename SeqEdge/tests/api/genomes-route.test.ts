@@ -1,78 +1,66 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UnifiedGenomeSearchResponse } from '@/types/unified-genome';
 
 vi.mock('server-only', () => ({}));
-vi.mock('node:fs', () => ({ readFileSync: vi.fn() }));
+vi.mock('@/lib/unified-genome-repository', () => {
+  class UnifiedGenomeCursorError extends Error {}
+  return { UnifiedGenomeCursorError, unifiedGenomeRepository: { search: vi.fn() } };
+});
 
-import { readFileSync } from 'node:fs';
 import { GET } from '@/app/api/genomes/route';
-import type { GenomeSearchResponse } from '@/types/genome-catalog';
-import { makeGenome } from '../fixtures/release';
+import { GenomeCatalogUnavailableError } from '@/lib/genome-catalog-repository';
+import { UnifiedGenomeCursorError, unifiedGenomeRepository } from '@/lib/unified-genome-repository';
 
-const mockedReadFile = vi.mocked(readFileSync);
-
-function catalogJson(count = 30) {
-  return JSON.stringify({
-    release: { id: '2026-08-07', date: '2026-08-07' },
-    genomes: Array.from({ length: count }, (_, index) => makeGenome({
-      accession: `GCA_${String(411_415 + index).padStart(9, '0')}.1`,
-      organismName: `Genome ${index}`,
-    })),
-  });
-}
+const response: UnifiedGenomeSearchResponse = {
+  releases: { predictionReleaseId: 'prediction-1', experimentalReleaseId: 'experimental-1', compositeRevision: 'combined-1' },
+  items: [],
+  total: 0,
+  facets: {
+    sources: [],
+    taxonomy: { domain: [], phylum: [], class: [], order: [], family: [], genus: [] },
+    evidence: { prediction_only: 0, experimental_only: 0, both: 0 },
+  },
+  stats: {
+    totalGenomes: 0, predictionGenomes: 0, experimentalGenomes: 0, bothGenomes: 0,
+    totalPredictedPromoters: 0, totalExperimentalObservations: 0, totalExperimentalStudies: 0, totalExperimentalPublications: 0,
+  },
+  pageInfo: { nextCursor: null, hasNext: false },
+};
 
 describe('GET /api/genomes', () => {
-  beforeEach(() => mockedReadFile.mockReset());
-
-  it('returns a default page and metadata facets', async () => {
-    mockedReadFile.mockReturnValue(catalogJson());
-    const response = await GET(new Request('http://localhost/api/genomes'));
-    const body = await response.json() as GenomeSearchResponse;
-
-    expect(response.status).toBe(200);
-    expect(body.items).toHaveLength(25);
-    expect(body.total).toBe(30);
-    expect(body.items[0]).not.toHaveProperty('assets');
-    expect(body.facets.sources).toEqual(['isolate']);
-    expect(body.pageInfo.hasNext).toBe(true);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(unifiedGenomeRepository.search).mockResolvedValue(response);
   });
 
-  it.each([25, 50, 100])('accepts a page size of %i', async (limit) => {
-    mockedReadFile.mockReturnValue(catalogJson(120));
-    const response = await GET(new Request(`http://localhost/api/genomes?limit=${limit}`));
-    expect(response.status).toBe(200);
-    const body = await response.json() as GenomeSearchResponse;
-    expect(body.items).toHaveLength(limit);
+  it('queries the unified catalog with all evidence by default', async () => {
+    const result = await GET(new Request('http://localhost/api/genomes'));
+    expect(result.status).toBe(200);
+    expect(unifiedGenomeRepository.search).toHaveBeenCalledWith(expect.objectContaining({ evidence: 'all', limit: 25 }));
+    expect(await result.json()).toEqual(response);
   });
 
-  it('validates limits, filters, and cursor continuity', async () => {
-    mockedReadFile.mockReturnValue(catalogJson());
-    const first = await GET(new Request('http://localhost/api/genomes?limit=100&sort=promoters&direction=desc'));
-    expect(first.status).toBe(200);
-    const firstBody = await first.json() as GenomeSearchResponse;
-    expect(firstBody.items).toHaveLength(30);
-    expect(firstBody.pageInfo.nextCursor).toBeNull();
-
-    const invalid = await GET(new Request('http://localhost/api/genomes?limit=20'));
-    expect(invalid.status).toBe(400);
-
-    const filtered = await GET(new Request('http://localhost/api/genomes?q=Genome%2029&annotation=unavailable'));
-    expect(filtered.status).toBe(200);
-    const filteredBody = await filtered.json() as GenomeSearchResponse;
-    expect(filteredBody.items).toHaveLength(1);
+  it.each(['predictions', 'experimental', 'both'] as const)('accepts the %s evidence filter', async (evidence) => {
+    const result = await GET(new Request(`http://localhost/api/genomes?evidence=${evidence}`));
+    expect(result.status).toBe(200);
+    expect(unifiedGenomeRepository.search).toHaveBeenCalledWith(expect.objectContaining({ evidence }));
   });
 
-  it('returns 400 for malformed cursors', async () => {
-    mockedReadFile.mockReturnValue(catalogJson());
-    const response = await GET(new Request('http://localhost/api/genomes?cursor=not-a-cursor'));
-    expect(response.status).toBe(400);
+  it('rejects unknown evidence filters and invalid page sizes', async () => {
+    expect((await GET(new Request('http://localhost/api/genomes?evidence=validation'))).status).toBe(400);
+    expect((await GET(new Request('http://localhost/api/genomes?limit=20'))).status).toBe(400);
+    expect(unifiedGenomeRepository.search).not.toHaveBeenCalled();
   });
 
-  it('returns 503 when the generated catalog is missing', async () => {
-    mockedReadFile.mockImplementationOnce(() => {
-      throw new Error('ENOENT');
-    });
-    const response = await GET(new Request('http://localhost/api/genomes'));
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual(expect.objectContaining({ error: expect.stringContaining('has not been built') }));
+  it('returns 400 for unified cursor failures', async () => {
+    vi.mocked(unifiedGenomeRepository.search).mockRejectedValue(new UnifiedGenomeCursorError('invalid cursor'));
+    const result = await GET(new Request('http://localhost/api/genomes?cursor=not-a-cursor'));
+    expect(result.status).toBe(400);
+  });
+
+  it('returns 503 when an active release is unavailable', async () => {
+    vi.mocked(unifiedGenomeRepository.search).mockRejectedValue(new GenomeCatalogUnavailableError('prediction unavailable'));
+    const result = await GET(new Request('http://localhost/api/genomes'));
+    expect(result.status).toBe(503);
   });
 });

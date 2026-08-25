@@ -62,3 +62,8 @@ public/demo-data/
 
 # Local GTDB release builds (large generated artifacts)
 /.data/
+
+# Curator input and generated experimental releases stay in object storage.
+/TSS_dataset_by_study/
+/experimental-tss-releases/
+/.codex-runtime/

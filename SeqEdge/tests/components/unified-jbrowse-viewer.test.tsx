@@ -1,0 +1,184 @@
+// @vitest-environment jsdom
+
+import { render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import UnifiedJBrowseViewer, { inspectUnifiedJBrowseFailures } from '@/components/unified-jbrowse-viewer';
+import { makeGenome } from '../fixtures/release';
+import type { ExperimentalTssGenome, ExperimentalTssStudy } from '@/types/experimental-tss';
+
+vi.mock('@jbrowse/react-linear-genome-view', () => ({ createViewState: vi.fn() }));
+vi.mock('@/components/seqedge-jbrowse-linear-view', () => ({
+  default: () => <div data-testid="mock-unified-jbrowse" />,
+}));
+
+import { createViewState } from '@jbrowse/react-linear-genome-view';
+
+const accession = 'GCF_000210855.2';
+
+function study(studyId: string, pmid: string, year: number): ExperimentalTssStudy {
+  return {
+    studyId,
+    datasetRow: 1,
+    accession,
+    organismName: 'Test bacterium',
+    pmid,
+    year,
+    recordCount: 12,
+    sourceFile: `${studyId}.bed`,
+    sourceSha256: 'a'.repeat(64),
+    duplicateGroupCount: 0,
+    publication: { title: `Study ${pmid}`, authors: [], journal: null, doi: null, status: 'resolved' },
+    assets: {
+      rawBed: `studies/${studyId}/raw.bed`,
+      data: `studies/${studyId}/experimental-tss.gff3.gz`,
+      index: `studies/${studyId}/experimental-tss.gff3.gz.tbi`,
+    },
+    checksums: {},
+  };
+}
+
+function experimental(): ExperimentalTssGenome {
+  return {
+    releaseId: 'experimental-2026-08-25',
+    accession,
+    organismName: 'Test bacterium',
+    strain: null,
+    assemblyName: accession,
+    genbankAssemblyAccession: null,
+    defaultLocus: 'NC_016810.1:1000-2000',
+    primarySequence: 'NC_016810.1',
+    genomeSizeBp: 2000000,
+    contigCount: 1,
+    annotationStatus: 'available',
+    assetBase: `/api/experimental-data/${accession}`,
+    assets: {
+      fasta: 'genomes/reference.fa.gz',
+      fastaFai: 'genomes/reference.fa.gz.fai',
+      fastaGzi: 'genomes/reference.fa.gz.gzi',
+      ncbiAnnotations: 'genomes/ncbi.gff3.gz',
+      ncbiAnnotationsIndex: 'genomes/ncbi.gff3.gz.tbi',
+    },
+    studies: [study('later-study', '22538806', 2013), study('earlier-study', '22251276', 2012)],
+  };
+}
+
+function prediction() {
+  const genome = makeGenome({ accession });
+  genome.assets.promoterScoresPlus = `${accession}/scores.plus.bw`;
+  genome.assets.promoterScoresMinus = `${accession}/scores.minus.bw`;
+  genome.assets.ncbiAnnotations = `${accession}/annotation.gff3.gz`;
+  genome.assets.ncbiAnnotationsIndex = `${accession}/annotation.gff3.gz.tbi`;
+  return {
+    assemblyName: accession,
+    defaultLocus: 'NC_016810.1:1-10000',
+    assetBase: '/api/remote-data',
+    assets: genome.assets,
+  };
+}
+
+function stateTree() {
+  return {
+    session: {
+      view: {
+        width: 1000,
+        initialized: true,
+        displayedRegions: [{ refName: 'NC_016810.1' }],
+        bpPerPx: 1,
+        tracks: [],
+        pxToBp: vi.fn(() => ({ refName: 'NC_016810.1', coord: 1500, oob: false, reversed: false })),
+        navToLocString: vi.fn().mockResolvedValue(undefined),
+        zoomTo: vi.fn(),
+      },
+    },
+  };
+}
+
+describe('unified JBrowse viewer', () => {
+  beforeEach(() => {
+    window.history.replaceState({}, '', `/genomes/${accession}`);
+    vi.mocked(createViewState).mockReset();
+    vi.mocked(createViewState).mockImplementation(() => stateTree() as never);
+  });
+
+  it('orders prediction and experimental evidence in one state tree', () => {
+    render(<UnifiedJBrowseViewer prediction={prediction()} experimental={experimental()} />);
+    expect(screen.getByTestId('mock-unified-jbrowse')).toBeInTheDocument();
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ name: string; metadata: Record<string, unknown> }>;
+      plugins: Array<{ name: string }>;
+      defaultSession: { view: { tracks: Array<{ configuration: string }> } };
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'RAPPtor raw scores (+ / - strands)',
+      'RAPPtor predicted promoters',
+      'Experimental TSS · PMID 22251276',
+      'Experimental TSS · PMID 22538806',
+      'NCBI genome annotation',
+    ]);
+    expect(config.defaultSession.view.tracks.map((track) => track.configuration)).toEqual([
+      `${accession}-reference-sequence`,
+      `${accession}-promoter-scores`,
+      `${accession}-predicted-promoters`,
+      `${accession}-experimental-tss-earlier-study`,
+      `${accession}-experimental-tss-later-study`,
+      `${accession}-ncbi-annotations`,
+    ]);
+    expect(config.plugins.map((plugin) => plugin.name)).toEqual([
+      'SeqEdgeMirroredScorePlugin',
+      'SeqEdgeStrandFeaturePlugin',
+      'SeqEdgeExperimentalTssPlugin',
+      'SeqEdgeTrackDownloadPlugin',
+    ]);
+    expect(config.tracks[1].metadata).toMatchObject({ seqEdgeEvidenceType: 'prediction' });
+    expect(config.tracks[2].metadata).toMatchObject({ seqEdgeEvidenceType: 'experimental_tss' });
+  });
+
+  it('supports an experimental-only assembly without inventing prediction tracks', () => {
+    render(<UnifiedJBrowseViewer experimental={experimental()} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ name: string }>;
+      assembly: { sequence: { adapter: { type: string } } };
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'Experimental TSS · PMID 22251276',
+      'Experimental TSS · PMID 22538806',
+      'NCBI genome annotation',
+    ]);
+    expect(config.assembly.sequence.adapter.type).toBe('BgzipFastaAdapter');
+  });
+
+  it('extracts volatile optional-track block failures without treating them as reference failures', () => {
+    const failures = inspectUnifiedJBrowseFailures({
+      session: { view: { tracks: [{
+        configuration: `${accession}-predicted-promoters`,
+        displays: [{ blockState: new Map([['block', { error: new Error('track failed') }]]) }],
+      }] } },
+    }, accession, `${accession}-reference-sequence`, new Map([
+      [`${accession}-predicted-promoters`, 'RAPPtor predicted promoters'],
+    ]));
+    expect(failures).toEqual({ referenceFailed: false, optionalTrackLabels: ['RAPPtor predicted promoters'] });
+  });
+
+  it('shows a partial-view notice while keeping JBrowse mounted for an optional track failure', async () => {
+    const tree = stateTree();
+    tree.session.view.tracks = [{
+      configuration: `${accession}-predicted-promoters`,
+      displays: [{ error: new Error('optional track failed') }],
+    }] as never;
+    vi.mocked(createViewState).mockReturnValue(tree as never);
+    render(<UnifiedJBrowseViewer prediction={prediction()} />);
+    await waitFor(() => expect(screen.getByText(/Partial view: RAPPtor predicted promoters could not be loaded/)).toBeVisible());
+    expect(screen.getByTestId('mock-unified-jbrowse')).toBeInTheDocument();
+  });
+
+  it('blocks the embedded viewer when the reference assembly fails', async () => {
+    const tree = stateTree() as ReturnType<typeof stateTree> & {
+      assemblyManager: { get: () => { error: Error } };
+    };
+    tree.assemblyManager = { get: () => ({ error: new Error('reference failed') }) };
+    vi.mocked(createViewState).mockReturnValue(tree as never);
+    render(<UnifiedJBrowseViewer prediction={prediction()} />);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('reference sequence could not be loaded'));
+    expect(screen.queryByTestId('mock-unified-jbrowse')).not.toBeInTheDocument();
+  });
+});

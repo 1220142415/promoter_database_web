@@ -129,6 +129,28 @@ describe('JBrowse share URL codec', () => {
     });
   });
 
+  it('round-trips only allowlisted experimental study tracks', () => {
+    const allowedStudies = new Set(['pmid-22251276']);
+    const combined = {
+      ...state,
+      tracks: [
+        { token: 'promoters' as const, height: 170 },
+        { token: 'study:pmid-22251276' as const, height: 190 },
+      ],
+    };
+    const url = new URL(buildJBrowseShareUrl(
+      { origin: 'https://seqedge.example', pathname: '/genomes/GCF_000210855.2' },
+      combined,
+      allowedStudies,
+    ));
+
+    expect(url.searchParams.get('tracks')).toBe('promoters:170,study.pmid-22251276:190');
+    expect(parseJBrowseShareParams(url.searchParams, allowedStudies)).toEqual({
+      kind: 'valid', state: combined, warnings: [],
+    });
+    expect(parseJBrowseShareParams(url.searchParams, new Set()).kind).toBe('invalid');
+  });
+
   it('distinguishes ordinary URLs from malformed share URLs', () => {
     expect(parseJBrowseShareParams(params('ref=chr1&center=1'))).toEqual({ kind: 'absent' });
     expect(parseJBrowseShareParams(params('view=2&ref=chr1&center=1&zoom=1&rev=0&tracks='))).toMatchObject({
@@ -180,6 +202,23 @@ describe('JBrowse share URL codec', () => {
     expect(url.hash).toBe('');
     expect(url.searchParams.has('secret')).toBe(false);
     expect([...url.searchParams.keys()]).toEqual(['view', 'ref', 'center', 'zoom', 'rev', 'tracks']);
+  });
+
+  it('preserves only the explicit experimental assembly selector', () => {
+    const experimental = new URL(buildJBrowseShareUrl({
+      origin: 'https://seqedge.example',
+      pathname: '/genomes/GCF_000000001.1',
+      search: '?assembly=experimental&secret=drop-me',
+    }, state));
+    expect(experimental.searchParams.get('assembly')).toBe('experimental');
+    expect(experimental.searchParams.has('secret')).toBe(false);
+
+    const invalid = new URL(buildJBrowseShareUrl({
+      origin: 'https://seqedge.example',
+      pathname: '/genomes/GCF_000000001.1',
+      search: '?assembly=prediction',
+    }, state));
+    expect(invalid.searchParams.has('assembly')).toBe(false);
   });
 
   it('does not build links for external schemes or forged track tokens', () => {
@@ -253,5 +292,21 @@ describe('extractJBrowseShareState', () => {
     expect(extractJBrowseShareState(view({
       tracks: [{ configuration: { trackId: registry.sequence }, displays: [{ height: 1001, heightPreConfig: 120 }] }],
     }), registry)).toMatchObject({ kind: 'invalid', warnings: [expect.stringContaining('height')] });
+  });
+
+  it('extracts dynamic study tracks from the current genome registry only', () => {
+    const combinedRegistry: ShareTrackRegistry = {
+      ...registry,
+      studies: { 'pmid-22251276': 'GCF_000210855.2-experimental-tss-pmid-22251276' },
+    };
+    expect(extractJBrowseShareState(view({
+      tracks: [{
+        configuration: 'GCF_000210855.2-experimental-tss-pmid-22251276',
+        displays: [{ height: 190 }],
+      }],
+    }), combinedRegistry)).toMatchObject({
+      kind: 'valid',
+      state: { tracks: [{ token: 'study:pmid-22251276', height: 190 }] },
+    });
   });
 });

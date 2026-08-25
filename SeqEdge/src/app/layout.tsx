@@ -11,14 +11,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <PortalHeader />
         {children}
         <footer className="portal-footer">
           <div className="portal-shell">
             <div><strong>SeqEdge</strong><p>Bacterial promoter predictions and genome-resolved evidence.</p></div>
-            <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/#data">Release files</Link></nav>
+            <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/genomes?evidence=experimental">Experimental evidence</Link><Link href="/#data">Release files</Link></nav>
           </div>
         </footer>
       </body>

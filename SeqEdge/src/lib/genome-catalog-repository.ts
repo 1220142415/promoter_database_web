@@ -246,6 +246,7 @@ class JsonGenomeCatalogRepository implements GenomeCatalogRepository {
     const match = getReleaseGenome(accession);
     return match ? {
       releaseId: match.catalog.releaseId,
+      referenceSha256: match.genome.checksums?.fasta || null,
       assetBase: assetBaseForAccession(match.genome.accession, match.catalog.assetBase),
       genome: match.genome,
       adapterMode: match.catalog.indexed === false ? 'unindexed' : 'indexed',
@@ -628,7 +629,7 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
 }
 
 async function activeD1Release(database: D1Database) {
-  const row = await database.prepare("SELECT r.* FROM portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1 AND COALESCE(r.publication_status, 'ready') = 'ready'").first<D1ReleaseRow>();
+  const row = await database.prepare("SELECT r.* FROM portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1 AND COALESCE(r.release_kind, 'prediction') = 'prediction' AND COALESCE(r.publication_status, 'ready') = 'ready'").first<D1ReleaseRow>();
   if (!row) throw new GenomeCatalogUnavailableError('No active SeqEdge release is configured in D1.');
   return row;
 }
@@ -957,6 +958,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
         : {};
       return {
         releaseId,
+        referenceSha256: details.referenceSha256,
         assetBase: null,
         genome,
         storage: null,
@@ -1000,7 +1002,7 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
         || genome.storage.baseUrl
         || (genome.storage.layout === 'packed-v1' ? repositoryBase : releaseBase + '/objects');
     }
-    return { releaseId, assetBase: '/api/remote-data', genome, storage: genome.storage!, resourceStatus: 'ready', details };
+    return { releaseId, referenceSha256: details.referenceSha256, assetBase: '/api/remote-data', genome, storage: genome.storage!, resourceStatus: 'ready', details };
   }
 
   async getActiveRelease(): Promise<ActiveReleaseSummary> {

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve } from 'node:path';
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
 const baseURL = externalBaseUrl || 'http://127.0.0.1:3100';
@@ -28,6 +29,10 @@ export default defineConfig({
       LOCAL_CATALOG_PATH: process.env.LOCAL_CATALOG_PATH || '',
       LOCAL_DATA_ROOT: process.env.LOCAL_DATA_ROOT || '',
       LOCAL_RELEASE_ROOT: process.env.LOCAL_RELEASE_ROOT || '',
+      EXPERIMENTAL_TSS_CATALOG_PATH: process.env.EXPERIMENTAL_TSS_CATALOG_PATH
+        || resolve(process.cwd(), 'e2e/fixtures/experimental-tss/catalog.json'),
+      EXPERIMENTAL_TSS_STORAGE_BASE_URL: process.env.EXPERIMENTAL_TSS_STORAGE_BASE_URL
+        || 'https://assets.invalid/releases/experimental-test',
     },
     url: 'http://127.0.0.1:3100',
     reuseExistingServer: !process.env.CI,

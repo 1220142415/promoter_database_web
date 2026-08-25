@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "experimental-e2e",
+  "releaseKind": "experimental_tss",
+  "releaseDate": "2026-08-25",
+  "generatedAt": "2026-08-25T00:00:00.000Z",
+  "description": "Small dual-study browser fixture",
+  "assetBase": "https://assets.invalid/releases/experimental-test",
+  "summary": {
+    "studies": 2,
+    "genomes": 1,
+    "publications": 2,
+    "observations": 4
+  },
+  "studies": [
+    {
+      "studyId": "2012_22251276_GCF_000210855.2",
+      "datasetRow": 1,
+      "gcf": "GCF_000210855.2",
+      "pmid": "22251276",
+      "year": 2012,
+      "recordCount": 2,
+      "sourceFile": "2012-first-study.bed",
+      "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "duplicateGroupCount": 0,
+      "publication": {
+        "title": "Primary transcriptome study one",
+        "authors": ["A. Researcher"],
+        "journal": "RNA Biology",
+        "doi": "10.1000/study.one",
+        "status": "resolved"
+      },
+      "assets": {
+        "rawBed": "objects/GCF_000210855.2/studies/2012_22251276_GCF_000210855.2/raw.bed",
+        "data": "objects/GCF_000210855.2/studies/2012_22251276_GCF_000210855.2/experimental-tss.gff3.gz",
+        "index": null
+      },
+      "checksums": {}
+    },
+    {
+      "studyId": "2012_22538806_GCF_000210855.2",
+      "datasetRow": 2,
+      "gcf": "GCF_000210855.2",
+      "pmid": "22538806",
+      "year": 2012,
+      "recordCount": 2,
+      "sourceFile": "2012-second-study.bed",
+      "sourceSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "duplicateGroupCount": 0,
+      "publication": {
+        "title": "Primary transcriptome study two",
+        "authors": ["B. Researcher"],
+        "journal": "Molecular Systems Biology",
+        "doi": "10.1000/study.two",
+        "status": "resolved"
+      },
+      "assets": {
+        "rawBed": "objects/GCF_000210855.2/studies/2012_22538806_GCF_000210855.2/raw.bed",
+        "data": "objects/GCF_000210855.2/studies/2012_22538806_GCF_000210855.2/experimental-tss.gff3.gz",
+        "index": null
+      },
+      "checksums": {}
+    }
+  ],
+  "genomes": [
+    {
+      "accession": "GCF_000210855.2",
+      "organismName": "Escherichia coli experimental fixture",
+      "strain": "K-12",
+      "assemblyName": "GCF_000210855.2",
+      "genbankAssemblyAccession": "GCA_000210855.2",
+      "primarySequence": "NC_016810.1",
+      "defaultLocus": "NC_016810.1:900-1100",
+      "genomeSizeBp": 2000,
+      "contigCount": 1,
+      "referenceStorage": {
+        "layout": "individual-v1",
+        "files": {
+          "fasta": "objects/GCF_000210855.2/reference.fa.gz",
+          "fai": "objects/GCF_000210855.2/reference.fa.gz.fai",
+          "gzi": "objects/GCF_000210855.2/reference.fa.gz.gzi"
+        },
+        "checksums": {}
+      },
+      "annotation": {
+        "status": "missing",
+        "data": null,
+        "index": null
+      },
+      "studies": [
+        "2012_22251276_GCF_000210855.2",
+        "2012_22538806_GCF_000210855.2"
+      ]
+    }
+  ]
+}

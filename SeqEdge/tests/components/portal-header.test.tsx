@@ -29,6 +29,7 @@ describe('portal header', () => {
     const open = screen.getByRole('button', { name: 'Open navigation' });
     expect(open).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('link', { name: 'Genomes' })).toHaveClass('is-active');
+    expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
 
     await user.click(open);

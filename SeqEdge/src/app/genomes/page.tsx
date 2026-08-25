@@ -1,18 +1,35 @@
 import type { Metadata } from 'next';
+import DataObjectRoundedIcon from '@mui/icons-material/DataObjectRounded';
+import MenuBookRoundedIcon from '@mui/icons-material/MenuBookRounded';
+import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
+import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
 import PortalGenomeExplorer from '@/components/portal-genome-explorer';
 import PortalReleaseState from '@/components/portal-release-state';
-import { genomeCatalogRepository } from '@/lib/genome-catalog-repository';
-import { DEFAULT_GENOME_SEARCH_QUERY } from '@/lib/genome-search-query';
+import { DEFAULT_UNIFIED_GENOME_SEARCH_QUERY } from '@/lib/genome-search-query';
+import { unifiedGenomeRepository } from '@/lib/unified-genome-repository';
+import type { UnifiedGenomeEvidenceFilter } from '@/types/unified-genome';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Genome catalog | SeqEdge',
   description: 'Search and filter bacterial genome assemblies in the current SeqEdge release.',
 };
 
-export default async function GenomesPage() {
+const EVIDENCE_FILTERS = new Set<UnifiedGenomeEvidenceFilter>(['all', 'predictions', 'experimental', 'both']);
+
+export default async function GenomesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const requestedEvidence = (await searchParams).evidence;
+  const evidence = typeof requestedEvidence === 'string' && EVIDENCE_FILTERS.has(requestedEvidence as UnifiedGenomeEvidenceFilter)
+    ? requestedEvidence as UnifiedGenomeEvidenceFilter
+    : 'all';
   let initialResult;
   try {
-    initialResult = await genomeCatalogRepository.search(DEFAULT_GENOME_SEARCH_QUERY);
+    initialResult = await unifiedGenomeRepository.search({ ...DEFAULT_UNIFIED_GENOME_SEARCH_QUERY, evidence });
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : 'The genome catalog is unavailable.';
     return <PortalReleaseState message={message} />;
@@ -21,12 +38,18 @@ export default async function GenomesPage() {
   return (
     <main className="portal-page">
       <section className="portal-shell page-intro">
-        <p className="portal-kicker">Release {initialResult.releaseId}</p>
+        <p className="portal-kicker">Prediction {initialResult.releases.predictionReleaseId} · Experimental {initialResult.releases.experimentalReleaseId}</p>
         <h1>Genome catalog</h1>
-        <p>Search assemblies by accession, organism and taxonomy, then open a genome to inspect its release metadata, promoter track and downloadable files.</p>
+        <p>Search assemblies once, then compare RAPPtor promoter predictions with literature-derived experimental TSS observations when both are available for the same assembly.</p>
+      </section>
+      <section className="portal-shell experimental-metrics" aria-label="Genome evidence statistics">
+        <div><PublicRoundedIcon aria-hidden="true" /><span>Prediction genomes</span><strong>{initialResult.stats.predictionGenomes.toLocaleString()}</strong></div>
+        <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{initialResult.stats.experimentalGenomes.toLocaleString()}</strong></div>
+        <div><DataObjectRoundedIcon aria-hidden="true" /><span>Both evidence types</span><strong>{initialResult.stats.bothGenomes.toLocaleString()}</strong></div>
+        <div><MenuBookRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{initialResult.stats.totalExperimentalObservations.toLocaleString()}</strong></div>
       </section>
       <section className="portal-shell catalog-section">
-        <PortalGenomeExplorer initialResult={initialResult} />
+        <PortalGenomeExplorer initialResult={initialResult} initialEvidence={evidence} />
       </section>
     </main>
   );

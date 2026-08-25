@@ -2,6 +2,8 @@
 
 SeqEdge is a genome-first portal for the GTDB test release supplied on 2026-08-07. It provides a searchable catalog, accession-scoped JBrowse 2 views, and reproducible downloads without loading the full promoter collection into a database.
 
+Experimental transcription-start-site observations are published as a separate collection at `/experimental-tss`. Its GCF assemblies, study tracks, statistics, active-release pointer, and assets are independent from the prediction catalog.
+
 ## Release
 
 - 1,000 versioned GCA/GCF assemblies
@@ -159,6 +161,40 @@ HF_STORAGE_BASE_URL=https://huggingface.co/datasets/<owner>/<repo>/resolve/main/
 ```
 
 In complete-release mode, `/api/remote-data` accepts only accessions present in the server catalog and the fixed SeqEdge asset filenames. The pilot variables are no longer required.
+
+## Experimental TSS releases
+
+Experimental releases are built independently from the prediction release. The input directory contains `manifest.tsv` and the normalized per-study BED files; reference, assembly metadata, and optional annotation assets are supplied in a separate per-GCF NCBI asset directory. Write the generated release to a large data volume, not the Git checkout:
+
+```bash
+npm run data:experimental:build -- \
+  --source /data/TSS_dataset_by_study \
+  --ncbi-assets /data/ncbi-experimental-assets \
+  --output /data/experimental-tss-releases/2026-08-25 \
+  --release 2026-08-25-experimental-tss \
+  --release-date 2026-08-25 \
+  --pubmed-cache /data/pubmed-experimental-tss.json \
+  --asset-base https://huggingface.co/datasets/OWNER/REPO/resolve/main/releases/2026-08-25
+npm run data:experimental:validate -- --release /data/experimental-tss-releases/2026-08-25
+```
+
+The builder validates the production baseline (98 studies, 90 GCF assemblies, 78 PMIDs, and 440,947 observations), source hashes, 1 bp BED coordinates, reference contigs, and indexes. It writes `catalog.json`, manifests, checksums, PubMed cache data, Hugging Face-ready assets, and staged/activation D1 SQL. Apply `migrations/0006_experimental_tss.sql` before importing those SQL files. Activate the release only after upload and Range-request validation; this updates `experimental_portal_state` and never changes the prediction `portal_state`.
+
+The portal combines both active releases at query time. Evidence is merged into one genome row only for an exact accession or an explicitly configured reciprocal GCA/GCF pair whose reference dictionary and checksum were verified. Audit coverage before activation with prediction catalogs or the original Hugging Face batch mappings:
+
+```bash
+npm run data:experimental:audit-predictions -- \
+  --experimental-catalog /data/experimental-tss-releases/2026-08-25/catalog.json \
+  --prediction-catalog /data/prediction-release/catalog.json \
+  --prediction-mapping /data/hf-batches/000/input_mapping.tsv \
+  --output-dir /data/experimental-tss-releases/2026-08-25/coverage
+```
+
+`--prediction-catalog` and `--prediction-mapping` are repeatable. The deterministic JSON and TSV reports distinguish compatible exact matches, explicit reciprocal candidates, missing predictions, reference mismatches, and incomplete metadata. They never match assemblies from organism names or accession number stems. Missing predictions remain visible as experimental-only genomes and can be backfilled in a later RAPPtor release.
+
+After independently confirming a reciprocal candidate's NCBI pairing, contig dictionary, and reference checksum, deploy the approved records through the server-only `UNIFIED_GENOME_ALIASES_JSON` variable. Exact accessions merge automatically; unconfigured GCA/GCF pairs remain separate and can never be promoted by a browser query.
+
+Raw BED files and generated releases are intentionally ignored by Git.
 
 ## Validation
 

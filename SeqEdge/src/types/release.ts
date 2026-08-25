@@ -58,6 +58,7 @@ export interface ReleaseGenome {
   defaultLocus: string | null;
   primarySequence: string | null;
   assets: ReleaseAssets;
+  checksums?: Partial<Record<keyof ReleaseAssets, string>>;
   storage?: GenomeStorageMap;
 }
 

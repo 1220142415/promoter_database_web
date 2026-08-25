@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { plannedHfBatchAssets } from '@/lib/hf-batch-assets';
+import { plannedHfBatchAssets } from '@/features/storage/hf-batch-assets';
 
 const summary = JSON.stringify({
   assetLayout: {

@@ -4,8 +4,8 @@ import type { ComponentProps } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Feature } from '@jbrowse/core/util';
-import { MirroredScoreTooltip } from '@/jbrowse/mirrored-score-plugin';
-import { StrandFeatureTooltip } from '@/jbrowse/strand-feature-plugin';
+import { MirroredScoreTooltip } from '@/features/genome-browser/plugins/mirrored-score-plugin';
+import { StrandFeatureTooltip } from '@/features/genome-browser/plugins/strand-feature-plugin';
 
 function feature(data: Record<string, unknown>) {
   return {

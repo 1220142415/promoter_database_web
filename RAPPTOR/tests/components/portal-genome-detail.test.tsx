@@ -9,8 +9,8 @@ import type { GenomeCatalogDetails, GenomeCatalogMatch } from '@/features/genome
 vi.mock('server-only', () => ({}));
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('not found'); } }));
-vi.mock('@/components/portal-browser-panel', () => ({ default: ({ assembly }: { assembly: { assemblyName: string; assets: { ncbiAnnotations: string | null } } }) => <div data-testid="browser-contract" data-assembly={assembly.assemblyName} data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))} /> }));
-vi.mock('@/components/portal-on-demand-browser-panel', () => ({ default: ({ accession }: { accession: string }) => <div data-testid="on-demand-browser-contract" data-assembly={accession} /> }));
+vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({ default: ({ assembly }: { assembly: { assemblyName: string; assets: { ncbiAnnotations: string | null } } }) => <div data-testid="browser-contract" data-assembly={assembly.assemblyName} data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))} /> }));
+vi.mock('@/features/genome-browser/components/portal-on-demand-browser-panel', () => ({ default: ({ accession }: { accession: string }) => <div data-testid="on-demand-browser-contract" data-assembly={accession} /> }));
 vi.mock('@/features/genomes/repository', () => ({ genomeCatalogRepository: { getByAccession: vi.fn() } }));
 
 import { genomeCatalogRepository } from '@/features/genomes/repository';

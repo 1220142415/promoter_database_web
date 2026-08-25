@@ -2,10 +2,10 @@
 
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import PortalOnDemandBrowserPanel from '@/components/portal-on-demand-browser-panel';
-import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/lib/on-demand-genome-assets';
+import PortalOnDemandBrowserPanel from '@/features/genome-browser/components/portal-on-demand-browser-panel';
+import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
 
-vi.mock('@/components/portal-browser-panel', () => ({
+vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({
   default: ({ assembly }: { assembly: { defaultLocus: string; assets: { promoterScoresPlus: string | null; promoterScoresMinus: string | null; ncbiAnnotations: string | null } } }) => (
     <div
       data-testid="prepared-browser"
@@ -18,7 +18,7 @@ vi.mock('@/components/portal-browser-panel', () => ({
   ),
 }));
 
-vi.mock('@/lib/on-demand-genome-assets', () => ({
+vi.mock('@/features/genome-browser/on-demand-genome-assets', () => ({
   firstFastaRefName: vi.fn(() => 'NC_000001.1'),
   loadCachedGenomeAsset: vi.fn(),
   maybeDecompressGzip: vi.fn((blob: Blob) => Promise.resolve(blob)),

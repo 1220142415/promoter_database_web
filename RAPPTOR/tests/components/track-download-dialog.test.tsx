@@ -3,8 +3,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import TrackDownloadDialog from '@/components/track-download-dialog';
-import type { TrackDownloadMetadata } from '@/lib/track-download';
+import TrackDownloadDialog from '@/features/genome-browser/components/track-download-dialog';
+import type { TrackDownloadMetadata } from '@/features/genome-browser/track-download';
 
 const promoterMetadata: TrackDownloadMetadata = {
   kind: 'promoters',

@@ -26,7 +26,7 @@ import {
   type TrackDownloadMetadata,
   type TrackDownloadRegion,
   type TrackDownloadScope,
-} from '@/lib/track-download';
+} from '@/features/genome-browser/track-download';
 
 export interface TrackDownloadDialogProps {
   handleClose: () => void;

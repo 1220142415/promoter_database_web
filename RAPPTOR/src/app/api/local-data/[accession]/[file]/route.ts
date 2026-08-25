@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { NextResponse } from 'next/server';
-import { normalizeDownloadFilename } from '@/lib/track-download';
+import { normalizeDownloadFilename } from '@/features/genome-browser/track-download';
 import { genomeCatalogRepository } from '@/features/genomes/repository';
 
 export const runtime = 'nodejs';

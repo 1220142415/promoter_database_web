@@ -126,7 +126,7 @@ export async function materializePackedSelection({ projectRoot, release, shard =
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const results = await materializePackedSelection({ projectRoot, ...options });
   console.log(JSON.stringify({ release: options.release, results }, null, 2));
 }

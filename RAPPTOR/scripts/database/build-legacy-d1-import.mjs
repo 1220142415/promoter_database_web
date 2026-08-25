@@ -148,7 +148,7 @@ export async function buildLegacyD1Import({ projectRoot, release, repo, revision
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   console.log(JSON.stringify(await buildLegacyD1Import({ projectRoot, ...options }), null, 2));
 }
 

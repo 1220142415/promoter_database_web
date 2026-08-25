@@ -2,9 +2,9 @@
 
 import dynamic from 'next/dynamic';
 import type { JBrowseReleaseAssembly } from '@/types/release';
-import type { BrowserRegion } from '@/components/portal-jbrowse-viewer';
+import type { BrowserRegion } from '@/features/genome-browser/components/portal-jbrowse-viewer';
 
-const PortalJBrowseViewer = dynamic(() => import('@/components/portal-jbrowse-viewer'), {
+const PortalJBrowseViewer = dynamic(() => import('@/features/genome-browser/components/portal-jbrowse-viewer'), {
   ssr: false,
   loading: () => <div className="browser-loading" role="status">Loading genome browser...</div>,
 });

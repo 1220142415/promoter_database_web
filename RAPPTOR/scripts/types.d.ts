@@ -1,4 +1,4 @@
-declare module '../../scripts/prepare-hf-pilot.mjs' {
+declare module '../../scripts/huggingface/prepare-hf-pilot.mjs' {
   export function prepareHfPilot(options: {
     projectRoot: string;
     release: string;
@@ -12,11 +12,11 @@ declare module '../../scripts/prepare-hf-pilot.mjs' {
   }>;
 }
 
-declare module '../../scripts/create-upload-plan.mjs' {
+declare module '../../scripts/huggingface/create-upload-plan.mjs' {
   export function createUploadPlan(options: { projectRoot: string; release: string; repo: string }): Promise<{ output: string; plan: unknown }>;
 }
 
-declare module '../../scripts/build-packed-release.mjs' {
+declare module '../../scripts/data/build-packed-release.mjs' {
   export function planShardPacks(entries: Array<{
     accession: string;
     file: string;

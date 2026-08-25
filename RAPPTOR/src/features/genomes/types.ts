@@ -1,5 +1,5 @@
 import type { GenomeStorageMap, ReleaseGenome } from '@/types/release';
-import type { PlannedGenomeAssets } from '@/lib/hf-batch-assets';
+import type { PlannedGenomeAssets } from '@/features/storage/hf-batch-assets';
 
 // Contracts shared by the genome catalog UI and its JSON/D1 repositories.
 

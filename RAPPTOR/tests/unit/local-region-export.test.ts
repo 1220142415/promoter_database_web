@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateRegionExport } from '@/lib/local-region-export';
+import { validateRegionExport } from '@/features/genome-browser/local-region-export';
 
 describe('region export contract', () => {
   it('accepts a bounded 1-based region and removes duplicate track ids', () => {

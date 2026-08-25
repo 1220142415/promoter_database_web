@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
-import GenomeFileStatus, { type GenomeFileState } from '@/components/genome-file-status';
-import PortalBrowserPanel from '@/components/portal-browser-panel';
-import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/lib/on-demand-genome-assets';
-import type { PlannedGenomeAssets } from '@/lib/hf-batch-assets';
+import GenomeFileStatus, { type GenomeFileState } from '@/features/genome-browser/components/genome-file-status';
+import PortalBrowserPanel from '@/features/genome-browser/components/portal-browser-panel';
+import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
+import type { PlannedGenomeAssets } from '@/features/storage/hf-batch-assets';
 import type { JBrowseReleaseAssembly } from '@/types/release';
 
 type Props = {

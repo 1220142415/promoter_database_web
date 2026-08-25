@@ -9,7 +9,7 @@ import {
   summarizeResponseBody,
   verifyRemoteBatch,
   waitForUploadHydration,
-} from '../../scripts/upload-hf-open-browser.mjs';
+} from '../../scripts/huggingface/upload-hf-open-browser.mjs';
 
 const servers: http.Server[] = [];
 

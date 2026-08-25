@@ -27,7 +27,7 @@ describe('Hugging Face batch asset plan', () => {
     ].join('\n'));
 
     await execFileAsync(process.execPath, [
-      path.resolve('scripts/build-hf-batch-asset-plan.mjs'),
+      path.resolve('scripts/huggingface/build-hf-batch-asset-plan.mjs'),
       '--input', input,
       '--output', output,
       '--release', 'test-release',

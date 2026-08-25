@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { genomeCatalogRepository } from '@/features/genomes/repository';
-import { normalizeDownloadFilename } from '@/lib/track-download';
+import { normalizeDownloadFilename } from '@/features/genome-browser/track-download';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

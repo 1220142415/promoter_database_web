@@ -200,7 +200,7 @@ export async function validatePackedRelease({ projectRoot, release, source, quic
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   console.log(JSON.stringify(await validatePackedRelease({ projectRoot, ...options }), null, 2));
 }
 

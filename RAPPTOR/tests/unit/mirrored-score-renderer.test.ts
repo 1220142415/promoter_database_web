@@ -8,7 +8,7 @@ import {
   findMirroredFeature,
   mirroredFeatureScore,
   mirroredScoreY,
-} from '@/jbrowse/mirrored-score-renderer';
+} from '@/features/genome-browser/plugins/mirrored-score-renderer';
 
 function feature(id: string, source: 'plus' | 'minus', start: number, score: number, maxScore?: number) {
   const data: Record<string, unknown> = {

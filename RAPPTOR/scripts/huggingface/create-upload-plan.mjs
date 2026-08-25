@@ -151,7 +151,7 @@ export async function createUploadPlan({ projectRoot, release, repo }) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const result = await createUploadPlan({ projectRoot, ...options });
   console.log(JSON.stringify({ output: result.output, batches: result.plan.batches.length }, null, 2));
 }

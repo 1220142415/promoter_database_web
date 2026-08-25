@@ -20,7 +20,7 @@ import { createGunzip, createGzip } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultReleaseDate = '2026-08-07';
 const defaultArchive = resolve(projectRoot, '..', 'gtdb_selected_data_20260807.tar.gz');
 const defaultOutput = resolve(projectRoot, '.data', 'releases', defaultReleaseDate);
@@ -65,7 +65,7 @@ function parseArgs(argv) {
     else if (argument === '--limit') options.limit = Number(value());
     else if (argument === '--publish-stage') options.publishStage = resolve(value());
     else if (argument === '--help' || argument === '-h') {
-      console.log(`Usage: node scripts/build-gtdb-release.mjs [options]\n\n` +
+      console.log(`Usage: node scripts/data/build-gtdb-release.mjs [options]\n\n` +
         `  --archive PATH          Source tar.gz (default: ../gtdb_selected_data_20260807.tar.gz)\n` +
         `  --output PATH           Release directory (default: .data/releases/2026-08-07)\n` +
         `  --release-date DATE     Dataset version date\n` +
@@ -431,8 +431,8 @@ function toWslPath(path, distro) {
 }
 
 async function preprocessRelease(stage, toolchain, options, scoreRoot = null) {
-  const helper = resolve(projectRoot, 'scripts', 'lib', 'preprocess-gtdb-release.sh');
-  const converter = resolve(projectRoot, 'scripts', 'convert-promoter-scores.py');
+  const helper = resolve(projectRoot, 'scripts', 'data', 'preprocess-gtdb-release.sh');
+  const converter = resolve(projectRoot, 'scripts', 'data', 'convert-promoter-scores.py');
   if (toolchain.selected === 'native') {
     const nativeArgs = [stage];
     if (scoreRoot) nativeArgs.push(converter, scoreRoot);
@@ -839,7 +839,7 @@ async function build(options, toolchain) {
       published = true;
     } catch (error) {
       console.error(`Publish failed. The completed stage remains at ${stage}`);
-      console.error(`Retry without rebuilding: node scripts/build-gtdb-release.mjs --publish-stage "${stage}" --output "${options.output}"${options.force ? ' --force' : ''}`);
+      console.error(`Retry without rebuilding: node scripts/data/build-gtdb-release.mjs --publish-stage "${stage}" --output "${options.output}"${options.force ? ' --force' : ''}`);
       throw error;
     }
     if (options.appCatalog && !releaseSummary.publishable) {

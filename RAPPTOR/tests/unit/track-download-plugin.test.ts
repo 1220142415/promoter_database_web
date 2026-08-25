@@ -16,7 +16,7 @@ vi.mock('@jbrowse/core/util', () => ({
   getSession: mocks.getSession,
 }));
 
-import RapptorTrackDownloadPlugin from '@/jbrowse/track-download-plugin';
+import RapptorTrackDownloadPlugin from '@/features/genome-browser/plugins/track-download-plugin';
 
 describe('RAPPTOR JBrowse track download plugin', () => {
   it('extends supported displays and adds a download action only to marked tracks', () => {

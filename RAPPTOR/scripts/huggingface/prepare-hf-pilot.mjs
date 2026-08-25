@@ -76,7 +76,7 @@ export async function prepareHfPilot({ projectRoot, release, accessions }) {
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   const scriptPath = fileURLToPath(import.meta.url);
-  const projectRoot = path.resolve(path.dirname(scriptPath), '..');
+  const projectRoot = path.resolve(path.dirname(scriptPath), '..', '..');
   const result = await prepareHfPilot({ projectRoot, ...options });
   console.log(JSON.stringify(result, null, 2));
 }

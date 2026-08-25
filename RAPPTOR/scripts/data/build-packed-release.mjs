@@ -10,7 +10,7 @@ import {
   logicalObjectPrefix,
   PACK_MAX_BYTES,
   PACK_TARGET_BYTES,
-} from './lib/storage-layout.mjs';
+} from '../shared/storage-layout.mjs';
 
 const CONTENT_TYPES = {
   'reference.fa.gz': 'application/gzip',
@@ -489,7 +489,7 @@ export async function buildPackedRelease({ projectRoot, source, release, sourceR
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   await buildPackedRelease({ projectRoot, ...options });
 }
 

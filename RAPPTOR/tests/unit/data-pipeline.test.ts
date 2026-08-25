@@ -7,7 +7,7 @@ import {
   normalizeGff,
   parseFasta,
   parseTaxonomy,
-} from '../../scripts/build-gtdb-release.mjs';
+} from '../../scripts/data/build-gtdb-release.mjs';
 
 const temporaryDirectories: string[] = [];
 

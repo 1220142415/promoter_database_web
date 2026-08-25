@@ -16,7 +16,7 @@ import {
   MirroredScoreRendering,
   buildMirroredLinePaths,
   mirroredFeatureScore,
-} from '@/jbrowse/mirrored-score-renderer';
+} from '@/features/genome-browser/plugins/mirrored-score-renderer';
 
 export const MIRRORED_BARS_RENDERER = 'RAPPTORMirroredBarsRenderer';
 export const MIRRORED_LINES_RENDERER = 'RAPPTORMirroredLinesRenderer';

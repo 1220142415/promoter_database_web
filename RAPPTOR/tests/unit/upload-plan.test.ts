@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createUploadPlan } from '../../scripts/create-upload-plan.mjs';
+import { createUploadPlan } from '../../scripts/huggingface/create-upload-plan.mjs';
 
 const temporaryDirectories: string[] = [];
 

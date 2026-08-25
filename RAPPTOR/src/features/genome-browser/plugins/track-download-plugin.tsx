@@ -4,12 +4,12 @@ import { getConf } from '@jbrowse/core/configuration';
 import type { DisplayType, PluggableElementType } from '@jbrowse/core/pluggableElementTypes';
 import { getContainingTrack, getContainingView, getSession } from '@jbrowse/core/util';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
-import TrackDownloadDialog, { type TrackDownloadDialogProps } from '@/components/track-download-dialog';
+import TrackDownloadDialog, { type TrackDownloadDialogProps } from '@/features/genome-browser/components/track-download-dialog';
 import {
   isTrackDownloadMetadata,
   visibleTrackRegion,
   type LinearViewLike,
-} from '@/lib/track-download';
+} from '@/features/genome-browser/track-download';
 
 type TrackMenuItem = {
   label?: string;

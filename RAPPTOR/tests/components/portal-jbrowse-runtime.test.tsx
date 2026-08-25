@@ -2,14 +2,14 @@
 
 import { render } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import PortalJBrowseViewer from '@/components/portal-jbrowse-viewer';
+import PortalJBrowseViewer from '@/features/genome-browser/components/portal-jbrowse-viewer';
 import { makeGenome } from '../fixtures/release';
 
 vi.mock('@jbrowse/react-linear-genome-view', async (importOriginal) => ({
   ...await importOriginal<typeof import('@jbrowse/react-linear-genome-view')>(),
 }));
 
-vi.mock('@/components/rapptor-jbrowse-linear-view', () => ({
+vi.mock('@/features/genome-browser/components/rapptor-jbrowse-linear-view', () => ({
   default: () => <div data-testid="real-view-state-created" />,
 }));
 

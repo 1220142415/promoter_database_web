@@ -89,7 +89,7 @@ export async function verifyHfPilot({ projectRoot, repo, release, revision, endp
 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   console.log(JSON.stringify(await verifyHfPilot({ projectRoot, ...options }), null, 2));
 }
 

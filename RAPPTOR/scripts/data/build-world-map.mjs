@@ -29,7 +29,7 @@ const UNASSIGNED_BY_NAME = new Map([
   ['N. Cyprus', 'CY'],
 ]);
 
-const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outputPath = join(projectRoot, 'src', 'generated', 'world-map.json');
 
 class RoundedPathContext {

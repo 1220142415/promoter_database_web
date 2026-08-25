@@ -6,7 +6,7 @@ import {
   type JBrowseShareStateV1,
   type JBrowseShareViewLike,
   type ShareTrackRegistry,
-} from '@/lib/jbrowse-share';
+} from '@/features/genome-browser/jbrowse-share';
 
 const registry: ShareTrackRegistry = {
   sequence: 'GCA_000411415.1-reference-sequence',

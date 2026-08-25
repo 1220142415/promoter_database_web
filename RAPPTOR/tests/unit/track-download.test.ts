@@ -8,7 +8,7 @@ import {
   visibleTrackRegion,
   wholeTrackDownloadUrl,
   type TrackDownloadMetadata,
-} from '@/lib/track-download';
+} from '@/features/genome-browser/track-download';
 
 afterEach(() => vi.unstubAllGlobals());
 

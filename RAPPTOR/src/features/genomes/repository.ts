@@ -3,7 +3,7 @@ import 'server-only';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { getReleaseCatalog, getReleaseGenome } from '@/features/genomes/json-catalog';
-import { plannedHfBatchAssets } from '@/lib/hf-batch-assets';
+import { plannedHfBatchAssets } from '@/features/storage/hf-batch-assets';
 import type {
   GenomeCatalogMatch,
   GenomeCatalogDetails,

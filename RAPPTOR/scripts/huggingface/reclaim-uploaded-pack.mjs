@@ -106,7 +106,7 @@ export async function reclaimUploadedPacks({ projectRoot, release, shard = null,
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const results = await reclaimUploadedPacks({ projectRoot, ...options });
   console.log(JSON.stringify({ release: options.release, mode: options.delete ? 'delete' : 'dry-run', results }, null, 2));
 }

@@ -16,7 +16,7 @@ import {
   promoterAnchorCoordinate,
   PromoterFeatureRendering,
   strandLabel,
-} from '@/jbrowse/strand-feature-renderer';
+} from '@/features/genome-browser/plugins/strand-feature-renderer';
 
 export const PROMOTER_FEATURE_RENDERER = 'RAPPTORPromoterFeatureRenderer';
 export const DIRECTIONAL_ANNOTATION_RENDERER = 'RAPPTORDirectionalAnnotationRenderer';

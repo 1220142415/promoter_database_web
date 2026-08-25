@@ -414,7 +414,7 @@ export async function uploadWithOpenBrowser({ projectRoot, release, endpoint, ws
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   await uploadWithOpenBrowser({ projectRoot, ...options });
 }
 

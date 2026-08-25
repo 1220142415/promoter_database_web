@@ -7,21 +7,24 @@ outside it.
 ## Directory ownership
 
 ```text
+.github/         GitHub dependency and workflow configuration
+config/          Tool-specific configuration inputs
+database/        Cloudflare D1 migrations and standalone database examples
+docs/            Architecture, deployment, and feature design records
+patches/         patch-package changes for third-party dependencies
+public/          Static files copied directly into the web build
+scripts/         Offline and deployment commands, grouped by operational domain
 src/
 ├── app/          Next.js pages, layouts, middleware-facing routes, and API endpoints
 ├── components/   UI shared by more than one feature
 ├── features/     Complete business features: UI, logic, persistence, and local types
 ├── generated/    Build-generated release snapshots; do not edit by hand
-├── jbrowse/      JBrowse-specific code awaiting migration into a feature
-├── lib/          Cross-feature code and code awaiting feature migration
 └── types/        Contracts shared by multiple features
-
-scripts/          Offline data build, validation, packing, and upload commands
-database/         Cloudflare D1 migrations and standalone database examples
 tests/            Unit, component, API, and Playwright browser tests
-config/           Tool-specific configuration inputs
-patches/          patch-package changes for third-party dependencies
 ```
+
+Build outputs and installed dependencies (`.next`, `.open-next`, `.wrangler`,
+`node_modules`) are local working directories and are not repository features.
 
 `src/app` follows Next.js App Router conventions. A `page.tsx` owns a URL,
 `route.ts` owns an HTTP endpoint, and a directory such as `[accession]` is a
@@ -34,7 +37,7 @@ New feature-specific code belongs in `src/features/<feature>`. Keep files at
 the feature root until a real grouping exists; add `components/` or another
 subdirectory only when it contains multiple files.
 
-The migrated feature boundaries are:
+The current feature boundaries are:
 
 ```text
 src/features/usage/
@@ -58,8 +61,38 @@ src/features/genomes/
     └── release-state.tsx
 ```
 
-The next useful boundaries are `jbrowse` and `storage`. Existing files remain
-where they are until each feature is migrated as a tested unit.
+```text
+src/features/genome-browser/
+├── components/                embedded browser panels, status, and download UI
+├── plugins/                   RAPPTOR JBrowse renderers and plugins
+├── jbrowse-share.ts           share-state creation and parsing
+├── local-region-export.ts     server-side sequence/annotation export
+├── on-demand-genome-assets.ts browser-side remote asset loading
+└── track-download.ts          download names, regions, and metadata
+```
+
+```text
+src/features/storage/
+├── hf-batch-assets.ts         Hugging Face asset URL planning
+└── storage-layout.ts          packed-release path and offset rules
+```
+
+Operational scripts are grouped separately from runtime features:
+
+```text
+scripts/
+├── cloudflare/    Cloudflare checks and standalone build preparation
+├── data/          release build, conversion, packing, and validation
+├── database/      D1 import and sample generation
+├── huggingface/   upload planning, upload, verification, and reclamation
+├── shared/        code shared by more than one script group
+└── types.d.ts     TypeScript declarations for scripts imported by tests
+```
+
+The proposed prediction service will live in `services/prediction/` when its
+Docker API and worker code exist. Its current design remains in
+[`prediction-service.md`](prediction-service.md); no empty service scaffold is
+kept in Git.
 
 ## Runtime flows
 
@@ -96,6 +129,17 @@ independently controlled by `RAPPTOR_USAGE_PUBLIC_PAGE`. These compatibility
 environment names, the `RAPPTOR_DB` D1 binding, existing worker/database names,
 and internal JBrowse identifiers must not be renamed during source cleanup.
 
+### Promoter prediction service (proposed)
+
+```text
+browser -> Cloudflare one-time ticket and limits -> Docker prediction API
+        -> Redis/RQ queue -> CPU/GPU model worker -> R2 result
+        -> D1 permanent job metadata
+```
+
+The implementation boundary, security rules, API contract, and delivery
+estimate are recorded in [prediction-service.md](prediction-service.md).
+
 ## Placement checklist
 
 - URL or HTTP endpoint: `src/app`
@@ -103,7 +147,8 @@ and internal JBrowse identifiers must not be renamed during source cleanup.
 - UI genuinely shared by multiple features: `src/components`
 - Contract genuinely shared by multiple features: `src/types`
 - Generated release snapshot: `src/generated`
-- Offline/import/upload command: `scripts`
+- Offline/import/upload command: the matching `scripts/<domain>` directory
+- Independent Docker runtime: `services/<service>` once implementation exists
 - Schema change: a new numbered file in `database/migrations`
 
 Avoid adding generic `utils`, `services`, or `helpers` directories. Name a file

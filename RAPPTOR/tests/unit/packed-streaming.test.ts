@@ -3,9 +3,9 @@ import { mkdtemp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/prom
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildPackedRelease } from '../../scripts/build-packed-release.mjs';
-import { materializePackedSelection } from '../../scripts/materialize-packed-shard.mjs';
-import { reclaimUploadedPacks } from '../../scripts/reclaim-uploaded-pack.mjs';
+import { buildPackedRelease } from '../../scripts/data/build-packed-release.mjs';
+import { materializePackedSelection } from '../../scripts/data/materialize-packed-shard.mjs';
+import { reclaimUploadedPacks } from '../../scripts/huggingface/reclaim-uploaded-pack.mjs';
 
 const temporaryRoots: string[] = [];
 

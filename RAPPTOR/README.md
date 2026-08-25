@@ -52,15 +52,15 @@ On Windows, run the build in WSL so the native indexing tools are available:
 
 ```bash
 cd /mnt/d/科研/promoter/datasetweb/RAPPTOR
-node scripts/build-gtdb-release.mjs --tool-mode native --force
-node scripts/validate-gtdb-release.mjs
+node scripts/data/build-gtdb-release.mjs --tool-mode native --force
+node scripts/data/validate-gtdb-release.mjs
 ```
 
 To include the step-50 raw RAPPTOR scores, install the offline converter dependencies and pass the directory containing one Parquet file per release accession:
 
 ```bash
 python3 -m pip install pyarrow pyBigWig
-node scripts/build-gtdb-release.mjs --tool-mode native --score-root /path/to/prediction_scores_step_50 --force
+node scripts/data/build-gtdb-release.mjs --tool-mode native --score-root /path/to/prediction_scores_step_50 --force
 ```
 
 Each Parquet file name must contain its versioned `GCA_...` or `GCF_...` accession. The canonical schema is `Sequence_ID`, `Start`, `End`, `Score`, and `Strand`; RAPPTOR `.sidecar.parquet` files with `Sequence_ID`, `Position`, `Score`, and `Strand` are also accepted, with `Position` interpreted as the 0-based 1 bp anchor start. Scores stay in `[0,1]`, and adjacent anchors on each contig and strand must be 50 bp apart. The builder writes `promoter-scores.plus.bw` and `promoter-scores.minus.bw`; it does not copy the Parquet input into the release. Without `--score-root` (and without an archive directory named `prediction_scores_step_50`), releases remain compatible and omit these optional assets.

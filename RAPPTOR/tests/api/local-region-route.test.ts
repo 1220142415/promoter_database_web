@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { exportRegion } = vi.hoisted(() => ({ exportRegion: vi.fn() }));
-vi.mock('@/lib/local-region-export', () => ({ exportRegion }));
+vi.mock('@/features/genome-browser/local-region-export', () => ({ exportRegion }));
 
 import { GET } from '@/app/api/local-region/[accession]/route';
 

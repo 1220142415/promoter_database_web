@@ -5,7 +5,7 @@ import { cp, mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const distDirectory = process.env.RAPPTOR_NEXT_DIST_DIR || '.next';
 const standalone = join(root, distDirectory, 'standalone');
 

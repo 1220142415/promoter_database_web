@@ -4,21 +4,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createViewState } from '@jbrowse/react-linear-genome-view';
 import ShareRoundedIcon from '@mui/icons-material/ShareRounded';
-import RapptorJBrowseLinearView from '@/components/rapptor-jbrowse-linear-view';
-import RapptorMirroredScorePlugin from '@/jbrowse/mirrored-score-plugin';
+import RapptorJBrowseLinearView from '@/features/genome-browser/components/rapptor-jbrowse-linear-view';
+import RapptorMirroredScorePlugin from '@/features/genome-browser/plugins/mirrored-score-plugin';
 import RapptorStrandFeaturePlugin, {
   DIRECTIONAL_ANNOTATION_RENDERER,
   PROMOTER_FEATURE_RENDERER,
-} from '@/jbrowse/strand-feature-plugin';
-import RapptorTrackDownloadPlugin from '@/jbrowse/track-download-plugin';
+} from '@/features/genome-browser/plugins/strand-feature-plugin';
+import RapptorTrackDownloadPlugin from '@/features/genome-browser/plugins/track-download-plugin';
 import {
   buildJBrowseShareUrl,
   extractJBrowseShareState,
   parseJBrowseShareParams,
   type ShareTrackRegistry,
   type ShareTrackToken,
-} from '@/lib/jbrowse-share';
-import { visibleTrackRegion, type TrackDownloadMetadata } from '@/lib/track-download';
+} from '@/features/genome-browser/jbrowse-share';
+import { visibleTrackRegion, type TrackDownloadMetadata } from '@/features/genome-browser/track-download';
 import type { JBrowseReleaseAssembly } from '@/types/release';
 
 export interface BrowserRegion {

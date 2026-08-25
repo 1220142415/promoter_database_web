@@ -3,15 +3,15 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import PortalJBrowseViewer from '@/components/portal-jbrowse-viewer';
-import GenomeFileStatus from '@/components/genome-file-status';
+import PortalJBrowseViewer from '@/features/genome-browser/components/portal-jbrowse-viewer';
+import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
 import { makeGenome } from '../fixtures/release';
 
 vi.mock('@jbrowse/react-linear-genome-view', () => ({
   createViewState: vi.fn(() => ({ configured: true })),
 }));
 
-vi.mock('@/components/rapptor-jbrowse-linear-view', () => ({
+vi.mock('@/features/genome-browser/components/rapptor-jbrowse-linear-view', () => ({
   default: () => <div data-testid="mock-jbrowse" />,
 }));
 

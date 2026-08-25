@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { accessionShard, alignPackOffset, logicalObjectPrefix, PACK_ALIGNMENT } from '@/lib/storage-layout';
-import { accessionShard as scriptAccessionShard } from '../../scripts/lib/storage-layout.mjs';
-import { planShardPacks } from '../../scripts/build-packed-release.mjs';
+import { accessionShard, alignPackOffset, logicalObjectPrefix, PACK_ALIGNMENT } from '@/features/storage/storage-layout';
+import { accessionShard as scriptAccessionShard } from '../../scripts/shared/storage-layout.mjs';
+import { planShardPacks } from '../../scripts/data/build-packed-release.mjs';
 
 describe('packed release layout', () => {
   it('uses the first two SHA-256 hex characters as a stable shard', () => {

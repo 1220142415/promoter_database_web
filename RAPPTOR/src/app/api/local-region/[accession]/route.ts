@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { exportRegion, type RegionExportFormat } from '@/lib/local-region-export';
+import { exportRegion, type RegionExportFormat } from '@/features/genome-browser/local-region-export';
 import {
   defaultTrackDownloadFilename,
   normalizeDownloadFilename,
   type TrackDownloadKind,
-} from '@/lib/track-download';
+} from '@/features/genome-browser/track-download';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
-import GenomeFileStatus from '@/components/genome-file-status';
-import PortalBrowserPanel from '@/components/portal-browser-panel';
-import PortalOnDemandBrowserPanel from '@/components/portal-on-demand-browser-panel';
+import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
+import PortalBrowserPanel from '@/features/genome-browser/components/portal-browser-panel';
+import PortalOnDemandBrowserPanel from '@/features/genome-browser/components/portal-on-demand-browser-panel';
 import { genomeCatalogRepository } from '@/features/genomes/repository';
 
 function formatNumber(value: number | null, suffix = '') {

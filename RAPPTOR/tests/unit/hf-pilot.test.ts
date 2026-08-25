@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { prepareHfPilot } from '../../scripts/prepare-hf-pilot.mjs';
+import { prepareHfPilot } from '../../scripts/huggingface/prepare-hf-pilot.mjs';
 
 const temporaryDirectories: string[] = [];
 

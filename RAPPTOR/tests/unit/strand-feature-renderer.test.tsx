@@ -27,7 +27,7 @@ import {
   strandColor,
   strandLabel,
   visibleAnnotationFeatures,
-} from '@/jbrowse/strand-feature-renderer';
+} from '@/features/genome-browser/plugins/strand-feature-renderer';
 
 function feature(
   id: string,

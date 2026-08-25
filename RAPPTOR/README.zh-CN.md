@@ -52,15 +52,15 @@ Windows 建议直接在 WSL 中运行完整构建：
 
 ```bash
 cd /mnt/d/科研/promoter/datasetweb/RAPPTOR
-node scripts/build-gtdb-release.mjs --tool-mode native --force
-node scripts/validate-gtdb-release.mjs
+node scripts/data/build-gtdb-release.mjs --tool-mode native --force
+node scripts/data/validate-gtdb-release.mjs
 ```
 
 如需加入 step=50 的 RAPPTOR cutoff 前原始分数，先安装离线转换依赖，再传入每个待发布 accession 恰好一个 Parquet 的目录：
 
 ```bash
 python3 -m pip install pyarrow pyBigWig
-node scripts/build-gtdb-release.mjs --tool-mode native --score-root /path/to/prediction_scores_step_50 --force
+node scripts/data/build-gtdb-release.mjs --tool-mode native --score-root /path/to/prediction_scores_step_50 --force
 ```
 
 每个 Parquet 文件名必须包含带版本号的 `GCA_...` 或 `GCF_...` accession。标准格式包含 `Sequence_ID`、`Start`、`End`、`Score`、`Strand` 五列；RAPPTOR 的 `.sidecar.parquet` 格式 `Sequence_ID`、`Position`、`Score`、`Strand` 也可以直接使用，其中 `Position` 按 0-based 的 1 bp anchor 起点解释。score 保持在 `[0,1]`，同一 contig/strand 的相邻 anchor 必须相差 50 bp。构建器生成 `promoter-scores.plus.bw` 和 `promoter-scores.minus.bw`，不会把 Parquet 复制进 release。未传 `--score-root` 且压缩包内没有 `prediction_scores_step_50` 目录时，旧 release 仍可正常构建，这两个可选资产为 `null`。

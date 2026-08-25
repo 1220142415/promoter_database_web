@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultRelease = resolve(projectRoot, '.data', 'releases', '2026-08-07');
 const ACCESSION = /^GC[AF]_\d{9}\.\d+$/;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -22,7 +22,7 @@ function parseArgs(argv) {
     } else if (argument === '--quick') options.quick = true;
     else if (argument === '--allow-unindexed') options.allowUnindexed = true;
     else if (argument === '--help' || argument === '-h') {
-      console.log('Usage: node scripts/validate-gtdb-release.mjs [--release PATH] [--quick] [--allow-unindexed]');
+      console.log('Usage: node scripts/data/validate-gtdb-release.mjs [--release PATH] [--quick] [--allow-unindexed]');
       process.exit(0);
     } else throw new Error(`unknown argument: ${argument}`);
   }

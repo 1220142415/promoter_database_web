@@ -1,0 +1,23 @@
+name = "rapptor"
+main = ".open-next/worker.js"
+compatibility_date = "2026-08-13"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[vars]
+RAPPTOR_ANALYTICS = "on"
+RAPPTOR_ANALYTICS_PRECISION = "city"
+RAPPTOR_USAGE_PUBLIC_PAGE = "on"
+
+[[d1_databases]]
+binding = "RAPPTOR_DB"
+database_name = "rapptor-catalog"
+database_id = "13173011-d2b9-4763-b379-ecc1562ef497"
+migrations_dir = "database/migrations"

@@ -1,6 +1,6 @@
 ---
 status: diagnosed
-trigger: "In SeqEdge's embedded JBrowse 2 browser, selecting an NCBI gene feature and clicking SHOW FEATURE SEQUENCE expands the genomic sequence, after which the site becomes unresponsive/freezes. Determine the root cause with evidence. Diagnose only: do not modify application source, dependencies, lockfiles, or config."
+trigger: "In RAPPTOR's embedded JBrowse 2 browser, selecting an NCBI gene feature and clicking SHOW FEATURE SEQUENCE expands the genomic sequence, after which the site becomes unresponsive/freezes. Determine the root cause with evidence. Diagnose only: do not modify application source, dependencies, lockfiles, or config."
 created: 2026-08-10T15:02:33+08:00
 updated: 2026-08-10T15:30:10+08:00
 ---
@@ -42,7 +42,7 @@ started: Unknown whether this ever worked; current repository state dated 2026-0
   implication: There is no local known-pattern diagnosis to prioritize.
 
 - timestamp: 2026-08-10T15:05:10+08:00
-  checked: SeqEdge/package.json and prior investigation memory
+  checked: RAPPTOR/package.json and prior investigation memory
   found: The prior runtime crash involved mixed @jbrowse/product-core 4.3.0 and @jbrowse/react-linear-genome-view 3.1.0, but the current manifest declares product-core 3.7.0 and react-linear-genome-view 3.1.0.
   implication: The historical mixed-major issue is a candidate only; the installed tree and current runtime must be checked directly.
 

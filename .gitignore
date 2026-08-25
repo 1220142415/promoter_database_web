@@ -4,9 +4,10 @@
 *.fasta
 *.zip
 *.tar.gz
+*.parquet
 
 # Generated dependencies and disposable preview copies
-SeqEdge-preview/
+RAPPTOR-preview/
 
 # Local editor and runtime files
 .env

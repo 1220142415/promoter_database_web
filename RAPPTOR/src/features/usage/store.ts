@@ -85,10 +85,9 @@ async function resolveSalt(database: D1Database, day: string) {
 
 async function resolveStoredSalt(database: D1Database, day: string) {
   const generated = crypto.randomUUID();
-  await database
-    .prepare('INSERT INTO analytics_salt (day, salt) VALUES (?, ?) ON CONFLICT(day) DO NOTHING')
-    .bind(day, generated)
-    .run();
+  await database.batch([
+    database.prepare('INSERT INTO analytics_salt (day, salt) VALUES (?, ?) ON CONFLICT(day) DO NOTHING').bind(day, generated),
+  ]);
   const row = await database.prepare('SELECT salt FROM analytics_salt WHERE day = ?').bind(day).first<{ salt: string }>();
   return row?.salt || generated;
 }

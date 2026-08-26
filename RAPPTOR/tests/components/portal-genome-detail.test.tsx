@@ -9,9 +9,14 @@ import type { GenomeCatalogDetails, GenomeCatalogMatch } from '@/features/genome
 vi.mock('server-only', () => ({}));
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('not found'); } }));
-vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({ default: ({ assembly }: { assembly: { assemblyName: string; assets: { ncbiAnnotations: string | null } } }) => <div data-testid="browser-contract" data-assembly={assembly.assemblyName} data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))} /> }));
+vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({ default: ({ prediction }: { prediction: { assemblyName: string; assets: { ncbiAnnotations: string | null } } }) => <div data-testid="browser-contract" data-assembly={prediction.assemblyName} data-ncbi={String(Boolean(prediction.assets.ncbiAnnotations))} /> }));
 vi.mock('@/features/genome-browser/components/portal-on-demand-browser-panel', () => ({ default: ({ accession }: { accession: string }) => <div data-testid="on-demand-browser-contract" data-assembly={accession} /> }));
-vi.mock('@/features/genomes/repository', () => ({ genomeCatalogRepository: { getByAccession: vi.fn() } }));
+vi.mock('@/features/genomes/repository', () => ({
+  genomeCatalogRepository: {
+    getActiveRelease: vi.fn(async () => ({ releaseId: '2026-08-07' })),
+    getByAccession: vi.fn(),
+  },
+}));
 
 import { genomeCatalogRepository } from '@/features/genomes/repository';
 
@@ -58,11 +63,11 @@ function details(): GenomeCatalogDetails {
       countUnit: 'peaks',
       featureCount: 2_400,
       status: 'available',
-      sourceId: 'RAPPtor',
+      sourceId: 'RAPPTOR',
       sourceVersion: '1.0',
       configuration: { threshold: 0.9 },
       generatedAt: '2026-08-01',
-      provenance: { model: 'RAPPtor' },
+      provenance: { model: 'RAPPTOR' },
       detailCounts: {},
       dataPath: 'promoters.gff3.gz',
       indexPath: 'promoters.gff3.gz.tbi',
@@ -157,7 +162,7 @@ describe('genome detail release contract', () => {
     expect(screen.getByText('Taxonomy').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByText('1,600 / Mb')).toBeInTheDocument();
     expect(screen.getByText('RAPPTOR')).toBeInTheDocument();
-    expect(screen.queryByText('RAPPtor 1.0')).not.toBeInTheDocument();
+    expect(screen.queryByText('RAPPTOR 1.0')).not.toBeInTheDocument();
     expect(screen.queryByText('Portal status')).not.toBeInTheDocument();
     expect(container.querySelector('.genome-metrics-grid small')).not.toBeInTheDocument();
     expect(screen.queryByText('Coding density')).not.toBeInTheDocument();

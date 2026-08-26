@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import GenomeExplorer from '@/features/genomes/components/genome-explorer';
 import { makeGenome, makeSearchResponse } from '../fixtures/release';
-import type { GenomeSearchResponse } from '@/features/genomes/types';
+import type { UnifiedGenomeSearchResponse } from '@/types/unified-genome';
 
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
 
@@ -23,9 +23,36 @@ const genomes = Array.from({ length: 30 }, (_, index) => makeGenome({
   annotationStatus: index % 5 === 0 ? 'available' : 'missing',
 }));
 
-function response(items = genomes.slice(0, 25), total = genomes.length): GenomeSearchResponse {
+function response(items = genomes.slice(0, 25), total = genomes.length): UnifiedGenomeSearchResponse {
   const value = makeSearchResponse(genomes, items);
-  return { ...value, total, pageInfo: { nextCursor: items.length < total ? 'next-cursor' : null, hasNext: items.length < total } };
+  return {
+    releases: { predictionReleaseId: value.releaseId, experimentalReleaseId: 'experimental-test', compositeRevision: 'test' },
+    items: value.items.map((item) => ({
+      ...item,
+      canonicalAccession: item.accession,
+      aliases: [item.accession],
+      predictionAccession: item.accession,
+      experimentalAccession: null,
+      evidenceState: 'prediction_only',
+      experimentalObservationCount: 0,
+      experimentalStudyCount: 0,
+      assemblyCompatibility: 'single_source',
+      overlayAllowed: true,
+    })),
+    total,
+    facets: { ...value.facets, evidence: { prediction_only: total, experimental_only: 0, both: 0 } },
+    stats: {
+      totalGenomes: total,
+      predictionGenomes: total,
+      experimentalGenomes: 0,
+      bothGenomes: 0,
+      totalPredictedPromoters: genomes.reduce((sum, genome) => sum + genome.predictedPromoterCount, 0),
+      totalExperimentalObservations: 0,
+      totalExperimentalStudies: 0,
+      totalExperimentalPublications: 0,
+    },
+    pageInfo: { nextCursor: items.length < total ? 'next-cursor' : null, hasNext: items.length < total },
+  };
 }
 
 function installFetch(initial = response()) {
@@ -92,9 +119,9 @@ describe('portal genome explorer', () => {
     const user = userEvent.setup();
     render(<GenomeExplorer initialResult={response()} />);
 
-    await user.selectOptions(screen.getByLabelText('Experimental data'), 'available');
+    await user.selectOptions(screen.getByLabelText('Evidence'), 'experimental');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('evidence=available');
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('evidence=experimental');
   });
 
   it('resets descendants and requests server-side filter values', async () => {
@@ -102,7 +129,9 @@ describe('portal genome explorer', () => {
     const user = userEvent.setup();
     render(<GenomeExplorer initialResult={response()} />);
 
-    expect(screen.getByLabelText('Phylum')).toBeEnabled();
+    expect(screen.getByLabelText('Phylum')).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Domain'), 'Bacteria');
+    await waitFor(() => expect(screen.getByLabelText('Phylum')).toBeEnabled());
     await user.selectOptions(screen.getByLabelText('Phylum'), 'Pseudomonadota');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const lastUrl = fetchMock.mock.calls.at(-1)?.[0] as string;
@@ -114,23 +143,23 @@ describe('portal genome explorer', () => {
   });
 
   it('locks stale taxonomy options while the next rank is loading', async () => {
-    let resolveRequest!: (value: { ok: true; json: () => Promise<GenomeSearchResponse> }) => void;
-    const fetchMock = vi.fn(() => new Promise<{ ok: true; json: () => Promise<GenomeSearchResponse> }>((resolve) => {
+    let resolveRequest!: (value: { ok: true; json: () => Promise<UnifiedGenomeSearchResponse> }) => void;
+    const fetchMock = vi.fn(() => new Promise<{ ok: true; json: () => Promise<UnifiedGenomeSearchResponse> }>((resolve) => {
       resolveRequest = resolve;
     }));
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     render(<GenomeExplorer initialResult={response()} />);
 
-    await user.selectOptions(screen.getByLabelText('Phylum'), 'Pseudomonadota');
+    await user.selectOptions(screen.getByLabelText('Domain'), 'Bacteria');
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.getByLabelText('Phylum')).toBeDisabled();
     expect(screen.getByLabelText('Class')).toBeDisabled();
-    expect(screen.getByLabelText('Order')).toBeDisabled();
-    expect(screen.getByRole('progressbar', { name: 'Loading Class options' })).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Loading Phylum options' })).toBeInTheDocument();
 
     resolveRequest({ ok: true, json: async () => response(genomes.slice(0, 8), 8) });
-    await waitFor(() => expect(screen.getByLabelText('Class')).toBeEnabled());
-    expect(screen.queryByRole('progressbar', { name: 'Loading Class options' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Phylum')).toBeEnabled());
+    expect(screen.queryByRole('progressbar', { name: 'Loading Phylum options' })).not.toBeInTheDocument();
   });
 
   it('keeps rows and exposes a retry action after an API error', async () => {

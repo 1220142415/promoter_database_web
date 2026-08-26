@@ -117,7 +117,7 @@ describe('track download dialog', () => {
       ok: true,
       status: 200,
       blob: async () => ({
-        text: async () => '##gff-version 3\ncontig_1\tRAPPtor\tpromoter\t5\t5\t.\t+\t.\tID=p1\n',
+        text: async () => '##gff-version 3\ncontig_1\tRAPPTOR\tpromoter\t5\t5\t.\t+\t.\tID=p1\n',
       } as Blob),
     }));
     class MockUrl extends URL {

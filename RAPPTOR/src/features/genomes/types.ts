@@ -121,6 +121,7 @@ export interface GenomeCatalogDetails {
 
 export interface GenomeCatalogMatch {
   releaseId: string;
+  referenceSha256?: string | null;
   assetBase: string | null;
   genome: ReleaseGenome;
   storage: GenomeStorageMap | null;

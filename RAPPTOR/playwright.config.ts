@@ -1,7 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve } from 'node:path';
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
-const baseURL = externalBaseUrl || 'http://127.0.0.1:3100';
+const localPort = process.env.RAPPTOR_E2E_PORT || '3100';
+const localBaseUrl = `http://127.0.0.1:${localPort}`;
+const baseURL = externalBaseUrl || localBaseUrl;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -14,7 +17,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: externalBaseUrl ? undefined : {
-    command: 'npm run dev -- --hostname 127.0.0.1 --port 3100',
+    command: `npm run dev -- --hostname 127.0.0.1 --port ${localPort}`,
     env: {
       // The default suite deliberately exercises the deployment-safe state:
       // no analytics credentials and no analytics collection. A real D1
@@ -28,8 +31,12 @@ export default defineConfig({
       LOCAL_CATALOG_PATH: process.env.LOCAL_CATALOG_PATH || '',
       LOCAL_DATA_ROOT: process.env.LOCAL_DATA_ROOT || '',
       LOCAL_RELEASE_ROOT: process.env.LOCAL_RELEASE_ROOT || '',
+      EXPERIMENTAL_TSS_CATALOG_PATH: process.env.EXPERIMENTAL_TSS_CATALOG_PATH
+        || resolve(process.cwd(), 'tests/e2e/fixtures/experimental-tss/catalog.json'),
+      EXPERIMENTAL_TSS_STORAGE_BASE_URL: process.env.EXPERIMENTAL_TSS_STORAGE_BASE_URL
+        || 'https://assets.invalid/releases/experimental-test',
     },
-    url: 'http://127.0.0.1:3100',
+    url: localBaseUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

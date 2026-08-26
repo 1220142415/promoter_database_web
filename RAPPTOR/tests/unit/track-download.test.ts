@@ -89,15 +89,15 @@ describe('track download helpers', () => {
   it('exports overlapping GFF3 features from browser-prepared data', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
       '##gff-version 3',
-      'contig_1\tRAPPtor\tpromoter\t5\t5\t.\t+\t.\tID=p1',
-      'contig_1\tRAPPtor\tpromoter\t50\t50\t.\t+\t.\tID=p2',
-      'contig_2\tRAPPtor\tpromoter\t7\t7\t.\t+\t.\tID=p3',
+      'contig_1\tRAPPTOR\tpromoter\t5\t5\t.\t+\t.\tID=p1',
+      'contig_1\tRAPPTOR\tpromoter\t50\t50\t.\t+\t.\tID=p2',
+      'contig_2\tRAPPTOR\tpromoter\t7\t7\t.\t+\t.\tID=p3',
     ].join('\n'))));
     const blob = await browserTrackDownloadBlob({
       ...metadata,
       wholeAssetUrl: 'blob:promoters',
       downloadMode: 'browser',
     }, 'visible', { refName: 'contig_1', start: 1, end: 10 });
-    expect(await blob.text()).toBe('##gff-version 3\ncontig_1\tRAPPtor\tpromoter\t5\t5\t.\t+\t.\tID=p1\n');
+    expect(await blob.text()).toBe('##gff-version 3\ncontig_1\tRAPPTOR\tpromoter\t5\t5\t.\t+\t.\tID=p1\n');
   });
 });

@@ -23,6 +23,11 @@ describe('release catalog normalization', () => {
           statistics: { genome_size_bp: '4200000', gc_content: '43.2' },
           counts: { predicted_promoters: 17, experimental_tss: 2 },
           assets: { ncbi_gff3: 'GCA_000411415.1/ncbi-annotations.gff3.gz' },
+          checksums: {
+            fasta: 'A'.repeat(64),
+            ncbiAnnotations: 'b'.repeat(64),
+            promoterScoresPlus: 'not-a-sha256',
+          },
         },
         {
           accession: 'GCA_000421325.1',
@@ -60,6 +65,10 @@ describe('release catalog normalization', () => {
       fasta: 'GCA_000411415.1/reference.fa.gz',
       ncbiAnnotations: 'GCA_000411415.1/ncbi-annotations.gff3.gz',
       ncbiAnnotationsIndex: 'GCA_000411415.1/ncbi-annotations.gff3.gz.tbi',
+    });
+    expect(result.catalog.genomes[0].checksums).toEqual({
+      fasta: 'a'.repeat(64),
+      ncbiAnnotations: 'b'.repeat(64),
     });
     expect(result.catalog.genomes[1].assets.ncbiAnnotations).toBeNull();
   });
@@ -111,5 +120,29 @@ describe('release catalog normalization', () => {
     }));
     expect(getReleaseGenome('GCA_000411415.1')?.genome.accession).toBe('GCA_000411415.1');
     expect(getReleaseGenome('GCA_000411415')).toBeNull();
+  });
+
+  it('normalizes release-root object paths for the accession-scoped local API', () => {
+    mockedReadFile.mockReturnValue(JSON.stringify({
+      assetBase: '/api/local-data',
+      genomes: [{
+        accession: 'GCA_000411415.1',
+        assets: {
+          fasta: 'objects/GCA_000411415.1/reference.fa.gz',
+          fastaFai: 'objects/GCA_000411415.1/reference.fa.gz.fai',
+          fastaGzi: 'objects/GCA_000411415.1/reference.fa.gz.gzi',
+          predictedPromoters: 'objects/GCA_000411415.1/predicted-promoters.gff3.gz',
+          predictedPromotersIndex: 'objects/GCA_000411415.1/predicted-promoters.gff3.gz.tbi',
+        },
+      }],
+    }));
+
+    expect(getReleaseGenome('GCA_000411415.1')?.genome.assets).toMatchObject({
+      fasta: 'GCA_000411415.1/reference.fa.gz',
+      fastaFai: 'GCA_000411415.1/reference.fa.gz.fai',
+      fastaGzi: 'GCA_000411415.1/reference.fa.gz.gzi',
+      predictedPromoters: 'GCA_000411415.1/predicted-promoters.gff3.gz',
+      predictedPromotersIndex: 'GCA_000411415.1/predicted-promoters.gff3.gz.tbi',
+    });
   });
 });

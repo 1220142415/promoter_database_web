@@ -34,6 +34,7 @@ export default function HomePage() {
             <p className="portal-hero-lead">Genome-resolved promoter predictions, reference assemblies and contextual NCBI annotations in a release-ready research portal.</p>
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
+              <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link>
             </div>
           </div>
           <div className="sequence-figure" role="img" aria-label="Genome sequence and promoter track overview">
@@ -79,7 +80,7 @@ export default function HomePage() {
       <section className="portal-section evidence-band" id="evidence">
         <div className="portal-shell evidence-layout">
           <div><p className="portal-kicker">Evidence boundaries</p><h2>Predictions and observations stay separate</h2></div>
-          <p>RAPPTOR promoter peaks are model predictions. This release contains no experimental transcription start-site dataset, and NCBI feature annotations do not validate predicted peaks.</p>
+          <p>RAPPTOR keeps model-predicted promoter peaks, experimentally observed transcription start sites and contextual NCBI annotations as separate evidence layers.</p>
         </div>
       </section>
 

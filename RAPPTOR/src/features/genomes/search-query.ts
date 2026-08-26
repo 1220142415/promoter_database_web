@@ -1,22 +1,20 @@
 import type {
   GenomeAnnotationFilter,
-  GenomeEvidenceFilter,
   GenomeSearchQuery,
   GenomeSortDirection,
   GenomeSortField,
   GenomeTaxonomyFilters,
 } from '@/features/genomes/types';
+import type { UnifiedGenomeEvidenceFilter, UnifiedGenomeSearchQuery } from '@/types/unified-genome';
 
 const MAX_FILTER_LENGTH = 200;
 const MAX_CURSOR_LENGTH = 4_096;
 const SORT_FIELDS = new Set<GenomeSortField>(['accession', 'organism', 'genome-size', 'promoters']);
 const SORT_DIRECTIONS = new Set<GenomeSortDirection>(['asc', 'desc']);
 const ANNOTATION_FILTERS = new Set<GenomeAnnotationFilter>(['', 'available', 'unavailable']);
-const EVIDENCE_FILTERS = new Set<GenomeEvidenceFilter>(['', 'available', 'unavailable']);
+const EVIDENCE_FILTERS = new Set<UnifiedGenomeEvidenceFilter>(['all', 'predictions', 'experimental', 'both']);
 const PAGE_SIZES = new Set([25, 50, 100]);
 const MAX_SEARCH_TOKENS = 8;
-
-export const DEFAULT_CATALOG_DOMAIN = 'Bacteria';
 
 export class GenomeSearchQueryError extends Error {
   constructor(message: string) {
@@ -48,13 +46,18 @@ export const DEFAULT_GENOME_SEARCH_QUERY: GenomeSearchQuery = {
   cursor: null,
 };
 
+export const DEFAULT_UNIFIED_GENOME_SEARCH_QUERY: UnifiedGenomeSearchQuery = {
+  ...DEFAULT_GENOME_SEARCH_QUERY,
+  evidence: 'all',
+};
+
 function boundedValue(params: URLSearchParams, name: string, maximum = MAX_FILTER_LENGTH) {
   const value = (params.get(name) || '').trim();
   if (value.length > maximum) throw new GenomeSearchQueryError(`${name} is too long`);
   return value;
 }
 
-export function parseGenomeSearchParams(params: URLSearchParams): GenomeSearchQuery {
+export function parseGenomeSearchParams(params: URLSearchParams): UnifiedGenomeSearchQuery {
   const sortValue = boundedValue(params, 'sort') || DEFAULT_GENOME_SEARCH_QUERY.sort;
   if (!SORT_FIELDS.has(sortValue as GenomeSortField)) throw new GenomeSearchQueryError('sort is invalid');
   const sort = sortValue as GenomeSortField;
@@ -64,8 +67,9 @@ export function parseGenomeSearchParams(params: URLSearchParams): GenomeSearchQu
 
   const annotationValue = boundedValue(params, 'annotation');
   if (!ANNOTATION_FILTERS.has(annotationValue as GenomeAnnotationFilter)) throw new GenomeSearchQueryError('annotation is invalid');
-  const evidenceValue = boundedValue(params, 'evidence');
-  if (!EVIDENCE_FILTERS.has(evidenceValue as GenomeEvidenceFilter)) throw new GenomeSearchQueryError('evidence is invalid');
+
+  const evidenceValue = boundedValue(params, 'evidence') || DEFAULT_UNIFIED_GENOME_SEARCH_QUERY.evidence;
+  if (!EVIDENCE_FILTERS.has(evidenceValue as UnifiedGenomeEvidenceFilter)) throw new GenomeSearchQueryError('evidence is invalid');
 
   const limitValue = boundedValue(params, 'limit');
   const parsedLimit = limitValue ? Number(limitValue) : DEFAULT_GENOME_SEARCH_QUERY.limit;
@@ -90,7 +94,7 @@ export function parseGenomeSearchParams(params: URLSearchParams): GenomeSearchQu
     taxonomy,
     source: boundedValue(params, 'source'),
     annotation: annotationValue as GenomeAnnotationFilter,
-    evidence: evidenceValue as GenomeEvidenceFilter,
+    evidence: evidenceValue as UnifiedGenomeEvidenceFilter,
     sort,
     direction: directionValue as GenomeSortDirection,
     limit: parsedLimit as GenomeSearchQuery['limit'],

@@ -48,12 +48,12 @@ describe('GTDB release primitives', () => {
     const directory = await temporaryDirectory();
     const valid = join(directory, 'valid.gff3');
     const output = join(directory, 'valid.gff3.gz');
-    await writeFile(valid, '##gff-version 3\nchr\tRAPPtor\tpromoter_peak\t5\t5\t0.95\t+\t.\tID=p1;prediction_score=0.95\n');
+    await writeFile(valid, '##gff-version 3\nchr\tRAPPTOR\tpromoter_peak\t5\t5\t0.95\t+\t.\tID=p1;prediction_score=0.95\n');
     await expect(normalizeGff(valid, output, { expectedType: 'promoter_peak', sequences: new Map([['chr', 10]]) })).resolves.toMatchObject({ featureCount: 1 });
     expect(gunzipSync(await readFile(output)).toString()).toContain('\t5\t5\t0.95\t+\t.\t');
 
     const invalid = join(directory, 'invalid.gff3');
-    await writeFile(invalid, '##gff-version 3\nchr\tRAPPtor\tpromoter_peak\t11\t11\t0.95\t+\t.\tID=p2;prediction_score=0.95\n');
+    await writeFile(invalid, '##gff-version 3\nchr\tRAPPTOR\tpromoter_peak\t11\t11\t0.95\t+\t.\tID=p2;prediction_score=0.95\n');
     await expect(normalizeGff(invalid, join(directory, 'invalid.gz'), { expectedType: 'promoter_peak', sequences: new Map([['chr', 10]]) })).rejects.toThrow('coordinate exceeds FASTA');
   });
 

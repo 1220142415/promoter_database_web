@@ -108,14 +108,14 @@ describe('recording a page view', () => {
     store.scheduleUsageCollection(pageRequest());
     await backgroundTask;
 
-    expect(database.batches[0][1].binds.slice(1)).toEqual(['DE', '', '', null, null]);
+    expect(database.batches[1][1].binds.slice(1)).toEqual(['DE', '', '', null, null]);
   });
 
   it('writes the visitor token, the location and the path in one batch', async () => {
     const database = new FakeD1();
     await store.recordUsage(database as unknown as D1Database, pageRequest('/genomes/GCA_000411415.1'), { country: 'DE', city: 'Heidelberg', region: 'Baden-Wurttemberg', latitude: '49.41', longitude: '8.69' }, settings);
 
-    const [visitor, geo, path] = database.batches[0];
+    const [visitor, geo, path] = database.batches[1];
     const day = utcDay();
     expect(visitor.sql).toContain('INSERT INTO analytics_visitor_day');
     expect(visitor.binds[0]).toBe(day);
@@ -139,10 +139,10 @@ describe('recording a page view', () => {
   it('reuses the stored daily salt so one visitor is counted once', async () => {
     const database = new FakeD1();
     await store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, settings);
-    const firstHash = database.batches[0][0].binds[1];
+    const firstHash = database.batches[1][0].binds[1];
 
     await store.recordUsage(database as unknown as D1Database, pageRequest('/data'), { country: 'DE' }, settings);
-    expect(database.batches[2][0].binds[1]).toBe(firstHash);
+    expect(database.batches[3][0].binds[1]).toBe(firstHash);
   });
 
   it('deletes expired rows once, and drops salts after two days', async () => {
@@ -176,13 +176,10 @@ describe('recording a page view', () => {
     const database = new FakeD1();
     database.firstRow = null;
     const sensitiveError = new Error('203.0.113.5 Mozilla/5.0');
-    const prepare = database.prepare.bind(database);
-    vi.spyOn(database, 'prepare').mockImplementation((sql: string) => {
-      const statement = prepare(sql);
-      if (sql.startsWith('INSERT INTO analytics_salt')) {
-        statement.run = async () => { throw sensitiveError; };
-      }
-      return statement;
+    const batch = database.batch.bind(database);
+    vi.spyOn(database, 'batch').mockImplementation(async (statements: FakeStatement[]) => {
+      if (statements.some((statement) => statement.sql.startsWith('INSERT INTO analytics_salt'))) throw sensitiveError;
+      return batch(statements);
     });
     let backgroundTask: Promise<unknown> | undefined;
     getCloudflareContext.mockReturnValue({

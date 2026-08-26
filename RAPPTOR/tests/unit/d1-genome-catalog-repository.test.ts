@@ -38,6 +38,7 @@ const releaseRow = {
     },
   }),
   publication_status: 'ready',
+  release_kind: 'prediction',
 };
 
 function genomeRow(accession: string, size: number | null, promoters: number) {
@@ -104,7 +105,7 @@ function genomeRow(accession: string, size: number | null, promoters: number) {
     promoter_definition_id: 'promoter:rappter-v1:gt-0.9',
     promoter_evidence_type: 'prediction',
     promoter_count_unit: 'peak',
-    promoter_source_id: 'RAPPtor',
+    promoter_source_id: 'RAPPTOR',
     promoter_source_version: 'v1',
     promoter_configuration_json: '{"threshold":0.9}',
     promoter_generated_at: '2026-08-13T00:00:00Z',
@@ -166,6 +167,7 @@ class FakeStatement implements D1PreparedStatement {
   async first<T>() {
     if (this.query.includes('FROM portal_state')) {
       if (this.query.includes("publication_status, 'ready') = 'ready'") && this.database.release?.publication_status !== 'ready') return null;
+      if (this.query.includes("release_kind, 'prediction') = 'prediction'") && this.database.release?.release_kind !== 'prediction') return null;
       return this.database.release as T;
     }
     if (this.query.startsWith('SELECT COUNT')) return { count: this.database.rows.length } as T;
@@ -334,7 +336,7 @@ describe('D1 genome catalog repository', () => {
       gtdbRepresentative: true,
       promoter: {
         definitionId: 'promoter:rappter-v1:gt-0.9',
-        sourceId: 'RAPPtor',
+        sourceId: 'RAPPTOR',
         configuration: { threshold: 0.9 },
         provenance: { thresholdOperator: '>' },
         dataSha256: 'b'.repeat(64),
@@ -424,6 +426,15 @@ describe('D1 genome catalog repository', () => {
     database.release = { ...releaseRow, publication_status: 'staged' };
     const repository = new D1GenomeCatalogRepository(database);
     await expect(repository.getActiveRelease()).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
+  });
+
+  it('rejects an experimental release even if the prediction portal_state points at it', async () => {
+    const database = new FakeD1();
+    database.release = { ...releaseRow, release_kind: 'experimental_tss' };
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await expect(repository.getActiveRelease()).rejects.toBeInstanceOf(GenomeCatalogUnavailableError);
+    expect(database.preparedQueries[0]).toContain("COALESCE(r.release_kind, 'prediction') = 'prediction'");
   });
 
   it('uses precomputed release counts without scanning feature sets', async () => {

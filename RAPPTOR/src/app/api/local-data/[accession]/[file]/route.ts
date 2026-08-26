@@ -38,12 +38,46 @@ const CONTENT_TYPES: Record<string, string> = {
   'metadata.json': 'application/json; charset=utf-8',
 };
 
+type CatalogMatch = NonNullable<Awaited<ReturnType<typeof genomeCatalogRepository.getByAccession>>>;
+
+const FILE_ASSET_KEYS: Record<string, keyof CatalogMatch['genome']['assets']> = {
+  'reference.fa': 'fasta',
+  'reference.fa.gz': 'fasta',
+  'reference.fa.gz.fai': 'fastaFai',
+  'reference.fa.gz.gzi': 'fastaGzi',
+  'predicted-promoters.gff3.gz': 'predictedPromoters',
+  'predicted-promoters.gff3.gz.tbi': 'predictedPromotersIndex',
+  'promoter-scores.plus.bw': 'promoterScoresPlus',
+  'promoter-scores.minus.bw': 'promoterScoresMinus',
+  'ncbi-annotations.gff3.gz': 'ncbiAnnotations',
+  'ncbi-annotations.gff3.gz.tbi': 'ncbiAnnotationsIndex',
+  'metadata.json': 'metadata',
+};
+
 type RouteContext = {
   params: Promise<{ accession: string; file: string }>;
 };
 
 function dataRoot(releaseId: string) {
   return process.env.LOCAL_DATA_ROOT || join(process.cwd(), '.data', 'releases', releaseId, 'objects');
+}
+
+function localAssetPath(
+  match: CatalogMatch,
+  file: string,
+) {
+  if (!match.storage || match.storage.layout !== 'individual-v1') return null;
+  const key = FILE_ASSET_KEYS[file];
+  const configured = key ? match.genome.assets[key] : null;
+  const prefix = match.storage.logicalObjectPrefix.startsWith('objects/')
+    ? match.storage.logicalObjectPrefix.slice('objects/'.length)
+    : match.storage.logicalObjectPrefix;
+  if (typeof configured !== 'string' || !configured) return null;
+  const withoutQuery = configured.split(/[?#]/u, 1)[0];
+  if (!withoutQuery || withoutQuery.startsWith('/') || withoutQuery.includes('\\')) return null;
+  const relative = withoutQuery.startsWith('objects/') ? withoutQuery.slice('objects/'.length) : withoutQuery;
+  if (relative.split('/').some((segment) => !segment || segment === '.' || segment === '..')) return null;
+  return relative === `${prefix}/${file}` ? relative : null;
 }
 
 function parseRange(value: string | null, size: number) {
@@ -86,7 +120,9 @@ async function serve(request: Request, context: RouteContext, headOnly: boolean)
   if (match.resourceStatus === 'staged' || !match.storage) {
     return NextResponse.json({ error: 'Release asset is still being prepared.' }, { status: 503 });
   }
-  const path = join(dataRoot(match.releaseId), match.storage.logicalObjectPrefix, file);
+  const relativePath = localAssetPath(match, file);
+  if (!relativePath) return NextResponse.json({ error: 'Unknown release asset.' }, { status: 404 });
+  const path = join(dataRoot(match.releaseId), ...relativePath.split('/'));
   let details;
   try {
     details = await stat(path);

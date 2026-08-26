@@ -650,7 +650,7 @@ function rowToGenome(row: D1GenomeRow, expectedLayout: string, expectedReleaseId
 }
 
 async function activeD1Release(database: D1Database) {
-  const row = await database.prepare("SELECT r.* FROM portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1 AND COALESCE(r.publication_status, 'ready') = 'ready'").first<D1ReleaseRow>();
+  const row = await database.prepare("SELECT r.* FROM portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1 AND COALESCE(r.release_kind, 'prediction') = 'prediction' AND COALESCE(r.publication_status, 'ready') = 'ready'").first<D1ReleaseRow>();
   if (!row) throw new GenomeCatalogUnavailableError('No active RAPPTOR release is configured in D1.');
   return row;
 }

@@ -12,14 +12,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const showUsage = process.env.RAPPTOR_USAGE_PUBLIC_PAGE?.toLowerCase() === 'on';
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <PortalHeader showUsage={showUsage} />
         {children}
         <footer className="portal-footer">
           <div className="portal-shell">
             <div><strong>RAPPTOR</strong><p>Bacterial promoter predictions and genome-resolved evidence.</p></div>
-            <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/#data">Release files</Link>{showUsage && <Link href="/usage">Usage</Link>}</nav>
+            <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/experimental-tss">Experimental TSS</Link><Link href="/#data">Release files</Link>{showUsage && <Link href="/usage">Usage</Link>}</nav>
           </div>
         </footer>
       </body>

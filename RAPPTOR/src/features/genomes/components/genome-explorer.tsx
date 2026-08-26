@@ -10,29 +10,32 @@ import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
 import ArrowDownwardRoundedIcon from '@mui/icons-material/ArrowDownwardRounded';
 import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
 import CircularProgress from '@mui/material/CircularProgress';
-import { DEFAULT_CATALOG_DOMAIN, defaultGenomeSortDirection } from '@/features/genomes/search-query';
+import { defaultGenomeSortDirection } from '@/features/genomes/search-query';
 import type {
   GenomeAnnotationFilter,
-  GenomeEvidenceFilter,
   GenomeSearchQuery,
-  GenomeSearchResponse,
   GenomeSortDirection,
   GenomeSortField,
   GenomeTaxonomyFilters,
   GenomeTaxonomyRank,
 } from '@/features/genomes/types';
+import type {
+  UnifiedGenomeEvidenceFilter,
+  UnifiedGenomeSearchQuery,
+  UnifiedGenomeSearchResponse,
+} from '@/types/unified-genome';
 
 const TAXONOMY_RANKS = [
-  { key: 'domain', label: 'Domain', emptyLabel: 'All domains' },
-  { key: 'phylum', label: 'Phylum', emptyLabel: 'Any' },
-  { key: 'class', label: 'Class', emptyLabel: 'Any' },
-  { key: 'order', label: 'Order', emptyLabel: 'Any' },
-  { key: 'family', label: 'Family', emptyLabel: 'Any' },
-  { key: 'genus', label: 'Genus', emptyLabel: 'Any' },
+  { key: 'domain', label: 'Domain', allLabel: 'All domains' },
+  { key: 'phylum', label: 'Phylum', allLabel: 'All phyla' },
+  { key: 'class', label: 'Class', allLabel: 'All classes' },
+  { key: 'order', label: 'Order', allLabel: 'All orders' },
+  { key: 'family', label: 'Family', allLabel: 'All families' },
+  { key: 'genus', label: 'Genus', allLabel: 'All genera' },
 ] as const;
 
-const DEFAULT_TAXONOMY: GenomeTaxonomyFilters = {
-  domain: DEFAULT_CATALOG_DOMAIN,
+const EMPTY_TAXONOMY: GenomeTaxonomyFilters = {
+  domain: '',
   phylum: '',
   class: '',
   order: '',
@@ -55,14 +58,7 @@ function formatCount(value: number | null) {
   return value === null ? 'Not reported' : new Intl.NumberFormat('en-US').format(value);
 }
 
-function ExperimentalEvidence({ genome }: { genome: GenomeSearchResponse['items'][number] }) {
-  const datasets = genome.experimentalDatasetCount || 0;
-  if (!datasets) return <><span className="evidence-muted">Missing</span><small>No literature datasets</small></>;
-  const datasetLabel = `${datasets.toLocaleString()} ${datasets === 1 ? 'dataset' : 'datasets'}`;
-  return <><span className="evidence-available">Available</span><small>{datasetLabel} · {(genome.experimentalPromoterCount || 0).toLocaleString()} promoters · {(genome.experimentalTssCount || 0).toLocaleString()} TSS</small></>;
-}
-
-function buildRequestUrl(query: GenomeSearchQuery) {
+function buildRequestUrl(query: UnifiedGenomeSearchQuery) {
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   for (const rank of TAXONOMY_RANKS) {
@@ -70,7 +66,7 @@ function buildRequestUrl(query: GenomeSearchQuery) {
   }
   if (query.source) params.set('source', query.source);
   if (query.annotation) params.set('annotation', query.annotation);
-  if (query.evidence) params.set('evidence', query.evidence);
+  if (query.evidence !== 'all') params.set('evidence', query.evidence);
   params.set('sort', query.sort);
   params.set('direction', query.direction);
   params.set('limit', String(query.limit));
@@ -78,13 +74,19 @@ function buildRequestUrl(query: GenomeSearchQuery) {
   return `/api/genomes?${params.toString()}`;
 }
 
-export default function GenomeExplorer({ initialResult }: { initialResult: GenomeSearchResponse }) {
+export default function PortalGenomeExplorer({
+  initialResult,
+  initialEvidence = 'all',
+}: {
+  initialResult: UnifiedGenomeSearchResponse;
+  initialEvidence?: UnifiedGenomeEvidenceFilter;
+}) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [taxonomy, setTaxonomy] = useState<GenomeTaxonomyFilters>(DEFAULT_TAXONOMY);
+  const [taxonomy, setTaxonomy] = useState<GenomeTaxonomyFilters>(EMPTY_TAXONOMY);
   const [source, setSource] = useState('');
   const [annotationStatus, setAnnotationStatus] = useState<GenomeAnnotationFilter>('');
-  const [evidenceStatus, setEvidenceStatus] = useState<GenomeEvidenceFilter>('');
+  const [evidence, setEvidence] = useState<UnifiedGenomeEvidenceFilter>(initialEvidence);
   const [sortField, setSortField] = useState<GenomeSortField>('accession');
   const [sortDirection, setSortDirection] = useState<GenomeSortDirection>('asc');
   const [pageSize, setPageSize] = useState<GenomeSearchQuery['limit']>(25);
@@ -103,16 +105,16 @@ export default function GenomeExplorer({ initialResult }: { initialResult: Genom
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  const requestCriteria = useMemo<Omit<GenomeSearchQuery, 'cursor'>>(() => ({
+  const requestCriteria = useMemo<Omit<UnifiedGenomeSearchQuery, 'cursor'>>(() => ({
     q: debouncedQuery,
     taxonomy,
     source,
     annotation: annotationStatus,
-    evidence: evidenceStatus,
+    evidence,
     sort: sortField,
     direction: sortDirection,
     limit: pageSize,
-  }), [annotationStatus, debouncedQuery, evidenceStatus, pageSize, sortDirection, sortField, source, taxonomy]);
+  }), [annotationStatus, debouncedQuery, evidence, pageSize, sortDirection, sortField, source, taxonomy]);
 
   const requestPage = useCallback(async (navigation: NavigationRequest) => {
     requestRef.current?.abort();
@@ -126,9 +128,9 @@ export default function GenomeExplorer({ initialResult }: { initialResult: Genom
         signal: controller.signal,
         headers: { Accept: 'application/json' },
       });
-      const body = await response.json() as GenomeSearchResponse | { error?: string };
+      const body = await response.json() as UnifiedGenomeSearchResponse | { error?: string };
       if (!response.ok) throw new Error('error' in body && body.error ? body.error : 'Genome catalog request failed.');
-      const nextResult = body as GenomeSearchResponse;
+      const nextResult = body as UnifiedGenomeSearchResponse;
       setResult(nextResult);
       setStaleTaxonomyFrom(null);
       if (navigation.kind === 'reset') {
@@ -167,11 +169,11 @@ export default function GenomeExplorer({ initialResult }: { initialResult: Genom
   const clearFilters = () => {
     setQuery('');
     setDebouncedQuery('');
-    setTaxonomy(DEFAULT_TAXONOMY);
+    setTaxonomy(EMPTY_TAXONOMY);
     setStaleTaxonomyFrom(null);
     setSource('');
     setAnnotationStatus('');
-    setEvidenceStatus('');
+    setEvidence('all');
     setSortField('accession');
     setSortDirection('asc');
   };
@@ -250,16 +252,17 @@ export default function GenomeExplorer({ initialResult }: { initialResult: Genom
           <span>NCBI annotation</span>
           <select value={annotationStatus} onChange={(event) => setAnnotationStatus(event.target.value as GenomeAnnotationFilter)}>
             <option value="">Any status</option>
-            <option value="available">Available</option>
+            <option value="available">Cataloged</option>
             <option value="unavailable">Missing</option>
           </select>
         </label>
         <label>
-          <span>Experimental data</span>
-          <select value={evidenceStatus} onChange={(event) => setEvidenceStatus(event.target.value as GenomeEvidenceFilter)}>
-            <option value="">Any status</option>
-            <option value="available">Available</option>
-            <option value="unavailable">Missing</option>
+          <span>Evidence</span>
+          <select value={evidence} onChange={(event) => setEvidence(event.target.value as UnifiedGenomeEvidenceFilter)}>
+            <option value="all">All genomes</option>
+            <option value="predictions">Predictions available</option>
+            <option value="experimental">Experimental TSS available</option>
+            <option value="both">Prediction and experimental</option>
           </select>
         </label>
         <button type="button" className="catalog-reset" onClick={clearFilters} title="Clear filters" aria-label="Clear filters"><RestartAltRoundedIcon /></button>
@@ -282,7 +285,7 @@ export default function GenomeExplorer({ initialResult }: { initialResult: Genom
                     aria-busy={loadingThisRank || undefined}
                     onChange={(event) => updateTaxonomy(rank.key, event.target.value)}
                   >
-                    <option value="">{rank.emptyLabel}</option>
+                    <option value="">{rank.allLabel}</option>
                     {result.facets.taxonomy[rank.key].map((value) => <option key={value} value={value}>{value}</option>)}
                   </select>
                   {loadingThisRank ? <CircularProgress className="catalog-taxonomy-spinner" size={16} thickness={5} aria-label={`Loading ${rank.label} options`} /> : null}
@@ -308,24 +311,31 @@ export default function GenomeExplorer({ initialResult }: { initialResult: Genom
             <th>Taxonomy</th>
             <th className="catalog-sortable-heading" aria-sort={sortField === 'genome-size' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}>{sortHeader('genome-size', 'Assembly size')}</th>
             <th className="catalog-sortable-heading" aria-sort={sortField === 'promoters' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}>{sortHeader('promoters', 'Predicted promoters')}</th>
-            <th>Experimental data</th>
             <th>Annotation</th>
           </tr></thead>
           <tbody>
             {result.items.map((genome) => (
-              <tr key={genome.accession}>
-                <td><Link href={`/genomes/${encodeURIComponent(genome.accession)}`} className="catalog-accession">{genome.accession}</Link></td>
+              <tr key={genome.assemblyKey || genome.canonicalAccession}>
+                <td><Link href={`/genomes/${encodeURIComponent(genome.canonicalAccession)}${genome.assemblyCompatibility === 'mismatch' && genome.assemblySource === 'experimental' ? '?assembly=experimental' : ''}`} className="catalog-accession">{genome.canonicalAccession}</Link>{genome.aliases.filter((alias) => alias !== genome.canonicalAccession).map((alias) => <small key={alias}>{alias}</small>)}</td>
                 <td><span className="organism-name">{genome.organismName}</span>{genome.strain && <small>{genome.strain}</small>}</td>
                 <td><span>{genome.phylum || 'Unclassified'}</span><small>{genome.genus || 'Genus not assigned'}</small></td>
                 <td><span>{formatCount(genome.genomeSizeBp)} bp</span><small>{formatCount(genome.contigCount)} contigs</small></td>
-                <td className="numeric-cell">{genome.predictedPromoterCount.toLocaleString()}</td>
-                <td className="catalog-evidence-cell"><ExperimentalEvidence genome={genome} /></td>
+                <td data-predicted-promoters={genome.predictedPromoterCount} data-evidence-state={genome.evidenceState}>
+                  <span className={genome.predictionAccession ? 'evidence-available' : 'evidence-muted'}>
+                    {genome.predictionAccession ? `${genome.predictedPromoterCount.toLocaleString()} predictions` : 'No prediction release'}
+                  </span>
+                  <small className={genome.experimentalAccession ? 'evidence-available' : 'evidence-muted'}>
+                    {genome.experimentalAccession
+                      ? `${genome.experimentalStudyCount.toLocaleString()} ${genome.experimentalStudyCount === 1 ? 'study' : 'studies'} · ${genome.experimentalObservationCount.toLocaleString()} TSS`
+                      : 'No experimental TSS'}
+                  </small>
+                </td>
                 <td>{genome.annotationStatus === 'available'
                   ? <span className="evidence-available">Available</span>
                   : <span className="evidence-muted">Missing</span>}</td>
               </tr>
             ))}
-            {result.items.length === 0 && <tr><td colSpan={7} className="catalog-empty">No genomes match the current filters.</td></tr>}
+            {result.items.length === 0 && <tr><td colSpan={6} className="catalog-empty">No genomes match the current filters.</td></tr>}
           </tbody>
         </table>
       </div>

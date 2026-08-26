@@ -50,7 +50,13 @@ function booleanValue(record: JsonRecord, keys: string[]): boolean | null {
 }
 
 function normalizeAssetPath(value: string | null, accession: string, fallbackName: string): string {
-  return value || `${accession}/${fallbackName}`;
+  const path = value || `${accession}/${fallbackName}`;
+  // Release manifests use paths relative to the release root (objects/GCA_...)
+  // while the local asset API is rooted at the objects directory. Keep remote
+  // URLs untouched, but remove that one well-known storage prefix for portal
+  // URLs so /api/local-data receives [accession]/[file].
+  if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith('/')) return path;
+  return path.startsWith('objects/') ? path.slice('objects/'.length) : path;
 }
 
 function normalizeAssets(entry: JsonRecord, accession: string): ReleaseAssets {
@@ -106,6 +112,12 @@ function normalizeGenome(value: unknown): ReleaseGenome | null {
   const assets = annotationStatus === 'available'
     ? normalizedAssets
     : { ...normalizedAssets, ncbiAnnotations: null, ncbiAnnotationsIndex: null };
+  const checksumRecord = asRecord(entry.checksums);
+  const checksums: Partial<Record<keyof ReleaseAssets, string>> = {};
+  for (const key of Object.keys(normalizedAssets) as Array<keyof ReleaseAssets>) {
+    const checksum = stringValue(checksumRecord, [key]);
+    if (checksum && /^[a-f0-9]{64}$/iu.test(checksum)) checksums[key] = checksum.toLowerCase();
+  }
   const storageRecord = asRecord(entry.storage);
   const storageLayout = stringValue(storageRecord, ['layout']);
   const storage = storageLayout === 'packed-v1'
@@ -151,6 +163,7 @@ function normalizeGenome(value: unknown): ReleaseGenome | null {
     defaultLocus: stringValue(entry, ['defaultLocus', 'default_locus']),
     primarySequence: stringValue(entry, ['primarySequence', 'primary_sequence', 'referenceName', 'reference_name', 'contig']),
     assets,
+    checksums: Object.keys(checksums).length ? checksums : undefined,
     storage: storage as GenomeStorageMap | undefined,
   };
 }

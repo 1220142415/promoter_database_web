@@ -21,7 +21,7 @@ export interface UnifiedGenomeAlias {
 
 export interface UnifiedGenomeReleases {
   predictionReleaseId: string;
-  experimentalReleaseId: string;
+  experimentalReleaseId: string | null;
   compositeRevision: string;
 }
 

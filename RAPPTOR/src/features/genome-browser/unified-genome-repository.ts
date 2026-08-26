@@ -6,7 +6,10 @@ import {
   genomeCatalogRepository,
   type GenomeCatalogRepository,
 } from '@/features/genomes/repository';
-import { experimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
+import {
+  experimentalTssRepository,
+  ExperimentalTssReleaseNotPublishedError,
+} from '@/features/genome-browser/experimental-tss-repository';
 import type {
   ExperimentalTssGenome,
   ExperimentalTssRepository,
@@ -110,8 +113,8 @@ export function parseConfiguredUnifiedGenomeAliases(value = process.env.UNIFIED_
   });
 }
 
-function compositeRevision(predictionReleaseId: string, experimentalReleaseId: string) {
-  return `${predictionReleaseId}:${experimentalReleaseId}`;
+function compositeRevision(predictionReleaseId: string, experimentalReleaseId: string | null) {
+  return `${predictionReleaseId}:${experimentalReleaseId || 'none'}`;
 }
 
 function normalized(value: string) {
@@ -372,12 +375,43 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       : prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch';
   }
 
+  private async activeExperimentalReleaseOrNull() {
+    try {
+      return await this.experimentalRepository.getActiveRelease();
+    } catch (cause) {
+      if (cause instanceof ExperimentalTssReleaseNotPublishedError) return null;
+      throw cause;
+    }
+  }
+
   private async buildExperimentalSnapshot(): Promise<ExperimentalCompositeSnapshot> {
-    const [predictionRelease, experimentalRelease, experimentalGenomes] = await Promise.all([
+    const [predictionRelease, experimentalRelease] = await Promise.all([
       this.predictionRepository.getActiveRelease(),
-      this.experimentalRepository.getActiveRelease(),
-      this.experimentalRepository.listGenomes(),
+      this.activeExperimentalReleaseOrNull(),
     ]);
+    if (!experimentalRelease) {
+      return {
+        releases: {
+          predictionReleaseId: predictionRelease.releaseId,
+          experimentalReleaseId: null,
+          compositeRevision: compositeRevision(predictionRelease.releaseId, null),
+        },
+        rows: [],
+        stats: {
+          totalGenomes: predictionRelease.totalGenomes,
+          predictionGenomes: predictionRelease.totalGenomes,
+          experimentalGenomes: 0,
+          bothGenomes: 0,
+          totalPredictedPromoters: predictionRelease.totalPredictedPromoters,
+          totalExperimentalObservations: 0,
+          totalExperimentalStudies: 0,
+          totalExperimentalPublications: 0,
+        },
+        overlapPredictionAccessions: new Set(),
+        mismatchPredictionAccessions: new Set(),
+      };
+    }
+    const experimentalGenomes = await this.experimentalRepository.listGenomes();
     if (experimentalGenomes.some((genome) => genome.releaseId !== experimentalRelease.releaseId)) {
       throw new Error('Experimental release changed while the unified catalog was being read.');
     }
@@ -561,17 +595,19 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
     const alias = this.aliasByCanonical.get(canonicalAccession);
     const predictionAccession = alias?.predictionAccession || canonicalAccession;
     const experimentalAccession = alias?.experimentalAccession || canonicalAccession;
-    const [prediction, experimental, predictionRelease, experimentalRelease] = await Promise.all([
+    const [prediction, predictionRelease, experimentalRelease] = await Promise.all([
       this.predictionRepository.getByAccession(predictionAccession),
-      this.experimentalRepository.getGenome(experimentalAccession),
       this.predictionRepository.getActiveRelease(),
-      this.experimentalRepository.getActiveRelease(),
+      this.activeExperimentalReleaseOrNull(),
     ]);
+    const experimental = experimentalRelease
+      ? await this.experimentalRepository.getGenome(experimentalAccession)
+      : null;
     if (!prediction && !experimental) return null;
     const releases = {
       predictionReleaseId: predictionRelease.releaseId,
-      experimentalReleaseId: experimentalRelease.releaseId,
-      compositeRevision: compositeRevision(predictionRelease.releaseId, experimentalRelease.releaseId),
+      experimentalReleaseId: experimentalRelease?.releaseId || null,
+      compositeRevision: compositeRevision(predictionRelease.releaseId, experimentalRelease?.releaseId || null),
     };
     const aliases = uniqueSorted([
       canonicalAccession,

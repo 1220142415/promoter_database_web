@@ -110,7 +110,7 @@ function ExperimentalStudies({ genome }: { genome: ExperimentalTssGenome }) {
         <p>{genome.studies.length} independent study {genome.studies.length === 1 ? 'track' : 'tracks'} · {genome.studies.reduce((sum, study) => sum + study.recordCount, 0).toLocaleString()} raw observations.</p>
       </div>
       <div className="experimental-reference-downloads" aria-label="Experimental assembly downloads">
-        <a href={assetUrl(genome.assetBase, genome.assets.fasta, true)} download><span><strong>Reference sequence</strong><small>BGZF FASTA</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
+        <a href={assetUrl(genome.assetBase, genome.assets.fasta, true)} download><span><strong>Reference sequence</strong><small>{genome.assets.fastaFai && genome.assets.fastaGzi ? 'BGZF FASTA' : 'FASTA'}</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
         {genome.assets.ncbiAnnotations ? <a href={assetUrl(genome.assetBase, genome.assets.ncbiAnnotations, true)} download><span><strong>NCBI annotation</strong><small>Indexed GFF3</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
       </div>
       <div className="experimental-study-details">

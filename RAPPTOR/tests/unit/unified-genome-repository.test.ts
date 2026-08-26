@@ -6,6 +6,7 @@ import {
   UnifiedGenomeAliasError,
   UnifiedGenomeCursorError,
 } from '@/features/genome-browser/unified-genome-repository';
+import { ExperimentalTssReleaseNotPublishedError } from '@/features/genome-browser/experimental-tss-repository';
 import type { ExperimentalTssGenome, ExperimentalTssRepository } from '@/types/experimental-tss';
 import type { GenomeCatalogRepository } from '@/features/genomes/repository';
 import type { GenomeCatalogRow, GenomeSearchQuery } from '@/features/genomes/types';
@@ -257,6 +258,32 @@ describe('unified genome repository', () => {
     expect(first.total).toBe(500);
     expect(first.pageInfo.hasNext).toBe(true);
     expect(searchCalls).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps prediction search and detail available before an experimental release is published', async () => {
+    const prediction = predictionRepository([
+      makeCatalogRow(makeGenome({ accession: 'GCA_000000001.1', predictedPromoterCount: 10 })),
+    ]);
+    const experimental = experimentalRepository([]);
+    let listCalls = 0;
+    let getCalls = 0;
+    experimental.getActiveRelease = async () => { throw new ExperimentalTssReleaseNotPublishedError(); };
+    experimental.listGenomes = async () => { listCalls += 1; return []; };
+    experimental.getGenome = async () => { getCalls += 1; return null; };
+    const repository = new CompositeUnifiedGenomeRepository(prediction, experimental);
+
+    const result = await repository.search(query());
+    expect(result.releases).toEqual({
+      predictionReleaseId: 'prediction-1', experimentalReleaseId: null,
+      compositeRevision: 'prediction-1:none',
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.stats).toMatchObject({ predictionGenomes: 1, experimentalGenomes: 0, totalGenomes: 1 });
+    expect(await repository.getByAccession('GCA_000000001.1')).toMatchObject({
+      evidenceState: 'prediction_only', experimental: null,
+    });
+    expect(listCalls).toBe(0);
+    expect(getCalls).toBe(0);
   });
 
   it('keeps unconsumed prediction rows across a merged experimental cursor page', async () => {

@@ -189,6 +189,8 @@ describe('experimental TSS release pipeline', () => {
         `2020_12345678_${accession}`, `2021_87654321_${accession}`,
       ] }],
     });
+    expect(result.catalog.genomes[0].assets.fasta).toBe(`objects/${accession}/reference.fa`);
+    expect(await readFile(join(output, result.catalog.genomes[0].assets.fasta), 'utf8')).toContain('>chr');
     const featureSql = await readFile(join(output, 'd1', '20-feature-sets.sql'), 'utf8');
     expect(featureSql.match(/'experimental_tss'/g)).toHaveLength(2);
     expect(featureSql).toContain("'gene_annotation'");

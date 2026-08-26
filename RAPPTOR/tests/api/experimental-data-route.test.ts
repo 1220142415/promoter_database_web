@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { gzipSync } from 'node:zlib';
 
 const { resolveAsset } = vi.hoisted(() => ({ resolveAsset: vi.fn() }));
 vi.mock('@/features/genome-browser/experimental-tss-repository', () => ({ experimentalTssRepository: { resolveAsset } }));
@@ -63,6 +64,44 @@ describe('experimental data asset proxy', () => {
     expect(response.status).toBe(200);
     expect(response.body).toBeNull();
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="study.bed"');
+  });
+
+  it('converts an existing study BED to browser-ready GFF3', async () => {
+    resolveAsset.mockResolvedValue({
+      upstreamUrl: 'https://example.test/existing-study.bed', filename: 'study.experimental-tss.gff3',
+      contentType: 'text/plain; charset=utf-8', sha256: 'a'.repeat(64), kind: 'experimental-tss',
+      transform: {
+        kind: 'experimental-bed-to-gff3', accession, studyId: '2012_22251276_GCF_000210855.2',
+        pmid: '22251276', year: 2012, sourceFile: 'source.bed',
+      },
+    });
+    global.fetch = vi.fn(async () => new Response(
+      `${accession}:NC_016810.1\t9\t10\t.\t.\t+\n`,
+      { headers: { 'Content-Length': '50' } },
+    ));
+
+    const response = await GET(
+      new Request('http://localhost/test'),
+      context(['studies', '2012_22251276_GCF_000210855.2', 'experimental-tss.gff3']),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('accept-ranges')).toBeNull();
+    await expect(response.text()).resolves.toContain(
+      'NC_016810.1\tRAPPTOR\texperimental_tss\t10\t10\t.\t+\t.\tID=2012_22251276_GCF_000210855.2%3A1',
+    );
+  });
+
+  it('decompresses an existing FASTA and normalizes its reference name', async () => {
+    resolveAsset.mockResolvedValue({
+      upstreamUrl: 'https://example.test/reference.fna.gz', filename: 'reference.fa',
+      contentType: 'text/plain; charset=utf-8', sha256: null, kind: 'reference',
+      transform: { kind: 'gunzip', refName: 'NC_016810.1' },
+    });
+    global.fetch = vi.fn(async () => new Response(gzipSync('>AE000001.1 original description\nACGT\n')));
+
+    const response = await GET(new Request('http://localhost/test'), context(['reference.fa']));
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('>NC_016810.1 original description\nACGT\n');
   });
 
   it('rejects an upstream that ignores a requested byte range', async () => {

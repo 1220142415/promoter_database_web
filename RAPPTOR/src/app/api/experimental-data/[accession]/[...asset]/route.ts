@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { experimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
+import type { ExperimentalAssetTransform } from '@/types/experimental-tss';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,68 @@ type RouteContext = {
 type RequestedByteRange =
   | { kind: 'bounded'; start: number; end: number | null }
   | { kind: 'suffix'; length: number };
+
+const MAX_TRANSFORMED_ASSET_BYTES = 32 * 1024 * 1024;
+
+function gffAttribute(value: string) {
+  return encodeURIComponent(value);
+}
+
+function bedToGff3(source: string, transform: Extract<ExperimentalAssetTransform, { kind: 'experimental-bed-to-gff3' }>) {
+  const output = ['##gff-version 3'];
+  let row = 0;
+  for (const rawLine of source.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const columns = line.split('\t');
+    if (columns.length < 6) throw new Error('BED row has fewer than six columns');
+    const start = Number(columns[1]);
+    const end = Number(columns[2]);
+    const strand = columns[5];
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start || !['+', '-', '.'].includes(strand)) {
+      throw new Error('BED row is invalid');
+    }
+    const prefixedRefName = columns[0];
+    const refName = prefixedRefName.startsWith(`${transform.accession}:`)
+      ? prefixedRefName.slice(transform.accession.length + 1)
+      : prefixedRefName;
+    if (!refName || /[\t\r\n]/u.test(refName)) throw new Error('BED reference name is invalid');
+    row += 1;
+    const attributes = [
+      `ID=${gffAttribute(`${transform.studyId}:${row}`)}`,
+      `Name=${gffAttribute(columns[3] || '.')}`,
+      `description=${gffAttribute(columns[3] || '.')}`,
+      `study_id=${gffAttribute(transform.studyId)}`,
+      `pmid=${gffAttribute(transform.pmid)}`,
+      `year=${transform.year}`,
+      transform.sourceFile ? `source_file=${gffAttribute(transform.sourceFile)}` : null,
+      `raw_row=${row}`,
+      'evidence_type=experimental',
+    ].filter(Boolean).join(';');
+    const score = columns[4] && columns[4] !== '' ? columns[4] : '.';
+    output.push([refName, 'RAPPTOR', 'experimental_tss', start + 1, end, score, strand, '.', attributes].join('\t'));
+  }
+  if (!row) throw new Error('BED contains no observations');
+  return `${output.join('\n')}\n`;
+}
+
+async function transformedAsset(upstream: Response, transform: ExperimentalAssetTransform) {
+  const declaredLength = Number(upstream.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_TRANSFORMED_ASSET_BYTES) throw new Error('asset is too large');
+  if (transform.kind === 'gunzip') {
+    if (!upstream.body) throw new Error('asset body is missing');
+    const body = upstream.body.pipeThrough(new DecompressionStream('gzip'));
+    const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+    if (bytes.byteLength > MAX_TRANSFORMED_ASSET_BYTES) throw new Error('asset is too large');
+    if (!transform.refName) return bytes;
+    const fasta = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (!fasta.startsWith('>')) throw new Error('FASTA header is missing');
+    return new TextEncoder().encode(fasta.replace(/^>[^\s]+/u, `>${transform.refName}`));
+  }
+  const source = await upstream.text();
+  if (new TextEncoder().encode(source).byteLength > MAX_TRANSFORMED_ASSET_BYTES) throw new Error('asset is too large');
+  return new TextEncoder().encode(bedToGff3(source, transform));
+}
 
 function parseSingleByteRange(value: string | null): RequestedByteRange | null {
   if (!value || value.includes(',')) return null;
@@ -82,11 +145,12 @@ async function serve(request: Request, context: RouteContext, headOnly: boolean)
   if (range && !requestedRange) {
     return new Response(null, { status: 416 });
   }
+  if (range && asset.transform) return new Response(null, { status: 416 });
   if (range) headers.set('Range', range);
   let upstream;
   try {
     upstream = await fetch(asset.upstreamUrl, {
-      method: headOnly ? 'HEAD' : 'GET',
+      method: headOnly && !asset.transform ? 'HEAD' : 'GET',
       headers,
       redirect: 'follow',
       cache: 'no-store',
@@ -102,6 +166,19 @@ async function serve(request: Request, context: RouteContext, headOnly: boolean)
   }
   if (requestedRange && upstream.status === 206 && !validPartialResponse(requestedRange, upstream)) {
     return NextResponse.json({ error: 'Experimental release asset returned an invalid byte range.' }, { status: 502 });
+  }
+  if (asset.transform) {
+    try {
+      const body = await transformedAsset(upstream, asset.transform);
+      const headers = responseHeaders(request, upstream, asset);
+      headers.delete('Accept-Ranges');
+      headers.delete('Content-Range');
+      headers.set('Content-Length', String(body.byteLength));
+      if (asset.sha256) headers.set('ETag', `W/"sha256-${asset.sha256}-${asset.transform.kind}"`);
+      return new Response(headOnly ? null : body, { status: 200, headers });
+    } catch {
+      return NextResponse.json({ error: 'Experimental release asset could not be transformed.' }, { status: 502 });
+    }
   }
   return new Response(headOnly ? null : upstream.body, {
     status: upstream.status,

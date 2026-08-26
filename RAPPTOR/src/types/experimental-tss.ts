@@ -61,8 +61,8 @@ export interface ExperimentalTssGenome {
   assetBase: string;
   assets: {
     fasta: string;
-    fastaFai: string;
-    fastaGzi: string;
+    fastaFai: string | null;
+    fastaGzi: string | null;
     ncbiAnnotations: string | null;
     ncbiAnnotationsIndex: string | null;
   };
@@ -71,12 +71,24 @@ export interface ExperimentalTssGenome {
 
 export type ExperimentalAssetKind = 'reference' | 'annotation' | 'experimental-tss' | 'raw-bed';
 
+export type ExperimentalAssetTransform =
+  | { kind: 'gunzip'; refName: string | null }
+  | {
+      kind: 'experimental-bed-to-gff3';
+      accession: string;
+      studyId: string;
+      pmid: string;
+      year: number;
+      sourceFile: string | null;
+    };
+
 export interface ExperimentalResolvedAsset {
   upstreamUrl: string;
   filename: string;
   contentType: string;
   sha256: string | null;
   kind: ExperimentalAssetKind;
+  transform: ExperimentalAssetTransform | null;
 }
 
 export interface ExperimentalTssRepository {

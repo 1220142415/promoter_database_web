@@ -38,6 +38,13 @@ export class ExperimentalTssCatalogUnavailableError extends Error {
   }
 }
 
+export class ExperimentalTssReleaseNotPublishedError extends ExperimentalTssCatalogUnavailableError {
+  constructor() {
+    super('No active experimental TSS release is published.');
+    this.name = 'ExperimentalTssReleaseNotPublishedError';
+  }
+}
+
 function objectValue(value: unknown): JsonObject {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : {};
 }
@@ -204,7 +211,7 @@ function toProxyStudy(study: ExperimentalTssStudy): ExperimentalTssStudy {
   const prefix = logicalStudyPrefix(study.studyId);
   return { ...study, assets: {
     rawBed: `${prefix}/raw.bed`,
-    data: `${prefix}/experimental-tss.gff3.gz`,
+    data: `${prefix}/experimental-tss.gff3${study.assets.index ? '.gz' : ''}`,
     index: study.assets.index ? `${prefix}/experimental-tss.gff3.gz.tbi` : null,
   } };
 }
@@ -216,6 +223,7 @@ function normalizeAnnotationStatus(value: unknown): ExperimentalAnnotationStatus
 function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): ExperimentalTssGenome {
   const annotation = objectValue(genome.annotation);
   const reference = objectValue(genome.referenceStorage ?? genome.reference_storage);
+  const referenceFiles = objectValue(reference.files);
   const referenceChecksums = checksumMap(reference.checksums);
   const annotationStatus = normalizeAnnotationStatus(annotation.status ?? genome.annotationStatus ?? genome.annotation_status);
   const studyById = new Map(catalog.studies.map((study) => [study.studyId, study]));
@@ -237,9 +245,9 @@ function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): Experim
     referenceSha256: referenceChecksums.fasta || null,
     assetBase: `/api/experimental-data/${genome.accession}`,
     assets: {
-      fasta: 'reference.fa.gz',
-      fastaFai: 'reference.fa.gz.fai',
-      fastaGzi: 'reference.fa.gz.gzi',
+      fasta: referenceFiles.fai && referenceFiles.gzi ? 'reference.fa.gz' : 'reference.fa',
+      fastaFai: referenceFiles.fai ? 'reference.fa.gz.fai' : null,
+      fastaGzi: referenceFiles.gzi ? 'reference.fa.gz.gzi' : null,
       ncbiAnnotations: annotationStatus === 'available' && annotation.data ? 'ncbi-annotations.gff3.gz' : null,
       ncbiAnnotationsIndex: annotationStatus === 'available' && annotation.index ? 'ncbi-annotations.gff3.gz.tbi' : null,
     },
@@ -272,6 +280,7 @@ function findCatalogAsset(catalog: NormalizedCatalog, accession: string, logical
   const annotation = objectValue(genome.annotation);
   const annotationChecksums = checksumMap(annotation.checksums);
   const fixed: Record<string, { path: unknown; sha256?: string; kind: ExperimentalResolvedAsset['kind']; contentType: string; filename: string }> = {
+    'reference.fa': { path: files.fasta, sha256: referenceChecksums.fasta, kind: 'reference', contentType: 'text/plain; charset=utf-8', filename: `${accession}.reference.fa` },
     'reference.fa.gz': { path: files.fasta, sha256: referenceChecksums.fasta, kind: 'reference', contentType: 'application/gzip', filename: `${accession}.reference.fa.gz` },
     'reference.fa.gz.fai': { path: files.fai, sha256: referenceChecksums.fai, kind: 'reference', contentType: 'text/plain; charset=utf-8', filename: `${accession}.reference.fa.gz.fai` },
     'reference.fa.gz.gzi': { path: files.gzi, sha256: referenceChecksums.gzi, kind: 'reference', contentType: 'application/octet-stream', filename: `${accession}.reference.fa.gz.gzi` },
@@ -281,16 +290,38 @@ function findCatalogAsset(catalog: NormalizedCatalog, accession: string, logical
   const known = fixed[logicalAsset];
   if (known) {
     if (!known.path || (logicalAsset.startsWith('ncbi-') && normalizeAnnotationStatus(annotation.status) !== 'available')) return null;
-    return { ...known, path: safeAssetPath(known.path, `${accession} asset`) };
+    const path = safeAssetPath(known.path, `${accession} asset`);
+    return {
+      ...known,
+      path,
+      transform: logicalAsset === 'reference.fa' && path.endsWith('.gz')
+        ? { kind: 'gunzip' as const, refName: stringValue(genome.primarySequence ?? genome.primary_sequence) }
+        : null,
+    };
   }
-  const match = /^studies\/([^/]+)\/(raw\.bed|experimental-tss\.gff3\.gz(?:\.tbi)?)$/.exec(logicalAsset);
+  const match = /^studies\/([^/]+)\/(raw\.bed|experimental-tss\.gff3(?:\.gz(?:\.tbi)?)?)$/.exec(logicalAsset);
   if (!match || !STUDY_PATTERN.test(match[1])) return null;
   const catalogStudy = catalog.studies.find((study) => study.studyId === match[1] && study.gcf === accession);
   if (!catalogStudy) return null;
   const study = normalizeStudy(catalogStudy, genome);
-  if (match[2] === 'raw.bed') return { path: study.assets.rawBed, sha256: study.sourceSha256 || study.checksums.rawBed, kind: 'raw-bed' as const, contentType: 'text/tab-separated-values; charset=utf-8', filename: `${study.studyId}.bed` };
+  if (match[2] === 'raw.bed') return { path: study.assets.rawBed, sha256: study.checksums.rawBed || study.sourceSha256, kind: 'raw-bed' as const, contentType: 'text/tab-separated-values; charset=utf-8', filename: `${study.studyId}.bed`, transform: null };
   if (match[2].endsWith('.tbi')) return study.assets.index ? { path: study.assets.index, sha256: study.checksums.index, kind: 'experimental-tss' as const, contentType: 'application/octet-stream', filename: `${study.studyId}.experimental-tss.gff3.gz.tbi` } : null;
-  return { path: study.assets.data, sha256: study.checksums.data, kind: 'experimental-tss' as const, contentType: 'application/gzip', filename: `${study.studyId}.experimental-tss.gff3.gz` };
+  const sourceIsBed = study.assets.data.endsWith('.bed');
+  return {
+    path: study.assets.data,
+    sha256: study.checksums.data,
+    kind: 'experimental-tss' as const,
+    contentType: sourceIsBed ? 'text/plain; charset=utf-8' : 'application/gzip',
+    filename: `${study.studyId}.experimental-tss.gff3${sourceIsBed ? '' : '.gz'}`,
+    transform: sourceIsBed ? {
+      kind: 'experimental-bed-to-gff3' as const,
+      accession: study.accession,
+      studyId: study.studyId,
+      pmid: study.pmid,
+      year: study.year,
+      sourceFile: study.sourceFile,
+    } : null,
+  };
 }
 
 export class JsonExperimentalTssRepository implements ExperimentalTssRepository {
@@ -329,6 +360,7 @@ export class JsonExperimentalTssRepository implements ExperimentalTssRepository 
       contentType: match.contentType,
       sha256: match.sha256 && /^[0-9a-f]{64}$/.test(match.sha256) ? match.sha256 : null,
       kind: match.kind,
+      transform: match.transform || null,
     };
   }
 }
@@ -339,7 +371,7 @@ async function activeD1Release(database: D1Database) {
   const row = await database.prepare(
     "SELECT r.* FROM experimental_portal_state p JOIN releases r ON r.release_id = p.active_release_id WHERE p.singleton = 1 AND r.release_kind = 'experimental_tss' AND COALESCE(r.publication_status, 'ready') = 'ready'",
   ).first<D1Row>();
-  if (!row) throw new ExperimentalTssCatalogUnavailableError('No active experimental TSS release is published.');
+  if (!row) throw new ExperimentalTssReleaseNotPublishedError();
   return row;
 }
 

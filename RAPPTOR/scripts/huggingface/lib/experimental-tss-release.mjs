@@ -717,6 +717,12 @@ async function copyReference(source, target) {
   return hashFile(target);
 }
 
+async function copyUnindexedReference(source, target) {
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, await readMaybeGzip(source), 'utf8');
+  return hashFile(target);
+}
+
 async function runTool(command, args, settings = {}) {
   await new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, args, { windowsHide: true, stdio: settings.stdio || 'inherit' });
@@ -786,10 +792,12 @@ export async function buildExperimentalRelease(settings) {
     for (const accession of [...new Set(manifest.rows.map((row) => row.accession))].sort()) {
       const input = await loadNcbiGenomeAsset(ncbiRoot, accession, { allowUnindexed: settings.allowUnindexed });
       const objectPrefix = `objects/${accession}`;
-      const fastaPath = `${objectPrefix}/reference.fa.gz`;
-      const fastaFaiPath = input.fai ? `${objectPrefix}/reference.fa.gz.fai` : null;
-      const fastaGziPath = input.gzi ? `${objectPrefix}/reference.fa.gz.gzi` : null;
-      knownHashes.set(fastaPath, await copyReference(input.reference, join(stage, fastaPath)));
+      const fastaPath = `${objectPrefix}/reference.fa${settings.allowUnindexed ? '' : '.gz'}`;
+      const fastaFaiPath = !settings.allowUnindexed && input.fai ? `${objectPrefix}/reference.fa.gz.fai` : null;
+      const fastaGziPath = !settings.allowUnindexed && input.gzi ? `${objectPrefix}/reference.fa.gz.gzi` : null;
+      knownHashes.set(fastaPath, settings.allowUnindexed
+        ? await copyUnindexedReference(input.reference, join(stage, fastaPath))
+        : await copyReference(input.reference, join(stage, fastaPath)));
       if (input.fai) knownHashes.set(fastaFaiPath, await copyRequired(input.fai, join(stage, fastaFaiPath)));
       if (input.gzi) knownHashes.set(fastaGziPath, await copyRequired(input.gzi, join(stage, fastaGziPath)));
       let annotationData = null;

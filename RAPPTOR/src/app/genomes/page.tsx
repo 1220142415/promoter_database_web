@@ -38,7 +38,7 @@ export default async function GenomesPage({
   return (
     <main className="portal-page">
       <section className="portal-shell page-intro">
-        <p className="portal-kicker">Prediction {initialResult.releases.predictionReleaseId} · Experimental {initialResult.releases.experimentalReleaseId}</p>
+        <p className="portal-kicker">Prediction {initialResult.releases.predictionReleaseId} · Experimental {initialResult.releases.experimentalReleaseId || 'Not published'}</p>
         <h1>Genome catalog</h1>
         <p>Search assemblies once, then compare RAPPTOR promoter predictions with literature-derived experimental TSS observations when both are available for the same assembly.</p>
       </section>

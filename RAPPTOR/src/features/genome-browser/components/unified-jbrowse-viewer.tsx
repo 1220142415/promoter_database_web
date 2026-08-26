@@ -425,6 +425,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const referenceAssets = prediction?.assets || experimental!.assets;
     const referenceAccession = prediction?.assemblyName || experimental!.accession;
     const referenceUrl = resolveAsset(referenceBase, referenceAssets.fasta);
+    const referenceUnindexed = predictionUnindexed || !referenceAssets.fastaFai || !referenceAssets.fastaGzi;
     const stateTree = createViewState({
       assembly: {
         name: assemblyName,
@@ -445,13 +446,13 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
                   visibleRegionDownload: false,
                 },
           },
-          adapter: predictionUnindexed
+          adapter: referenceUnindexed
             ? { type: 'UnindexedFastaAdapter', fastaLocation: { uri: referenceUrl } }
             : {
                 type: 'BgzipFastaAdapter',
                 fastaLocation: { uri: referenceUrl },
-                faiLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaFai) },
-                gziLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaGzi) },
+                faiLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaFai!) },
+                gziLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaGzi!) },
               },
         },
       },

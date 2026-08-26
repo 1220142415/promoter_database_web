@@ -76,6 +76,7 @@ export default function ExperimentalTssJBrowseViewer({
   onRegionChange?: (region: BrowserRegion) => void;
 }) {
   const assemblyName = genome.assemblyName || genome.accession;
+  const referenceUnindexed = !genome.assets.fastaFai || !genome.assets.fastaGzi;
   const allowedStudyIds = useMemo(() => new Set(genome.studies.map((study) => study.studyId)), [genome.studies]);
   const [shareAvailable, setShareAvailable] = useState(false);
   const [shareUnavailableReason, setShareUnavailableReason] = useState(
@@ -258,12 +259,14 @@ export default function ExperimentalTssJBrowseViewer({
               visibleRegionDownload: false,
             },
           },
-          adapter: {
-            type: 'BgzipFastaAdapter',
-            fastaLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fasta) },
-            faiLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fastaFai) },
-            gziLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fastaGzi) },
-          },
+          adapter: referenceUnindexed
+            ? { type: 'UnindexedFastaAdapter', fastaLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fasta) } }
+            : {
+                type: 'BgzipFastaAdapter',
+                fastaLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fasta) },
+                faiLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fastaFai!) },
+                gziLocation: { uri: resolveAsset(genome.assetBase, genome.assets.fastaGzi!) },
+              },
         },
       },
       tracks,
@@ -289,7 +292,7 @@ export default function ExperimentalTssJBrowseViewer({
       },
     });
     return { viewState: stateTree, trackRegistry: registry, initialWarnings };
-  }, [assemblyName, genome, onRegionChange, parsedShare]);
+  }, [assemblyName, genome, onRegionChange, parsedShare, referenceUnindexed]);
 
   useEffect(() => {
     setShareFeedback(null);

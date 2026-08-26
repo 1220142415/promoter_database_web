@@ -60,6 +60,16 @@ describe('experimental TSS repository', () => {
     expect(genome).not.toHaveProperty('predictedPromoterCount');
   });
 
+  it('keeps unindexed subset references usable without inventing FAI or GZI assets', async () => {
+    const value = catalog();
+    const genome = value.genomes[0] as { referenceStorage: { files: Record<string, string> } };
+    delete genome.referenceStorage.files.fai;
+    delete genome.referenceStorage.files.gzi;
+    await expect(new JsonExperimentalTssRepository(value).getGenome('GCF_000210855.2')).resolves.toMatchObject({
+      assets: { fasta: 'reference.fa', fastaFai: null, fastaGzi: null },
+    });
+  });
+
   it('resolves only exact catalog assets for the selected genome and study', async () => {
     const repository = new JsonExperimentalTssRepository(catalog());
     const reference = await repository.resolveAsset('GCF_000210855.2', 'reference.fa.gz');
@@ -69,6 +79,25 @@ describe('experimental TSS repository', () => {
     expect(await repository.resolveAsset('GCF_000210855.2', 'studies/2012_22251276_GCF_000210855.2/../../secret')).toBeNull();
     expect(await repository.resolveAsset('GCF_000210855.2', 'studies/2012_22538806_GCF_000210855.9/raw.bed')).toBeNull();
     expect(await repository.resolveAsset('GCF_000000001.1', 'reference.fa.gz')).toBeNull();
+  });
+
+  it('reuses an existing BED as the unindexed browser source', async () => {
+    const value = catalog();
+    const study = value.studies[0];
+    const assets = study.assets as { data: string; index: string | null };
+    assets.data = 'experimentally_supported_tss_by_study/2012_22251276_GCF_000210855.2.bed';
+    assets.index = null;
+    const repository = new JsonExperimentalTssRepository(value);
+    const genome = await repository.getGenome('GCF_000210855.2');
+    expect(genome?.studies[0]?.assets.data).toBe('studies/2012_22251276_GCF_000210855.2/experimental-tss.gff3');
+    await expect(repository.resolveAsset(
+      'GCF_000210855.2',
+      'studies/2012_22251276_GCF_000210855.2/experimental-tss.gff3',
+    )).resolves.toMatchObject({
+      upstreamUrl: 'https://example.test/releases/experimental/experimentally_supported_tss_by_study/2012_22251276_GCF_000210855.2.bed',
+      contentType: 'text/plain; charset=utf-8',
+      transform: { kind: 'experimental-bed-to-gff3', studyId: '2012_22251276_GCF_000210855.2' },
+    });
   });
 
   it('rejects unsafe paths before they can become upstream URLs', () => {

@@ -5,7 +5,12 @@ import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import GenomeFileStatus, { type GenomeFileState } from '@/features/genome-browser/components/genome-file-status';
 import PortalBrowserPanel from '@/features/genome-browser/components/portal-browser-panel';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
-import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
+import {
+  firstFastaRefName,
+  loadCachedGenomeAsset,
+  maybeDecompressGzip,
+  shouldDownloadWholeAsset,
+} from '@/features/genome-browser/on-demand-genome-assets';
 import type { PlannedGenomeAssets } from '@/features/storage/hf-batch-assets';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import type { JBrowseReleaseAssembly } from '@/types/release';
@@ -75,16 +80,18 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       const loadScores = async () => {
         if (!plannedAssets.promoterScoresPlus || !plannedAssets.promoterScoresMinus) return [null, null] as const;
         try {
+          const loadScore = async (url: string, cacheKey: string): Promise<Blob | string> => {
+            const download = await shouldDownloadWholeAsset(url, controller.signal);
+            return download ? loadCachedGenomeAsset(url, cacheKey, controller.signal) : url;
+          };
           const scores = await Promise.all([
-            loadCachedGenomeAsset(
+            loadScore(
               plannedAssets.promoterScoresPlus,
               assetCacheKey(cachePrefix, 'scores-plus', plannedAssets.promoterScoresPlus, plannedAssets.cacheVersions.promoterScoresPlus),
-              controller.signal,
             ),
-            loadCachedGenomeAsset(
+            loadScore(
               plannedAssets.promoterScoresMinus,
               assetCacheKey(cachePrefix, 'scores-minus', plannedAssets.promoterScoresMinus, plannedAssets.cacheVersions.promoterScoresMinus),
-              controller.signal,
             ),
           ]);
           if (!controller.signal.aborted) setFileStates((current) => ({ ...current, scores: 'available' }));
@@ -114,9 +121,15 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       const fastaUrl = objectUrl(reference, 'text/plain');
       const promoterUrl = objectUrl(promoterGff, 'text/plain');
       const annotationUrl = annotationGff ? objectUrl(annotationGff, 'text/plain') : null;
-      const scorePlusUrl = scores[0] ? objectUrl(scores[0], 'application/x-bigwig') : null;
-      const scoreMinusUrl = scores[1] ? objectUrl(scores[1], 'application/x-bigwig') : null;
-      objectUrls.current = [fastaUrl, promoterUrl, ...(annotationUrl ? [annotationUrl] : []), ...(scorePlusUrl ? [scorePlusUrl] : []), ...(scoreMinusUrl ? [scoreMinusUrl] : [])];
+      const scorePlusUrl = scores[0] ? typeof scores[0] === 'string' ? scores[0] : objectUrl(scores[0], 'application/x-bigwig') : null;
+      const scoreMinusUrl = scores[1] ? typeof scores[1] === 'string' ? scores[1] : objectUrl(scores[1], 'application/x-bigwig') : null;
+      objectUrls.current = [
+        fastaUrl,
+        promoterUrl,
+        ...(annotationUrl ? [annotationUrl] : []),
+        ...(scorePlusUrl && typeof scores[0] !== 'string' ? [scorePlusUrl] : []),
+        ...(scoreMinusUrl && typeof scores[1] !== 'string' ? [scoreMinusUrl] : []),
+      ];
       setAssembly({
         assemblyName: accession,
         defaultLocus: `${refName}:1-10000`,

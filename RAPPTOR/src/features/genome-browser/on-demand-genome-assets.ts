@@ -1,4 +1,5 @@
 const CACHE_NAME = 'rapptor-on-demand-genomes-v1';
+export const MAX_FULL_SCORE_DOWNLOAD_BYTES = 8 * 1024 * 1024;
 
 export function firstFastaRefName(text: string) {
   return /^>(\S+)/m.exec(text)?.[1] || null;
@@ -44,4 +45,27 @@ export async function loadCachedGenomeAsset(url: string, cacheKey: string, signa
     }
   }
   return response.blob();
+}
+
+export async function shouldDownloadWholeAsset(
+  url: string,
+  signal: AbortSignal,
+  maximumBytes = MAX_FULL_SCORE_DOWNLOAD_BYTES,
+) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      cache: 'no-cache',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+      signal,
+    });
+    if (!response.ok) return false;
+    const sizeHeader = response.headers.get('content-length') || response.headers.get('x-linked-size');
+    if (!sizeHeader) return false;
+    const size = Number(sizeHeader);
+    return Number.isSafeInteger(size) && size >= 0 && size <= maximumBytes;
+  } catch {
+    return false;
+  }
 }

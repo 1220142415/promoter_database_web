@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
+import {
+  firstFastaRefName,
+  loadCachedGenomeAsset,
+  maybeDecompressGzip,
+  shouldDownloadWholeAsset,
+} from '@/features/genome-browser/on-demand-genome-assets';
 
 describe('on-demand genome assets', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -59,5 +64,22 @@ describe('on-demand genome assets', () => {
     );
     expect(cache.keys).not.toHaveBeenCalled();
     expect(cache.delete).not.toHaveBeenCalled();
+  });
+
+  it('downloads small score files and streams large or unknown files', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { headers: { 'Content-Length': String(1024) } }))
+      .mockResolvedValueOnce(new Response(null, { headers: { 'Content-Length': String(9 * 1024 * 1024) } }))
+      .mockResolvedValueOnce(new Response(null));
+    vi.stubGlobal('fetch', fetchMock);
+    const signal = new AbortController().signal;
+
+    await expect(shouldDownloadWholeAsset('https://huggingface.co/small.bw', signal)).resolves.toBe(true);
+    await expect(shouldDownloadWholeAsset('https://huggingface.co/large.bw', signal)).resolves.toBe(false);
+    await expect(shouldDownloadWholeAsset('https://huggingface.co/unknown.bw', signal)).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://huggingface.co/small.bw',
+      expect.objectContaining({ method: 'HEAD', credentials: 'omit' }),
+    );
   });
 });

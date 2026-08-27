@@ -3,7 +3,12 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PortalOnDemandBrowserPanel from '@/features/genome-browser/components/portal-on-demand-browser-panel';
-import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
+import {
+  firstFastaRefName,
+  loadCachedGenomeAsset,
+  maybeDecompressGzip,
+  shouldDownloadWholeAsset,
+} from '@/features/genome-browser/on-demand-genome-assets';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 
 vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({
@@ -34,6 +39,7 @@ vi.mock('@/features/genome-browser/on-demand-genome-assets', () => ({
   firstFastaRefName: vi.fn(() => 'NC_000001.1'),
   loadCachedGenomeAsset: vi.fn(),
   maybeDecompressGzip: vi.fn((blob: Blob) => Promise.resolve(blob)),
+  shouldDownloadWholeAsset: vi.fn(() => Promise.resolve(true)),
 }));
 
 const plannedAssets = {
@@ -55,6 +61,7 @@ const plannedAssets = {
 describe('on-demand genome browser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(shouldDownloadWholeAsset).mockResolvedValue(true);
     class MockUrl extends URL {
       static createObjectURL = vi.fn()
         .mockReturnValueOnce('blob:reference')
@@ -139,6 +146,23 @@ describe('on-demand genome browser', () => {
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-scores', 'false');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
     expect(screen.getByLabelText('Genome files')).toHaveTextContent('ScoresNot available');
+  });
+
+  it('lets JBrowse range-read score files larger than the download limit', async () => {
+    vi.mocked(shouldDownloadWholeAsset).mockResolvedValue(false);
+
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_000007325.1"
+        releaseId="RAPPTOR 2026-08-13"
+        plannedAssets={plannedAssets}
+      />,
+    );
+
+    expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-score-plus', plannedAssets.promoterScoresPlus);
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-minus', plannedAssets.promoterScoresMinus);
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
+    expect(shouldDownloadWholeAsset).toHaveBeenCalledTimes(2);
   });
 
   it('combines staged predictions and annotation with experimental TSS', async () => {

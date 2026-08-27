@@ -1,4 +1,5 @@
-import { permanentRedirect } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
+import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 
 const SHARE_PARAMETERS = ['view', 'ref', 'center', 'zoom', 'rev', 'tracks'] as const;
 
@@ -20,6 +21,7 @@ export default async function LegacyExperimentalGenomePage({
   params: Promise<{ accession: string }>;
   searchParams?: LegacySearchParams;
 }) {
+  if (!experimentalTssPublicEnabled()) notFound();
   const [{ accession }, queryValues] = await Promise.all([params, searchParams || Promise.resolve({})]);
   const query = safeShareQuery(queryValues);
   const destination = `/genomes/${encodeURIComponent(accession)}`;

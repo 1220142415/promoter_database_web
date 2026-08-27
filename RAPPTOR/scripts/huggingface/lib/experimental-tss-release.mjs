@@ -610,6 +610,11 @@ function searchTokens(...values) {
   return [...tokens].sort();
 }
 
+function genomeIdentity(genome) {
+  const canonicalAccession = genome.genbankAssemblyAccession || genome.accession;
+  return { canonicalAccession, genomeId: `ncbi_assembly:${canonicalAccession}` };
+}
+
 export function buildExperimentalD1Sql(catalog, settings = {}) {
   const releaseId = catalog.releaseId;
   const hfRepository = settings.hfRepository || null;
@@ -631,30 +636,98 @@ export function buildExperimentalD1Sql(catalog, settings = {}) {
     sqlText(genome.organismName), 'NULL', sqlText(genome.assemblyName), sqlText(genome.genbankAssemblyAccession), sqlText(genome.accession),
     'NULL', 'NULL', sqlText('NCBI'), 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
   ].join(', ')})`);
+  const registryRows = catalog.genomes.map((genome) => {
+    const { canonicalAccession, genomeId } = genomeIdentity(genome);
+    return `(${[
+      sqlText(genomeId), sqlText(canonicalAccession), sqlText('ncbi_assembly'), sqlText(genome.accession),
+      sqlText(genome.checksums?.fasta), sqlText(genome.organismName), sqlText('NCBI'),
+      sqlText(JSON.stringify({ assemblyName: genome.assemblyName, generatedBy: 'experimental-tss-release' })),
+    ].join(', ')})`;
+  });
+  const aliasRows = new Map();
+  for (const genome of catalog.genomes) {
+    const { canonicalAccession, genomeId } = genomeIdentity(genome);
+    for (const [namespace, alias, relation] of [
+      ['rapptor_accession', genome.accession, 'release_accession'],
+      [genome.accession.startsWith('GCF_') ? 'ncbi_refseq' : 'ncbi_genbank', genome.accession, 'ncbi_assembly'],
+      ['ncbi_genbank', genome.genbankAssemblyAccession, 'ncbi_reciprocal'],
+      ['ncbi_assembly', canonicalAccession, 'canonical'],
+    ]) {
+      if (alias) aliasRows.set(`${namespace}:${alias}`, `(${[
+        sqlText(genomeId), sqlText(namespace), sqlText(alias), sqlText(relation),
+      ].join(', ')})`);
+    }
+  }
+  const releaseGenomeRows = catalog.genomes.map((genome) => `(${[
+    sqlText(releaseId), sqlText(genome.accession), sqlText(genomeIdentity(genome).genomeId),
+  ].join(', ')})`);
+  const publicationRows = [...new Map(catalog.studies.map((study) => [study.pmid, study])).values()].map((study) => `(${[
+    sqlText(`pmid:${study.pmid}`), sqlText(study.pmid), sqlText(study.publication?.doi), sqlText(study.publication?.title),
+    sqlText(JSON.stringify(study.publication?.authors || [])), sqlText(study.publication?.journal), sqlNumber(study.year),
+    sqlText(JSON.stringify(study.publication || {})),
+  ].join(', ')})`);
+  const studyRows = catalog.studies.map((study) => `(${[
+    sqlText(study.studyId), sqlText(`pmid:${study.pmid}`), sqlText(study.sourceFile), sqlText(study.sourceSha256),
+    sqlNumber(study.year), sqlText(JSON.stringify({
+      datasetRow: study.datasetRow,
+      accession: study.accession,
+      recordCount: study.recordCount,
+      duplicateGroupCount: study.duplicateGroupCount || 0,
+      duplicateObservationCount: study.duplicateObservationCount || 0,
+    })),
+  ].join(', ')})`);
+  const studyGenomeRows = catalog.studies.map((study) => `(${[
+    sqlText(study.studyId), sqlText(genomeIdentity(catalog.genomes.find((genome) => genome.accession === study.accession)).genomeId),
+    sqlText(study.accession),
+  ].join(', ')})`);
   const studiesByAccession = new Map();
   for (const study of catalog.studies) {
     const group = studiesByAccession.get(study.accession) || [];
     group.push(study);
     studiesByAccession.set(study.accession, group);
   }
+  const genomesByAccession = new Map(catalog.genomes.map((genome) => [genome.accession, genome]));
   const featureRows = [];
+  const assetRows = [];
+  for (const genome of catalog.genomes) {
+    const { genomeId } = genomeIdentity(genome);
+    for (const [kind, location] of Object.entries(genome.referenceStorage?.files || {})) {
+      if (!location) continue;
+      assetRows.push(`(${[
+        sqlText(`${releaseId}:${genome.accession}:reference:${kind}`), sqlText(genomeId), sqlText(releaseId),
+        sqlText(genome.accession), 'NULL', 'NULL', sqlText(`reference_${kind}`), sqlText(location),
+        sqlText(genome.referenceStorage?.checksums?.[kind]), sqlText('ready'), sqlText('{}'),
+      ].join(', ')})`);
+    }
+  }
   for (const [accession, studies] of studiesByAccession) {
-    studies.forEach((study, index) => featureRows.push(`(${[
-      sqlText(releaseId), sqlText(accession), sqlText(study.studyId), sqlText('experimental_tss'), sqlText('experimental'),
-      sqlText('observation'), sqlNumber(study.recordCount), sqlText('ready'), index === 0 ? '1' : '0', sqlText(study.studyId),
-      sqlText(`pmid:${study.pmid}`), sqlText(JSON.stringify({
-        pmid: study.pmid,
-        year: study.year,
-        rawBedPath: study.assets.rawBed,
-        sourceFile: study.sourceFile,
-        sourceSha256: study.sourceSha256,
-        datasetRow: study.datasetRow,
-        duplicateGroupCount: study.duplicateGroupCount,
-        duplicateObservationCount: study.duplicateObservationCount || 0,
-      })), sqlText(JSON.stringify({ observations: study.recordCount, duplicateGroups: study.duplicateGroupCount || 0 })),
-      sqlText(study.assets.data), sqlText(study.assets.index), sqlText(study.checksums.data), sqlText(study.checksums.index),
-      sqlText(JSON.stringify({ layout: 'individual-v1', files: study.assets })),
-    ].join(', ')})`));
+    studies.forEach((study, index) => {
+      featureRows.push(`(${[
+        sqlText(releaseId), sqlText(accession), sqlText(study.studyId), sqlText('experimental_tss'), sqlText('experimental'),
+        sqlText('observation'), sqlNumber(study.recordCount), sqlText('ready'), index === 0 ? '1' : '0', sqlText(study.studyId),
+        sqlText(`pmid:${study.pmid}`), sqlText(JSON.stringify({
+          pmid: study.pmid,
+          year: study.year,
+          rawBedPath: study.assets.rawBed,
+          sourceFile: study.sourceFile,
+          sourceSha256: study.sourceSha256,
+          datasetRow: study.datasetRow,
+          duplicateGroupCount: study.duplicateGroupCount,
+          duplicateObservationCount: study.duplicateObservationCount || 0,
+        })), sqlText(JSON.stringify({ observations: study.recordCount, duplicateGroups: study.duplicateGroupCount || 0 })),
+        sqlText(study.assets.data), sqlText(study.assets.index), sqlText(study.checksums.data), sqlText(study.checksums.index),
+        sqlText(JSON.stringify({ layout: 'individual-v1', files: study.assets })),
+      ].join(', ')})`);
+      const { genomeId } = genomeIdentity(genomesByAccession.get(accession));
+      for (const [kind, location] of Object.entries(study.assets)) {
+        if (!location) continue;
+        assetRows.push(`(${[
+          sqlText(`${releaseId}:${accession}:${study.studyId}:${kind}`), sqlText(genomeId), sqlText(releaseId),
+          sqlText(accession), sqlText(study.studyId), sqlText(study.studyId), sqlText(`experimental_tss_${kind}`),
+          sqlText(location), sqlText(study.checksums?.[kind]), sqlText('ready'), sqlText('{}'),
+        ].join(', ')})`);
+      }
+    });
   }
   for (const genome of catalog.genomes) {
     const available = genome.annotation.status === 'available';
@@ -668,6 +741,16 @@ export function buildExperimentalD1Sql(catalog, settings = {}) {
         layout: 'individual-v1', files: { data: genome.annotation.data, index: genome.annotation.index },
       })),
     ].join(', ')})`);
+    const { genomeId } = genomeIdentity(genome);
+    for (const [kind, location] of [['data', genome.annotation.data], ['index', genome.annotation.index]]) {
+      if (!location) continue;
+      const checksumKey = kind === 'data' ? 'ncbiAnnotations' : 'ncbiAnnotationsIndex';
+      assetRows.push(`(${[
+        sqlText(`${releaseId}:${genome.accession}:${annotationDefinitionId}:${kind}`), sqlText(genomeId), sqlText(releaseId),
+        sqlText(genome.accession), sqlText(annotationDefinitionId), 'NULL', sqlText(`gene_annotation_${kind}`),
+        sqlText(location), sqlText(genome.checksums?.[checksumKey]), sqlText('ready'), sqlText('{}'),
+      ].join(', ')})`);
+    }
   }
   const tokenRows = [];
   for (const genome of catalog.genomes) {
@@ -693,9 +776,11 @@ export function buildExperimentalD1Sql(catalog, settings = {}) {
       sqlText(String(catalog.schemaVersion)), sqlText('staged'), sqlText('experimental_tss'),
     ].join(', ')});`,
     `INSERT INTO feature_definitions (release_id, definition_id, feature_type, evidence_type, count_unit, source_id, source_version, configuration_json, generated_at) VALUES\n${definitionRows.join(',\n')};`,
+    `INSERT INTO publications (publication_id, pmid, doi, title, authors_json, journal, publication_year, metadata_json) VALUES\n${publicationRows.join(',\n')}\nON CONFLICT(publication_id) DO UPDATE SET doi = excluded.doi, title = excluded.title, authors_json = excluded.authors_json, journal = excluded.journal, publication_year = excluded.publication_year, metadata_json = excluded.metadata_json;`,
+    `INSERT INTO experimental_studies (study_id, publication_id, source_id, source_version, study_year, provenance_json) VALUES\n${studyRows.join(',\n')}\nON CONFLICT(study_id) DO UPDATE SET publication_id = excluded.publication_id, source_id = excluded.source_id, source_version = excluded.source_version, study_year = excluded.study_year, provenance_json = excluded.provenance_json;`,
   ].join('\n');
-  const genomes = `PRAGMA foreign_keys = ON;\nINSERT INTO genomes (release_id, accession, organism_name, strain, domain, phylum, class_name, order_name, family, genus, genome_source, assembly_level, genome_size_bp, gc_content, contig_count, completeness, contamination, default_locus, primary_sequence, reference_storage_json, ncbi_organism_name, ncbi_tax_id, assembly_name, genbank_assembly_accession, refseq_assembly_accession, taxonomy_raw, species, taxonomy_source, gtdb_representative, gtdb_genome_representative, contig_n50, longest_contig_bp, ambiguous_bases, coding_density, protein_count, trna_count, ssu_rrna_count, lsu_23s_rrna_count, strain_heterogeneity, mimag_quality, assembly_source_url) VALUES\n${genomeRows.join(',\n')};\n`;
-  const features = `PRAGMA foreign_keys = ON;\nINSERT INTO feature_sets (release_id, accession, definition_id, feature_type, evidence_type, count_unit, feature_count, status, is_default, source_id, source_version, provenance_json, detail_counts_json, data_path, index_path, data_sha256, index_sha256, storage_json) VALUES\n${featureRows.join(',\n')};\n`;
+  const genomes = `PRAGMA foreign_keys = ON;\nINSERT INTO genomes (release_id, accession, organism_name, strain, domain, phylum, class_name, order_name, family, genus, genome_source, assembly_level, genome_size_bp, gc_content, contig_count, completeness, contamination, default_locus, primary_sequence, reference_storage_json, ncbi_organism_name, ncbi_tax_id, assembly_name, genbank_assembly_accession, refseq_assembly_accession, taxonomy_raw, species, taxonomy_source, gtdb_representative, gtdb_genome_representative, contig_n50, longest_contig_bp, ambiguous_bases, coding_density, protein_count, trna_count, ssu_rrna_count, lsu_23s_rrna_count, strain_heterogeneity, mimag_quality, assembly_source_url) VALUES\n${genomeRows.join(',\n')};\nINSERT INTO genome_registry (genome_id, canonical_accession, reference_namespace, reference_accession, reference_sha256, organism_name, source, provenance_json) VALUES\n${registryRows.join(',\n')}\nON CONFLICT(genome_id) DO UPDATE SET reference_accession = excluded.reference_accession, reference_sha256 = excluded.reference_sha256, organism_name = excluded.organism_name, provenance_json = excluded.provenance_json;\nINSERT INTO genome_aliases (genome_id, namespace, alias, relation) VALUES\n${[...aliasRows.values()].join(',\n')}\nON CONFLICT(namespace, alias) DO UPDATE SET genome_id = excluded.genome_id, relation = excluded.relation;\nINSERT INTO release_genomes (release_id, accession, genome_id) VALUES\n${releaseGenomeRows.join(',\n')};\nINSERT INTO experimental_study_genomes (study_id, genome_id, source_accession) VALUES\n${studyGenomeRows.join(',\n')}\nON CONFLICT(study_id, genome_id) DO UPDATE SET source_accession = excluded.source_accession;\n`;
+  const features = `PRAGMA foreign_keys = ON;\nINSERT INTO feature_sets (release_id, accession, definition_id, feature_type, evidence_type, count_unit, feature_count, status, is_default, source_id, source_version, provenance_json, detail_counts_json, data_path, index_path, data_sha256, index_sha256, storage_json) VALUES\n${featureRows.join(',\n')};\nINSERT INTO assets (asset_id, genome_id, release_id, accession, definition_id, study_id, asset_type, location, sha256, status, metadata_json) VALUES\n${assetRows.join(',\n')}\nON CONFLICT(asset_id) DO UPDATE SET location = excluded.location, sha256 = excluded.sha256, status = excluded.status, metadata_json = excluded.metadata_json;\n`;
   const tokens = tokenRows.length
     ? `PRAGMA foreign_keys = ON;\nINSERT INTO genome_search_terms (release_id, accession, token) VALUES\n${tokenRows.join(',\n')};\n`
     : 'PRAGMA foreign_keys = ON;\n';

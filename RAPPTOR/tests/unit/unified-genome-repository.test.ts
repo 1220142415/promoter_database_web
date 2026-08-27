@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CompositeUnifiedGenomeRepository,
   parseConfiguredUnifiedGenomeAliases,
+  readD1UnifiedGenomeAliases,
   UnifiedGenomeAliasError,
   UnifiedGenomeCursorError,
 } from '@/features/genome-browser/unified-genome-repository';
@@ -170,6 +171,62 @@ describe('unified genome repository', () => {
     expect(await repository.getByAccession('GCA_000210855.2')).toEqual(fromGcf);
   });
 
+  it('loads reciprocal aliases from the active D1 release registry once', async () => {
+    let queries = 0;
+    const database = {
+      prepare(sql: string) {
+        queries += 1;
+        expect(sql).toContain('JOIN release_genomes experimental');
+        return {
+          async all() {
+            return { success: true, meta: {}, results: [{
+              canonical_accession: 'GCA_000210855.2',
+              prediction_accession: 'GCA_000210855.2',
+              experimental_accession: 'GCF_000210855.2',
+            }] };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const repository = new CompositeUnifiedGenomeRepository(
+      predictionRepository([makeCatalogRow(makeGenome({ accession: 'GCA_000210855.2' }))]),
+      experimentalRepository([experimentalGenome('GCF_000210855.2')]),
+      [],
+      () => readD1UnifiedGenomeAliases(database),
+    );
+
+    expect((await repository.search(query())).items).toHaveLength(1);
+    await repository.getByAccession('GCF_000210855.2');
+    expect(queries).toBe(1);
+  });
+
+  it('accepts an explicit reciprocal alias when both releases name the same reference accession', async () => {
+    const prediction = predictionRepository([
+      makeCatalogRow(makeGenome({ accession: 'GCA_000007325.1', predictedPromoterCount: 748 })),
+    ]);
+    const getPrediction = prediction.getByAccession.bind(prediction);
+    prediction.getByAccession = async (accession) => {
+      const match = await getPrediction(accession);
+      if (match) match.referenceSha256 = null;
+      return match;
+    };
+    const experimental = experimentalGenome('GCF_000007325.1', 930, null);
+    experimental.referenceAccession = 'GCA_000007325.1';
+    const repository = new CompositeUnifiedGenomeRepository(
+      prediction,
+      experimentalRepository([experimental]),
+      [{
+        canonicalAccession: 'GCA_000007325.1', predictionAccession: 'GCA_000007325.1',
+        experimentalAccession: 'GCF_000007325.1', relation: 'ncbi_reciprocal',
+      }],
+    );
+
+    await expect(repository.getByAccession('GCF_000007325.1')).resolves.toMatchObject({
+      canonicalAccession: 'GCA_000007325.1', evidenceState: 'both',
+      assemblyCompatibility: 'reciprocal_alias', overlayAllowed: true,
+    });
+  });
+
   it('keeps checksum-mismatched exact accessions as separate assembly rows and gates detail overlays', async () => {
     const repository = new CompositeUnifiedGenomeRepository(
       predictionRepository([makeCatalogRow(makeGenome({ accession: 'GCF_000210855.2' }))]),
@@ -284,6 +341,25 @@ describe('unified genome repository', () => {
     });
     expect(listCalls).toBe(0);
     expect(getCalls).toBe(0);
+  });
+
+  it('does not read or expose an active experimental release when public access is disabled', async () => {
+    const experimental = experimentalRepository([experimentalGenome('GCF_000000001.1')]);
+    let activeCalls = 0;
+    const getActiveRelease = experimental.getActiveRelease.bind(experimental);
+    experimental.getActiveRelease = async () => { activeCalls += 1; return getActiveRelease(); };
+    const repository = new CompositeUnifiedGenomeRepository(
+      predictionRepository([makeCatalogRow(makeGenome({ accession: 'GCF_000000001.1' }))]),
+      experimental,
+      [],
+      undefined,
+      false,
+    );
+
+    const result = await repository.search(query());
+    expect(result.items[0]).toMatchObject({ evidenceState: 'prediction_only', experimentalAccession: null });
+    expect(result.stats).toMatchObject({ experimentalGenomes: 0, totalExperimentalObservations: 0 });
+    expect(activeCalls).toBe(0);
   });
 
   it('keeps unconsumed prediction rows across a merged experimental cursor page', async () => {

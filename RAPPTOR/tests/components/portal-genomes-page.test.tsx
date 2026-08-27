@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UnifiedGenomeSearchResponse } from '@/types/unified-genome';
 
 vi.mock('server-only', () => ({}));
@@ -12,6 +12,8 @@ vi.mock('@/features/genome-browser/unified-genome-repository', () => ({ unifiedG
 
 import GenomesPage from '@/app/genomes/page';
 import { unifiedGenomeRepository } from '@/features/genome-browser/unified-genome-repository';
+
+afterEach(() => delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE);
 
 const result: UnifiedGenomeSearchResponse = {
   releases: { predictionReleaseId: 'prediction-1', experimentalReleaseId: 'experimental-1', compositeRevision: 'combined-1' },
@@ -26,6 +28,7 @@ const result: UnifiedGenomeSearchResponse = {
 
 describe('unified genome catalog page', () => {
   it('shows separate release statistics and honors the experimental evidence URL filter', async () => {
+    process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = 'on';
     vi.mocked(unifiedGenomeRepository.search).mockResolvedValue(result);
     render(await GenomesPage({ searchParams: Promise.resolve({ evidence: 'experimental' }) }));
 
@@ -35,5 +38,16 @@ describe('unified genome catalog page', () => {
     expect(screen.getByText('Experimental observations').parentElement).toHaveTextContent('440,947');
     expect(screen.getByTestId('unified-explorer')).toHaveAttribute('data-evidence', 'experimental');
     expect(unifiedGenomeRepository.search).toHaveBeenCalledWith(expect.objectContaining({ evidence: 'experimental' }));
+  });
+
+  it('hides experimental statistics and ignores its URL filter when switched off', async () => {
+    delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
+    vi.mocked(unifiedGenomeRepository.search).mockResolvedValue(result);
+    render(await GenomesPage({ searchParams: Promise.resolve({ evidence: 'experimental' }) }));
+
+    expect(screen.queryByText('Experimental genomes')).not.toBeInTheDocument();
+    expect(screen.queryByText('Experimental observations')).not.toBeInTheDocument();
+    expect(screen.getByTestId('unified-explorer')).toHaveAttribute('data-evidence', 'all');
+    expect(unifiedGenomeRepository.search).toHaveBeenCalledWith(expect.objectContaining({ evidence: 'all' }));
   });
 });

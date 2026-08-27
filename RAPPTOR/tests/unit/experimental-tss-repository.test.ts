@@ -144,6 +144,7 @@ describe('experimental TSS repository', () => {
       release_id: 'experimental-1', accession: 'GCF_000210855.2', organism_name: 'Escherichia coli', strain: null,
       assembly_name: 'ASM test', genbank_assembly_accession: 'GCA_000210855.2', default_locus: 'NC_016810.1:1-1000',
       primary_sequence: 'NC_016810.1', genome_size_bp: 5_000_000, contig_count: 1,
+      reference_accession: 'GCA_000210855.2',
       reference_storage_json: JSON.stringify({ layout: 'individual-v1', files: {
         fasta: 'objects/GCF_000210855.2/reference.fa.gz', fai: 'objects/GCF_000210855.2/reference.fa.gz.fai', gzi: 'objects/GCF_000210855.2/reference.fa.gz.gzi',
       } }),
@@ -165,7 +166,11 @@ describe('experimental TSS repository', () => {
     expect(result.release).toMatchObject({ releaseId: 'experimental-1', studies: 2, genomes: 1, publications: 2, observations: 5 });
     expect(result.items.map((study) => study.pmid)).toEqual(['22251276', '22538806']);
     const genome = await repository.getGenome('GCF_000210855.2');
-    expect(genome).toMatchObject({ annotationStatus: 'missing', assets: { ncbiAnnotations: null, ncbiAnnotationsIndex: null } });
+    expect(genome).toMatchObject({
+      referenceAccession: 'GCA_000210855.2',
+      annotationStatus: 'missing',
+      assets: { ncbiAnnotations: null, ncbiAnnotationsIndex: null },
+    });
     expect(genome?.studies).toHaveLength(2);
     await expect(repository.resolveAsset('GCF_000210855.2', 'ncbi-annotations.gff3.gz')).resolves.toBeNull();
     await expect(repository.resolveAsset('GCF_000210855.2', 'studies/2012_22538806_GCF_000210855.2/raw.bed')).resolves.toMatchObject({

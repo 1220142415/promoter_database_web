@@ -5,6 +5,7 @@ import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
 import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import releaseSummary from '@/generated/release-summary.json';
+import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type { ActiveReleaseSummary } from '@/types/release';
 
 const catalog = releaseSummary as ActiveReleaseSummary;
@@ -20,6 +21,7 @@ function taxonomyReleaseLabel(value: string | null) {
 }
 
 export default function HomePage() {
+  const showExperimental = experimentalTssPublicEnabled();
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
   const releaseLabel = `RAPPTOR ${catalog.releaseDate || catalog.releaseId}`;
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
@@ -34,7 +36,7 @@ export default function HomePage() {
             <p className="portal-hero-lead">Genome-resolved promoter predictions, reference assemblies and contextual NCBI annotations in a release-ready research portal.</p>
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
-              <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link>
+              {showExperimental ? <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link> : null}
             </div>
           </div>
           <div className="sequence-figure" role="img" aria-label="Genome sequence and promoter track overview">
@@ -52,8 +54,8 @@ export default function HomePage() {
           <div><PublicRoundedIcon aria-hidden="true" /><span>Genomes</span><strong>{catalog.totalGenomes.toLocaleString()}</strong></div>
           <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{catalog.totalPredictedPromoters.toLocaleString()}</strong></div>
           <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
-          <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div>
-          <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{(catalog.totalEvidencePublications || 0).toLocaleString()}</strong></div>
+          {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div> : null}
+          {showExperimental ? <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{(catalog.totalEvidencePublications || 0).toLocaleString()}</strong></div> : null}
           <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>
@@ -77,12 +79,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="portal-section evidence-band" id="evidence">
+      {showExperimental ? <section className="portal-section evidence-band" id="evidence">
         <div className="portal-shell evidence-layout">
           <div><p className="portal-kicker">Evidence boundaries</p><h2>Predictions and observations stay separate</h2></div>
           <p>RAPPTOR keeps model-predicted promoter peaks, experimentally observed transcription start sites and contextual NCBI annotations as separate evidence layers.</p>
         </div>
-      </section>
+      </section> : null}
 
       <section className="portal-section data-access-section" id="data">
         <div className="portal-shell">

@@ -242,6 +242,7 @@ function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): Experim
     genomeSizeBp: integerValue(genome.genomeSizeBp ?? genome.genome_size_bp),
     contigCount: integerValue(genome.contigCount ?? genome.contig_count),
     annotationStatus,
+    referenceAccession: stringValue(genome.referenceAccession ?? genome.reference_accession),
     referenceSha256: referenceChecksums.fasta || null,
     assetBase: `/api/experimental-data/${genome.accession}`,
     assets: {
@@ -421,7 +422,7 @@ async function d1Catalog(database: D1Database): Promise<NormalizedCatalog> {
       assemblyName: row.assembly_name, genbankAssemblyAccession: row.genbank_assembly_accession,
       defaultLocus: row.default_locus, primarySequence: row.primary_sequence,
       genomeSizeBp: row.genome_size_bp, contigCount: row.contig_count,
-      referenceStorage: parseJsonObject(row.reference_storage_json),
+      referenceStorage: parseJsonObject(row.reference_storage_json), referenceAccession: row.reference_accession,
       annotation: { status: annotationStatus, data: row.annotation_data_path, index: row.annotation_index_path, checksums: { data: row.annotation_data_sha256, index: row.annotation_index_sha256 } },
       studies: studiesByGenome.get(String(row.accession)) || [],
     } as CatalogGenome;

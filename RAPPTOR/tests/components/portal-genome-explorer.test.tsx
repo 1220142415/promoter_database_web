@@ -85,6 +85,14 @@ describe('portal genome explorer', () => {
     expect(screen.getByRole('link', { name: 'GCA_000411415.1' })).toBeInTheDocument();
   });
 
+  it('hides experimental controls and row summaries when public access is off', () => {
+    installFetch();
+    render(<GenomeExplorer initialResult={response()} showExperimental={false} />);
+
+    expect(screen.queryByLabelText('Evidence')).not.toBeInTheDocument();
+    expect(screen.queryByText('No experimental TSS')).not.toBeInTheDocument();
+  });
+
   it('uses a cursor stack for next and previous pages', async () => {
     installFetch();
     const user = userEvent.setup();

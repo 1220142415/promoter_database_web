@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gzipSync } from 'node:zlib';
 
 const { resolveAsset } = vi.hoisted(() => ({ resolveAsset: vi.fn() }));
@@ -7,18 +7,30 @@ vi.mock('@/features/genome-browser/experimental-tss-repository', () => ({ experi
 import { GET, HEAD } from '@/app/api/experimental-data/[accession]/[...asset]/route';
 
 const originalFetch = global.fetch;
+const originalFlag = process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
 const accession = 'GCF_000210855.2';
 
 function context(asset: string[], selectedAccession = accession) {
   return { params: Promise.resolve({ accession: selectedAccession, asset }) };
 }
 
+beforeEach(() => { process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = 'on'; });
+
 afterEach(() => {
   global.fetch = originalFetch;
   resolveAsset.mockReset();
+  if (originalFlag === undefined) delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
+  else process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = originalFlag;
 });
 
 describe('experimental data asset proxy', () => {
+  it('returns 404 without resolving assets when public access is off', async () => {
+    delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
+    const response = await GET(new Request('http://localhost/test'), context(['reference.fa.gz']));
+    expect(response.status).toBe(404);
+    expect(resolveAsset).not.toHaveBeenCalled();
+  });
+
   it('does not fetch unknown accessions, studies or file names', async () => {
     resolveAsset.mockResolvedValue(null);
     const fetchMock = vi.fn();

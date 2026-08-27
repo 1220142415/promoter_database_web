@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import UnifiedJBrowseViewer, { inspectUnifiedJBrowseFailures } from '@/features/genome-browser/components/unified-jbrowse-viewer';
+import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
 import { makeGenome } from '../fixtures/release';
 import type { ExperimentalTssGenome, ExperimentalTssStudy } from '@/types/experimental-tss';
 
@@ -98,6 +99,17 @@ describe('unified JBrowse viewer', () => {
     window.history.replaceState({}, '', `/genomes/${accession}`);
     vi.mocked(createViewState).mockReset();
     vi.mocked(createViewState).mockImplementation(() => stateTree() as never);
+  });
+
+  it('places Share view in the genome file status bar', async () => {
+    render(<>
+      <GenomeFileStatus states={{ reference: 'available', promoters: 'available', annotation: 'available' }} />
+      <UnifiedJBrowseViewer prediction={prediction()} experimental={experimental()} />
+    </>);
+
+    const slot = screen.getByTestId('genome-file-status-share');
+    await waitFor(() => expect(within(slot).getByRole('button', { name: 'Share current view' })).toBeInTheDocument());
+    expect(screen.getByTestId('jbrowse-viewer')).not.toContainElement(within(slot).getByRole('button'));
   });
 
   it('orders prediction and experimental evidence in one state tree', () => {

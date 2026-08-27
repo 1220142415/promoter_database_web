@@ -9,6 +9,7 @@ import GenomeFileStatus from '@/features/genome-browser/components/genome-file-s
 import PortalOnDemandBrowserPanel from '@/features/genome-browser/components/portal-on-demand-browser-panel';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
 import { unifiedGenomeRepository } from '@/features/genome-browser/unified-genome-repository';
+import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
 import type { JBrowseReleaseAssembly } from '@/types/release';
@@ -145,7 +146,9 @@ export async function generateMetadata({ params }: { params: Promise<{ accession
   const match = await findGenome(accession);
   const organism = match?.prediction?.genome.organismName || match?.experimental?.organismName;
   return match && organism
-    ? { title: `${match.canonicalAccession} | RAPPTOR`, description: `${organism} genome predictions and experimental evidence.` }
+    ? { title: `${match.canonicalAccession} | RAPPTOR`, description: experimentalTssPublicEnabled()
+      ? `${organism} genome predictions and experimental evidence.`
+      : `${organism} genome predictions and NCBI annotations.` }
     : { title: 'Genome not found | RAPPTOR' };
 }
 
@@ -160,7 +163,8 @@ export default async function GenomeDetailPage({
     params,
     searchParams || Promise.resolve({} as Record<string, string | string[] | undefined>),
   ]);
-  const assemblySource = queryValues.assembly === 'prediction' || queryValues.assembly === 'experimental'
+  const showExperimental = experimentalTssPublicEnabled();
+  const assemblySource = queryValues.assembly === 'prediction' || showExperimental && queryValues.assembly === 'experimental'
     ? queryValues.assembly
     : undefined;
   const match = await findGenome(accession, assemblySource);
@@ -175,7 +179,7 @@ export default async function GenomeDetailPage({
   }
 
   const prediction = match.prediction;
-  const experimental = match.experimental;
+  const experimental = showExperimental ? match.experimental : null;
   const genome = prediction?.genome;
   const details = prediction?.details;
   const organismName = genome?.organismName || experimental!.organismName;
@@ -201,11 +205,11 @@ export default async function GenomeDetailPage({
                   {strain ? <p className="detail-strain">Strain {strain}</p> : null}
                   <p className="detail-strain">
                     {prediction ? <span className="evidence-available">RAPPTOR predictions</span> : null}
-                    {prediction && experimental ? ' · ' : null}
-                    {experimental ? <span className="evidence-available">Experimental TSS</span> : null}
+                    {showExperimental && prediction && experimental ? ' · ' : null}
+                    {showExperimental && experimental ? <span className="evidence-available">Experimental TSS</span> : null}
                   </p>
                 </div>
-                <div className="release-stamp"><span>Evidence releases</span><strong>{prediction ? match.releases.predictionReleaseId : 'No prediction'} · {experimental ? match.releases.experimentalReleaseId : 'No experimental'}</strong></div>
+                <div className="release-stamp"><span>{showExperimental ? 'Evidence releases' : 'Prediction release'}</span><strong>{prediction ? match.releases.predictionReleaseId : 'No prediction'}{showExperimental ? ` · ${experimental ? match.releases.experimentalReleaseId : 'No experimental'}` : ''}</strong></div>
               </div>
             </header>
 
@@ -218,8 +222,15 @@ export default async function GenomeDetailPage({
               </div>
             ) : null}
 
-            {browserPrediction || browserExperimental
-              ? <>
+            {prediction?.plannedAssets
+              ? <PortalOnDemandBrowserPanel
+                  accession={prediction.genome.accession}
+                  releaseId={prediction.releaseId}
+                  plannedAssets={prediction.plannedAssets}
+                  experimental={browserExperimental}
+                />
+              : browserPrediction || browserExperimental
+                ? <>
                   <GenomeFileStatus states={{
                     reference: 'available',
                     promoters: browserPrediction ? 'available' : prediction ? 'preparing' : 'unavailable',
@@ -227,8 +238,6 @@ export default async function GenomeDetailPage({
                   }} />
                   <UnifiedBrowserPanel prediction={browserPrediction} experimental={browserExperimental} />
                 </>
-              : prediction?.plannedAssets
-                ? <PortalOnDemandBrowserPanel accession={genome!.accession} releaseId={prediction.releaseId} plannedAssets={prediction.plannedAssets} />
                 : <div className="browser-unavailable"><strong>Genome files are being prepared</strong><p>Genome metadata and feature counts are available. Indexed browser tracks will appear after upload validation.</p></div>}
           </section>
         </div>
@@ -243,8 +252,8 @@ export default async function GenomeDetailPage({
             <MetadataMetric label="Predicted promoters" value={prediction ? formatNumber(genome?.predictedPromoterCount) : 'Not in active release'} />
             <MetadataMetric label="NCBI annotation features" value={formatNumber(genome?.annotationFeatureCount)} />
             <MetadataMetric label="Promoter density" value={promoterDensityPerMb === null ? null : `${promoterDensityPerMb.toLocaleString(undefined, { maximumFractionDigits: 1 })} / Mb`} />
-            <MetadataMetric label="Experimental studies" value={experimental ? experimental.studies.length : 0} />
-            <MetadataMetric label="Experimental TSS" value={experimental ? experimentalObservations : 0} />
+            {showExperimental ? <MetadataMetric label="Experimental studies" value={experimental ? experimental.studies.length : 0} /> : null}
+            {showExperimental ? <MetadataMetric label="Experimental TSS" value={experimental ? experimentalObservations : 0} /> : null}
           </div>
 
           <div className="genome-metadata-groups">

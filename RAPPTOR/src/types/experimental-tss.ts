@@ -57,6 +57,7 @@ export interface ExperimentalTssGenome {
   genomeSizeBp: number | null;
   contigCount: number | null;
   annotationStatus: ExperimentalAnnotationStatus;
+  referenceAccession?: string | null;
   referenceSha256?: string | null;
   assetBase: string;
   assets: {

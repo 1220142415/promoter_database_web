@@ -7,6 +7,7 @@ import PortalGenomeExplorer from '@/features/genomes/components/genome-explorer'
 import PortalReleaseState from '@/features/genomes/components/release-state';
 import { DEFAULT_UNIFIED_GENOME_SEARCH_QUERY } from '@/features/genomes/search-query';
 import { unifiedGenomeRepository } from '@/features/genome-browser/unified-genome-repository';
+import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type { UnifiedGenomeEvidenceFilter } from '@/types/unified-genome';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,8 @@ export default async function GenomesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const requestedEvidence = (await searchParams).evidence;
-  const evidence = typeof requestedEvidence === 'string' && EVIDENCE_FILTERS.has(requestedEvidence as UnifiedGenomeEvidenceFilter)
+  const showExperimental = experimentalTssPublicEnabled();
+  const evidence = showExperimental && typeof requestedEvidence === 'string' && EVIDENCE_FILTERS.has(requestedEvidence as UnifiedGenomeEvidenceFilter)
     ? requestedEvidence as UnifiedGenomeEvidenceFilter
     : 'all';
   let initialResult;
@@ -38,18 +40,20 @@ export default async function GenomesPage({
   return (
     <main className="portal-page">
       <section className="portal-shell page-intro">
-        <p className="portal-kicker">Prediction {initialResult.releases.predictionReleaseId} · Experimental {initialResult.releases.experimentalReleaseId || 'Not published'}</p>
+        <p className="portal-kicker">Prediction {initialResult.releases.predictionReleaseId}{showExperimental ? ` · Experimental ${initialResult.releases.experimentalReleaseId || 'Not published'}` : ''}</p>
         <h1>Genome catalog</h1>
-        <p>Search assemblies once, then compare RAPPTOR promoter predictions with literature-derived experimental TSS observations when both are available for the same assembly.</p>
+        <p>{showExperimental
+          ? 'Search assemblies once, then compare RAPPTOR promoter predictions with literature-derived experimental TSS observations when both are available for the same assembly.'
+          : 'Search bacterial assemblies and inspect RAPPTOR promoter predictions with contextual NCBI annotations.'}</p>
       </section>
       <section className="portal-shell experimental-metrics" aria-label="Genome evidence statistics">
         <div><PublicRoundedIcon aria-hidden="true" /><span>Prediction genomes</span><strong>{initialResult.stats.predictionGenomes.toLocaleString()}</strong></div>
-        <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{initialResult.stats.experimentalGenomes.toLocaleString()}</strong></div>
-        <div><DataObjectRoundedIcon aria-hidden="true" /><span>Both evidence types</span><strong>{initialResult.stats.bothGenomes.toLocaleString()}</strong></div>
-        <div><MenuBookRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{initialResult.stats.totalExperimentalObservations.toLocaleString()}</strong></div>
+        {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{initialResult.stats.experimentalGenomes.toLocaleString()}</strong></div> : null}
+        {showExperimental ? <div><DataObjectRoundedIcon aria-hidden="true" /><span>Both evidence types</span><strong>{initialResult.stats.bothGenomes.toLocaleString()}</strong></div> : null}
+        {showExperimental ? <div><MenuBookRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{initialResult.stats.totalExperimentalObservations.toLocaleString()}</strong></div> : null}
       </section>
       <section className="portal-shell catalog-section">
-        <PortalGenomeExplorer initialResult={initialResult} initialEvidence={evidence} />
+        <PortalGenomeExplorer initialResult={initialResult} initialEvidence={evidence} showExperimental={showExperimental} />
       </section>
     </main>
   );

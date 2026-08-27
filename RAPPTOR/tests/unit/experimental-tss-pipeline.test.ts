@@ -245,7 +245,11 @@ describe('experimental TSS release pipeline', () => {
       genomes: [{
         accession: 'GCF_000000001.1', organismName: 'Test', strain: null, assemblyLevel: null, genomeSizeBp: 10,
         contigCount: 1, defaultLocus: 'chr:1-10', primarySequence: 'chr', assemblyName: null,
-        genbankAssemblyAccession: null, referenceStorage: { layout: 'individual-v1', files: { fasta: 'objects/a/ref.gz' } },
+        genbankAssemblyAccession: 'GCA_000000001.1', referenceStorage: {
+          layout: 'individual-v1',
+          files: { fasta: 'objects/a/ref.gz' },
+          checksums: { fasta: 'f'.repeat(64) },
+        },
         annotation: { status: 'available', featureCount: 2, data: 'objects/a/ann.gz', index: 'objects/a/ann.gz.tbi' },
         checksums: { ncbiAnnotations: 'd'.repeat(64), ncbiAnnotationsIndex: 'e'.repeat(64) },
       }],
@@ -254,8 +258,19 @@ describe('experimental TSS release pipeline', () => {
     expect(sql.init).toContain("'experimental_tss'");
     expect(sql.init).toContain('gene-annotation:ncbi:release-1');
     expect(sql.init).toContain('Title');
+    expect(sql.init).toContain('INSERT INTO publications');
+    expect(sql.init).toContain('INSERT INTO experimental_studies');
+    expect(sql.genomes).toContain('INSERT INTO genome_registry');
+    expect(sql.genomes).toContain("'ncbi_assembly:GCA_000000001.1'");
+    expect(sql.genomes).toContain("'ncbi_refseq', 'GCF_000000001.1'");
+    expect(sql.genomes).toContain("'ncbi_genbank', 'GCA_000000001.1'");
+    expect(sql.genomes).toContain('INSERT INTO release_genomes');
+    expect(sql.genomes).toContain('INSERT INTO experimental_study_genomes');
     expect(sql.features).toContain("'ready'");
     expect(sql.features).toContain("'objects/a/ann.gz'");
+    expect(sql.features).toContain('INSERT INTO assets');
+    expect(sql.features).toContain("'experimental_tss_rawBed'");
+    expect(sql.features).toContain("'gene_annotation_data'");
     expect(sql.activate).not.toMatch(/INSERT INTO portal_state\s*\(/);
   });
 
@@ -267,5 +282,16 @@ describe('experimental TSS release pipeline', () => {
     expect(migration).toContain('CREATE TRIGGER portal_state_prediction_release_kind_insert');
     expect(migration).toContain('CREATE TRIGGER portal_state_prediction_release_kind_update');
     expect(migration).toContain('prediction portal requires a prediction release');
+  });
+
+  it('adds a unified identity and asset registry without replacing feature sets', async () => {
+    const migration = await readFile(join(process.cwd(), 'database', 'migrations', '0007_unified_genome_registry.sql'), 'utf8');
+    for (const table of ['genome_registry', 'genome_aliases', 'publications', 'experimental_studies', 'experimental_study_genomes', 'release_genomes', 'assets']) {
+      expect(migration).toContain(`CREATE TABLE ${table}`);
+    }
+    expect(migration).toContain('CHECK (json_valid(provenance_json))');
+    expect(migration).toContain('INSERT INTO release_genomes');
+    expect(migration).toContain('FROM feature_sets fs');
+    expect(migration).not.toContain('CREATE TABLE evidence_sets');
   });
 });

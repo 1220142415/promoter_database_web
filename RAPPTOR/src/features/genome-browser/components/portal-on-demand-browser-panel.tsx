@@ -4,14 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import GenomeFileStatus, { type GenomeFileState } from '@/features/genome-browser/components/genome-file-status';
 import PortalBrowserPanel from '@/features/genome-browser/components/portal-browser-panel';
+import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
 import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
 import type { PlannedGenomeAssets } from '@/features/storage/hf-batch-assets';
+import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import type { JBrowseReleaseAssembly } from '@/types/release';
 
 type Props = {
   accession: string;
   releaseId: string;
   plannedAssets: PlannedGenomeAssets;
+  experimental?: ExperimentalTssGenome | null;
 };
 
 type FileStates = { reference: GenomeFileState; promoters: GenomeFileState; scores: GenomeFileState; annotation: GenomeFileState };
@@ -33,7 +36,7 @@ function assetCacheKey(prefix: string, kind: string, url: string, version: strin
   return `${prefix}/${kind}/${version || url}`;
 }
 
-export default function PortalOnDemandBrowserPanel({ accession, releaseId, plannedAssets }: Props) {
+export default function PortalOnDemandBrowserPanel({ accession, releaseId, plannedAssets, experimental }: Props) {
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
   const [error, setError] = useState('');
@@ -143,7 +146,12 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     void prepare();
   }, [prepare]);
 
-  if (assembly) return <><GenomeFileStatus states={fileStates} /><PortalBrowserPanel assembly={assembly} /></>;
+  if (assembly) return <>
+    <GenomeFileStatus states={fileStates} />
+    {experimental
+      ? <UnifiedBrowserPanel prediction={assembly} experimental={experimental} />
+      : <PortalBrowserPanel assembly={assembly} />}
+  </>;
 
   return (
     <>

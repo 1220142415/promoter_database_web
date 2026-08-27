@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PortalOnDemandBrowserPanel from '@/features/genome-browser/components/portal-on-demand-browser-panel';
 import { firstFastaRefName, loadCachedGenomeAsset, maybeDecompressGzip } from '@/features/genome-browser/on-demand-genome-assets';
+import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 
 vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({
   default: ({ assembly }: { assembly: { defaultLocus: string; assets: { promoterScoresPlus: string | null; promoterScoresMinus: string | null; ncbiAnnotations: string | null } } }) => (
@@ -14,6 +15,17 @@ vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({
       data-score-plus={assembly.assets.promoterScoresPlus || ''}
       data-score-minus={assembly.assets.promoterScoresMinus || ''}
       data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))}
+    />
+  ),
+}));
+
+vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
+  default: ({ prediction, experimental }: { prediction: { assemblyName: string; assets: { ncbiAnnotations: string | null } }; experimental: ExperimentalTssGenome }) => (
+    <div
+      data-testid="prepared-unified-browser"
+      data-prediction={prediction.assemblyName}
+      data-experimental={experimental.accession}
+      data-ncbi={String(Boolean(prediction.assets.ncbiAnnotations))}
     />
   ),
 }));
@@ -127,6 +139,21 @@ describe('on-demand genome browser', () => {
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-scores', 'false');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
     expect(screen.getByLabelText('Genome files')).toHaveTextContent('ScoresNot available');
+  });
+
+  it('combines staged predictions and annotation with experimental TSS', async () => {
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_000007325.1"
+        releaseId="RAPPTOR 2026-08-13"
+        plannedAssets={plannedAssets}
+        experimental={{ accession: 'GCF_000007325.1' } as ExperimentalTssGenome}
+      />,
+    );
+
+    expect(await screen.findByTestId('prepared-unified-browser')).toHaveAttribute('data-prediction', 'GCA_000007325.1');
+    expect(screen.getByTestId('prepared-unified-browser')).toHaveAttribute('data-experimental', 'GCF_000007325.1');
+    expect(screen.getByTestId('prepared-unified-browser')).toHaveAttribute('data-ncbi', 'true');
   });
 
   it('marks an intentionally absent annotation without requesting it', async () => {

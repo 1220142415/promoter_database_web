@@ -77,9 +77,11 @@ function buildRequestUrl(query: UnifiedGenomeSearchQuery) {
 export default function PortalGenomeExplorer({
   initialResult,
   initialEvidence = 'all',
+  showExperimental = true,
 }: {
   initialResult: UnifiedGenomeSearchResponse;
   initialEvidence?: UnifiedGenomeEvidenceFilter;
+  showExperimental?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -256,7 +258,7 @@ export default function PortalGenomeExplorer({
             <option value="unavailable">Missing</option>
           </select>
         </label>
-        <label>
+        {showExperimental ? <label>
           <span>Evidence</span>
           <select value={evidence} onChange={(event) => setEvidence(event.target.value as UnifiedGenomeEvidenceFilter)}>
             <option value="all">All genomes</option>
@@ -264,7 +266,7 @@ export default function PortalGenomeExplorer({
             <option value="experimental">Experimental TSS available</option>
             <option value="both">Prediction and experimental</option>
           </select>
-        </label>
+        </label> : null}
         <button type="button" className="catalog-reset" onClick={clearFilters} title="Clear filters" aria-label="Clear filters"><RestartAltRoundedIcon /></button>
       </div>
 
@@ -324,11 +326,11 @@ export default function PortalGenomeExplorer({
                   <span className={genome.predictionAccession ? 'evidence-available' : 'evidence-muted'}>
                     {genome.predictionAccession ? `${genome.predictedPromoterCount.toLocaleString()} predictions` : 'No prediction release'}
                   </span>
-                  <small className={genome.experimentalAccession ? 'evidence-available' : 'evidence-muted'}>
+                  {showExperimental ? <small className={genome.experimentalAccession ? 'evidence-available' : 'evidence-muted'}>
                     {genome.experimentalAccession
                       ? `${genome.experimentalStudyCount.toLocaleString()} ${genome.experimentalStudyCount === 1 ? 'study' : 'studies'} · ${genome.experimentalObservationCount.toLocaleString()} TSS`
                       : 'No experimental TSS'}
-                  </small>
+                  </small> : null}
                 </td>
                 <td>{genome.annotationStatus === 'available'
                   ? <span className="evidence-available">Available</span>

@@ -10,6 +10,7 @@ import {
   experimentalTssRepository,
   ExperimentalTssReleaseNotPublishedError,
 } from '@/features/genome-browser/experimental-tss-repository';
+import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type {
   ExperimentalTssGenome,
   ExperimentalTssRepository,
@@ -111,6 +112,42 @@ export function parseConfiguredUnifiedGenomeAliases(value = process.env.UNIFIED_
       relation: 'ncbi_reciprocal',
     };
   });
+}
+
+export async function readD1UnifiedGenomeAliases(database: D1Database): Promise<UnifiedGenomeAlias[]> {
+  const result = await database.prepare([
+    'SELECT registry.canonical_accession, prediction.accession AS prediction_accession,',
+    'experimental.accession AS experimental_accession',
+    'FROM portal_state prediction_state',
+    'JOIN release_genomes prediction ON prediction.release_id = prediction_state.active_release_id',
+    'JOIN experimental_portal_state experimental_state ON experimental_state.singleton = 1',
+    'JOIN release_genomes experimental ON experimental.release_id = experimental_state.active_release_id',
+    'AND experimental.genome_id = prediction.genome_id',
+    'JOIN genome_registry registry ON registry.genome_id = prediction.genome_id',
+    'WHERE prediction_state.singleton = 1 AND prediction.accession <> experimental.accession',
+    'AND registry.canonical_accession IN (prediction.accession, experimental.accession)',
+    'ORDER BY registry.canonical_accession',
+  ].join(' ')).all<{
+    canonical_accession: string;
+    prediction_accession: string;
+    experimental_accession: string;
+  }>();
+  return result.results.map((row) => ({
+    canonicalAccession: row.canonical_accession,
+    predictionAccession: row.prediction_accession,
+    experimentalAccession: row.experimental_accession,
+    relation: 'ncbi_reciprocal',
+  }));
+}
+
+async function runtimeD1UnifiedGenomeAliases() {
+  try {
+    const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+    const database = getCloudflareContext().env.RAPPTOR_DB;
+    return database ? readD1UnifiedGenomeAliases(database) : [];
+  } catch {
+    return [];
+  }
 }
 
 function compositeRevision(predictionReleaseId: string, experimentalReleaseId: string | null) {
@@ -325,12 +362,15 @@ function predictionRowMatches(row: GenomeCatalogRow, query: UnifiedGenomeSearchQ
 export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository {
   private readonly canonicalByAccession = new Map<string, string>();
   private readonly aliasByCanonical = new Map<string, UnifiedGenomeAlias>();
+  private aliasLoad: Promise<void> | null = null;
   private experimentalSnapshotCache: { expiresAt: number; value: Promise<ExperimentalCompositeSnapshot> } | null = null;
 
   constructor(
     private readonly predictionRepository: GenomeCatalogRepository,
     private readonly experimentalRepository: ExperimentalTssRepository,
     aliases: UnifiedGenomeAlias[] = [],
+    private readonly aliasProvider?: () => Promise<UnifiedGenomeAlias[]>,
+    private readonly experimentalEnabled = true,
   ) {
     for (const alias of aliases) this.addAlias(alias);
   }
@@ -344,7 +384,14 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       || alias.predictionAccession === alias.experimentalAccession
       || ![alias.predictionAccession, alias.experimentalAccession].includes(alias.canonicalAccession)
     ) throw new UnifiedGenomeAliasError('A reciprocal alias must name two distinct accessions and choose one as canonical.');
-    if (this.aliasByCanonical.has(alias.canonicalAccession)) {
+    const existing = this.aliasByCanonical.get(alias.canonicalAccession);
+    if (existing
+      && existing.predictionAccession === alias.predictionAccession
+      && existing.experimentalAccession === alias.experimentalAccession
+      && existing.relation === alias.relation) {
+      return;
+    }
+    if (existing) {
       throw new UnifiedGenomeAliasError(`Duplicate canonical accession: ${alias.canonicalAccession}`);
     }
     for (const accession of [alias.predictionAccession, alias.experimentalAccession]) {
@@ -352,6 +399,14 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       this.canonicalByAccession.set(accession, alias.canonicalAccession);
     }
     this.aliasByCanonical.set(alias.canonicalAccession, alias);
+  }
+
+  private ensureAliases() {
+    if (!this.aliasProvider) return Promise.resolve();
+    this.aliasLoad ||= this.aliasProvider().then((aliases) => {
+      for (const alias of aliases) this.addAlias(alias);
+    });
+    return this.aliasLoad;
   }
 
   resolveCanonicalAccession(accession: string) {
@@ -366,16 +421,19 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
   ): NonNullable<UnifiedGenomeRow['assemblyCompatibility']> {
     if (!prediction || !experimental) return 'single_source';
     const predictionSha256 = prediction.referenceSha256 || prediction.details?.referenceSha256 || null;
-    const referencesMatch = predictionSha256 !== null
-      && experimental.referenceSha256 !== null
-      && experimental.referenceSha256 !== undefined
-      && predictionSha256 === experimental.referenceSha256;
+    const experimentalSha256 = experimental.referenceSha256 || null;
+    const predictionReference = prediction.details?.referenceAccession || prediction.genome.accession;
+    const experimentalReference = experimental.referenceAccession || experimental.genbankAssemblyAccession || experimental.accession;
+    const referencesMatch = predictionSha256 && experimentalSha256
+      ? predictionSha256 === experimentalSha256
+      : predictionReference === experimentalReference;
     if (!referencesMatch) return 'mismatch';
     return this.aliasByCanonical.has(canonicalAccession) ? 'reciprocal_alias'
       : prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch';
   }
 
   private async activeExperimentalReleaseOrNull() {
+    if (!this.experimentalEnabled) return null;
     try {
       return await this.experimentalRepository.getActiveRelease();
     } catch (cause) {
@@ -385,6 +443,7 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
   }
 
   private async buildExperimentalSnapshot(): Promise<ExperimentalCompositeSnapshot> {
+    if (this.experimentalEnabled) await this.ensureAliases();
     const [predictionRelease, experimentalRelease] = await Promise.all([
       this.predictionRepository.getActiveRelease(),
       this.activeExperimentalReleaseOrNull(),
@@ -590,6 +649,7 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
     accession: string,
     assemblySource?: 'prediction' | 'experimental',
   ): Promise<UnifiedGenomeMatch | null> {
+    if (this.experimentalEnabled) await this.ensureAliases();
     const canonicalAccession = this.resolveCanonicalAccession(accession);
     if (!canonicalAccession) return null;
     const alias = this.aliasByCanonical.get(canonicalAccession);
@@ -650,4 +710,6 @@ export const unifiedGenomeRepository: UnifiedGenomeRepository = new CompositeUni
   genomeCatalogRepository,
   experimentalTssRepository,
   parseConfiguredUnifiedGenomeAliases(),
+  runtimeD1UnifiedGenomeAliases,
+  experimentalTssPublicEnabled(),
 );

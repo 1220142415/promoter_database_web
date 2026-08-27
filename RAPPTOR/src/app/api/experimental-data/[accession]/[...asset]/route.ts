@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { experimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
+import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type { ExperimentalAssetTransform } from '@/types/experimental-tss';
 
 export const runtime = 'nodejs';
@@ -128,6 +129,9 @@ function responseHeaders(request: Request, upstream: Response, asset: Awaited<Re
 }
 
 async function serve(request: Request, context: RouteContext, headOnly: boolean) {
+  if (!experimentalTssPublicEnabled()) {
+    return NextResponse.json({ error: 'Unknown release asset.' }, { status: 404 });
+  }
   const { accession, asset: parts } = await context.params;
   if (!Array.isArray(parts) || parts.length === 0) {
     return NextResponse.json({ error: 'Unknown experimental release asset.' }, { status: 404 });

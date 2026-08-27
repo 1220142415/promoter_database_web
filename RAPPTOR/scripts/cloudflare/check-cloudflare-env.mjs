@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { loadEnvFile } from 'node:process';
 import path from 'node:path';
+
+if (existsSync(path.join(process.cwd(), '.env.local'))) loadEnvFile('.env.local');
 
 const required = ['NEXT_PUBLIC_STORAGE_BASE_URL', 'NEXT_PUBLIC_RELEASE_ASSET_BASE_URL'];
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createViewState } from '@jbrowse/react-linear-genome-view';
 import ShareRoundedIcon from '@mui/icons-material/ShareRounded';
 import RapptorJBrowseLinearView from '@/features/genome-browser/components/rapptor-jbrowse-linear-view';
@@ -115,11 +116,16 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   const [shareUnavailableReason, setShareUnavailableReason] = useState(
     'Sharing is available for a single reference sequence after the browser loads.',
   );
+  const [shareTarget, setShareTarget] = useState<Element | null>(null);
   const [restoreMessage, setRestoreMessage] = useState('');
   const [partialViewMessage, setPartialViewMessage] = useState('');
   const [referenceFailureMessage, setReferenceFailureMessage] = useState('');
   const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
   const initializationPromises = useRef(new WeakMap<object, Promise<string[]>>());
+
+  useEffect(() => {
+    setShareTarget(document.querySelector('.genome-file-status-share'));
+  }, []);
   const parsedShare = useMemo(
     () => parseJBrowseShareParams(
       new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search),
@@ -583,26 +589,30 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     }
   };
 
+  const shareActions = (
+    <div className="browser-share-actions">
+      <div className="browser-share-feedback" aria-live="polite">
+        {!shareAvailable && shareUnavailableReason ? <span id="unified-browser-share-unavailable">{shareUnavailableReason}</span> : null}
+        {shareFeedback?.message ? <span>{shareFeedback.message}</span> : null}
+      </div>
+      <button
+        type="button"
+        className="browser-share-button"
+        onClick={() => void handleShare()}
+        disabled={!shareAvailable}
+        aria-label="Share current view"
+        aria-describedby={!shareAvailable ? 'unified-browser-share-unavailable' : undefined}
+        title={shareAvailable ? 'Copy this position, zoom, direction and evidence track layout' : shareUnavailableReason}
+      >
+        <ShareRoundedIcon aria-hidden="true" />
+        <span>Share view</span>
+      </button>
+    </div>
+  );
+
   return (
     <div className="portal-browser-shell" data-testid="jbrowse-viewer" data-viewer-kind="unified">
-      <div className="browser-share-actions">
-        <div className="browser-share-feedback" aria-live="polite">
-          {!shareAvailable && shareUnavailableReason ? <span id="unified-browser-share-unavailable">{shareUnavailableReason}</span> : null}
-          {shareFeedback?.message ? <span>{shareFeedback.message}</span> : null}
-        </div>
-        <button
-          type="button"
-          className="browser-share-button"
-          onClick={() => void handleShare()}
-          disabled={!shareAvailable}
-          aria-label="Share current view"
-          aria-describedby={!shareAvailable ? 'unified-browser-share-unavailable' : undefined}
-          title={shareAvailable ? 'Copy this position, zoom, direction and evidence track layout' : shareUnavailableReason}
-        >
-          <ShareRoundedIcon aria-hidden="true" />
-          <span>Share view</span>
-        </button>
-      </div>
+      {shareTarget ? createPortal(shareActions, shareTarget) : shareActions}
       {restoreMessage ? <p className="browser-share-notice" role="status">{restoreMessage}</p> : null}
       {partialViewMessage ? <p className="browser-share-notice" role="status">{partialViewMessage}</p> : null}
       {shareFeedback?.manualUrl ? (

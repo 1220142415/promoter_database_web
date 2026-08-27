@@ -22,7 +22,7 @@ const gzip = promisify(gzipCallback);
 const temporary: string[] = [];
 
 async function tempRoot() {
-  const root = await mkdtemp(join(tmpdir(), 'seqedge-experimental-tss-'));
+  const root = await mkdtemp(join(tmpdir(), 'rapptor-experimental-tss-'));
   temporary.push(root);
   return root;
 }

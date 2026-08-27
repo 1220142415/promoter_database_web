@@ -139,7 +139,7 @@ describe('JBrowse share URL codec', () => {
       ],
     };
     const url = new URL(buildJBrowseShareUrl(
-      { origin: 'https://seqedge.example', pathname: '/genomes/GCF_000210855.2' },
+      { origin: 'https://rapptor.example', pathname: '/genomes/GCF_000210855.2' },
       combined,
       allowedStudies,
     ));
@@ -206,7 +206,7 @@ describe('JBrowse share URL codec', () => {
 
   it('preserves only the explicit experimental assembly selector', () => {
     const experimental = new URL(buildJBrowseShareUrl({
-      origin: 'https://seqedge.example',
+      origin: 'https://rapptor.example',
       pathname: '/genomes/GCF_000000001.1',
       search: '?assembly=experimental&secret=drop-me',
     }, state));
@@ -214,7 +214,7 @@ describe('JBrowse share URL codec', () => {
     expect(experimental.searchParams.has('secret')).toBe(false);
 
     const invalid = new URL(buildJBrowseShareUrl({
-      origin: 'https://seqedge.example',
+      origin: 'https://rapptor.example',
       pathname: '/genomes/GCF_000000001.1',
       search: '?assembly=prediction',
     }, state));

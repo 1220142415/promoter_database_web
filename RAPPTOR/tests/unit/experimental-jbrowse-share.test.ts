@@ -23,7 +23,7 @@ describe('experimental JBrowse share codec', () => {
       ],
     };
     const url = new URL(buildExperimentalJBrowseShareUrl(
-      { origin: 'https://seqedge.example', pathname: '/experimental-tss/genomes/GCF_000210855.2' } as Location,
+      { origin: 'https://rapptor.example', pathname: '/experimental-tss/genomes/GCF_000210855.2' } as Location,
       state,
       allowed,
     ));
@@ -39,7 +39,7 @@ describe('experimental JBrowse share codec', () => {
 
   it('allows an empty visible-track layout and clears unrelated query and hash state', () => {
     const url = new URL(buildExperimentalJBrowseShareUrl(
-      { origin: 'https://seqedge.example/private?token=secret', pathname: '/experimental-tss/genomes/GCF_1?asset=blob:private#x' } as Location,
+      { origin: 'https://rapptor.example/private?token=secret', pathname: '/experimental-tss/genomes/GCF_1?asset=blob:private#x' } as Location,
       {
         version: 1,
         refName: 'contig 1',

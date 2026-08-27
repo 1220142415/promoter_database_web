@@ -19,7 +19,7 @@ const execute = promisify(execFile);
 const temporary: string[] = [];
 
 async function tempRoot() {
-  const root = await mkdtemp(join(tmpdir(), 'seqedge-coverage-'));
+  const root = await mkdtemp(join(tmpdir(), 'rapptor-coverage-'));
   temporary.push(root);
   return root;
 }

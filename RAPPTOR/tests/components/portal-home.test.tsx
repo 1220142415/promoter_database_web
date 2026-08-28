@@ -6,6 +6,7 @@ import HomePage from '@/app/page';
 
 vi.mock('server-only', () => ({}));
 vi.mock('next/link', () => ({ default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={String(href)} {...props}>{children}</a> }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 describe('portal home', () => {
   it('renders the checked-in release snapshot without client-side API or D1 requests', () => {
@@ -13,6 +14,8 @@ describe('portal home', () => {
     render(<HomePage />);
 
     expect(screen.getByRole('heading', { name: 'RAPPTOR' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Predict a promoter candidate' })).toBeInTheDocument();
+    expect(screen.getByText('DEMO PREVIEW')).toBeInTheDocument();
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('80,789');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('305,246,460');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations cataloged53,285');

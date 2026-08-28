@@ -1,13 +1,6 @@
-export interface ReleaseAssets {
-  fasta: string;
-  fastaFai: string;
-  fastaGzi: string;
-  predictedPromoters: string;
-  predictedPromotersIndex: string;
-  promoterScoresPlus: string | null;
-  promoterScoresMinus: string | null;
-  ncbiAnnotations: string | null;
-  ncbiAnnotationsIndex: string | null;
+import type { JBrowseAssemblyAssets, JBrowseAssemblyConfig } from '@/features/genome-browser/types';
+
+export interface ReleaseAssets extends JBrowseAssemblyAssets {
   metadata: string | null;
 }
 
@@ -127,11 +120,4 @@ export type ReleaseCatalogResult =
   | { status: 'ready'; catalog: ReleaseCatalog }
   | { status: 'missing' | 'invalid'; catalog: null; message: string };
 
-export interface JBrowseReleaseAssembly {
-  assemblyName: string;
-  defaultLocus: string;
-  assetBase: string;
-  assets: ReleaseAssets;
-  regionExportBase?: string;
-  adapterMode?: 'indexed' | 'unindexed';
-}
+export type JBrowseReleaseAssembly = JBrowseAssemblyConfig;

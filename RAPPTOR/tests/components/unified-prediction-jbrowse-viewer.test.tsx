@@ -188,6 +188,26 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(config.defaultSession.view.tracks.map((track) => track.displays[0].heightPreConfig)).toEqual([120, 180, 170, 170]);
   });
 
+  it('supports forward-only prediction results and their labels', () => {
+    const plusOnly = assembly(false, true);
+    plusOnly.assets.promoterScoresMinus = null;
+    render(<UnifiedJBrowseViewer prediction={{
+      ...plusOnly,
+      trackLabels: { scores: 'RAPPTOR promoter probabilities (+ strand)', promoters: 'RAPPTOR model-positive promoter windows' },
+    }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: ReadonlyArray<{ name: string; type: string; adapter: Record<string, unknown> }>;
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'RAPPTOR promoter probabilities (+ strand)',
+      'RAPPTOR model-positive promoter windows',
+    ]);
+    expect(config.tracks[0]).toMatchObject({
+      type: 'QuantitativeTrack',
+      adapter: { type: 'BigWigAdapter', bigWigLocation: { uri: expect.stringContaining('promoter-scores.plus.bw') } },
+    });
+  });
+
   it('uses whole-file adapters for a browser-prepared staged genome', () => {
     const unindexed = { ...assembly(true), adapterMode: 'unindexed' as const };
     unindexed.assets.ncbiAnnotationsIndex = null;

@@ -11,6 +11,7 @@ const ALLOWED_SCRIPT_SRCS = [
   "'self'",
   "'unsafe-inline'",
   "'unsafe-eval'",
+  "https://challenges.cloudflare.com",
 ];
 
 const ALLOWED_CONNECT_SRCS = [
@@ -18,6 +19,7 @@ const ALLOWED_CONNECT_SRCS = [
   "data:",
   "blob:",
   "https:",
+  "https://challenges.cloudflare.com",
 ];
 
 const ALLOWED_IMG_SRCS = [
@@ -34,7 +36,7 @@ const CSP = [
   "font-src 'self'",
   "connect-src " + ALLOWED_CONNECT_SRCS.join(" "),
   "worker-src 'self' blob:",
-  "frame-src 'self'",
+  "frame-src 'self' https://challenges.cloudflare.com",
   "frame-ancestors 'none'",
   "form-action 'self'",
 ].join("; ");

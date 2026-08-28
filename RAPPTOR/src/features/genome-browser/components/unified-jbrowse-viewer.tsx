@@ -180,15 +180,16 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       const trackId = `${assemblyName}-promoter-scores`;
       const plusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresPlus);
       const minusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresMinus);
+      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR raw scores (+ / - strands)';
       staticRegistry.scores = trackId;
       tracks.push({
         trackId,
-        name: 'RAPPTOR raw scores (+ / - strands)',
+        name: scoreTrackLabel,
         metadata: {
           rapptorMirroredScore: true,
           rapptorDownloads: [
-            predictionDownload('scores-plus', 'RAPPTOR raw scores (+ strand)', plusUrl, false).rapptorDownload,
-            predictionDownload('scores-minus', 'RAPPTOR raw scores (- strand)', minusUrl, false).rapptorDownload,
+            predictionDownload('scores-plus', `${scoreTrackLabel} (+ strand)`, plusUrl, false).rapptorDownload,
+            predictionDownload('scores-minus', `${scoreTrackLabel} (- strand)`, minusUrl, false).rapptorDownload,
           ],
         },
         assemblyNames: [assemblyName],
@@ -221,17 +222,47 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           displays: [{ type: 'MultiLinearWiggleDisplay', configuration: `${trackId}-display`, heightPreConfig: 180 }],
         },
       });
+    } else if (prediction?.assets.promoterScoresPlus) {
+      const trackId = `${assemblyName}-promoter-scores`;
+      const plusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresPlus);
+      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR raw scores (+ strand)';
+      staticRegistry.scores = trackId;
+      tracks.push({
+        trackId,
+        name: scoreTrackLabel,
+        metadata: predictionDownload('scores-plus', scoreTrackLabel, plusUrl, false),
+        assemblyNames: [assemblyName],
+        type: 'QuantitativeTrack',
+        adapter: { type: 'BigWigAdapter', bigWigLocation: { uri: plusUrl } },
+        displays: [{
+          displayId: `${trackId}-display`,
+          type: 'LinearWiggleDisplay',
+          defaultRendering: 'xyplot',
+          autoscale: 'local',
+          minScore: 0,
+          maxScore: 1,
+        }],
+      });
+      definitions.push({
+        token: 'scores',
+        snapshot: {
+          type: 'QuantitativeTrack',
+          configuration: trackId,
+          displays: [{ type: 'LinearWiggleDisplay', configuration: `${trackId}-display`, heightPreConfig: 180 }],
+        },
+      });
     }
 
     if (prediction) {
       const trackId = `${assemblyName}-predicted-promoters`;
       const dataUrl = resolveAsset(prediction.assetBase, prediction.assets.predictedPromoters);
+      const promoterTrackLabel = prediction.trackLabels?.promoters || 'RAPPTOR predicted promoters';
       staticRegistry.promoters = trackId;
       tracks.push({
         trackId,
-        name: 'RAPPTOR predicted promoters',
+        name: promoterTrackLabel,
         metadata: {
-          ...predictionDownload('promoters', 'RAPPTOR predicted promoters', dataUrl),
+          ...predictionDownload('promoters', promoterTrackLabel, dataUrl),
           rapptorEvidenceType: 'prediction',
           rapptorStrandFeatureMode: 'promoter',
         },

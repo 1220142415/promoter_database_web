@@ -183,19 +183,32 @@ describe('unified genome repository', () => {
               canonical_accession: 'GCA_000210855.2',
               prediction_accession: 'GCA_000210855.2',
               experimental_accession: 'GCF_000210855.2',
+            }, {
+              canonical_accession: 'GCF_000006985.1',
+              prediction_accession: 'GCF_000006985.1',
+              experimental_accession: 'GCF_000006985.1',
             }] };
           },
         };
       },
     } as unknown as D1Database;
+    const exactMetadataOnly = experimentalGenome('GCF_000006985.1');
+    exactMetadataOnly.primarySequence = null;
     const repository = new CompositeUnifiedGenomeRepository(
-      predictionRepository([makeCatalogRow(makeGenome({ accession: 'GCA_000210855.2' }))]),
-      experimentalRepository([experimentalGenome('GCF_000210855.2')]),
+      predictionRepository([
+        makeCatalogRow(makeGenome({ accession: 'GCA_000210855.2' })),
+        makeCatalogRow(makeGenome({ accession: 'GCF_000006985.1', predictedPromoterCount: 4335 })),
+      ]),
+      experimentalRepository([experimentalGenome('GCF_000210855.2'), exactMetadataOnly]),
       [],
       () => readD1UnifiedGenomeAliases(database),
     );
 
-    expect((await repository.search(query())).items).toHaveLength(1);
+    const items = (await repository.search(query())).items;
+    expect(items).toHaveLength(2);
+    expect(items.find((item) => item.canonicalAccession === 'GCF_000006985.1')).toMatchObject({
+      evidenceState: 'both', predictedPromoterCount: 4335, assemblyCompatibility: 'exact',
+    });
     await repository.getByAccession('GCF_000210855.2');
     expect(queries).toBe(1);
   });
@@ -317,18 +330,23 @@ describe('unified genome repository', () => {
     expect(searchCalls).toBeLessThanOrEqual(2);
   });
 
-  it('does not issue prediction lookups for metadata-only experimental assemblies', async () => {
-    const prediction = predictionRepository([makeCatalogRow(makeGenome({ accession: 'GCA_000000001.1' }))]);
+  it('links metadata-only experimental assemblies to an exact prediction accession', async () => {
+    const prediction = predictionRepository([makeCatalogRow(makeGenome({
+      accession: 'GCF_000000002.1', predictedPromoterCount: 42,
+    }))]);
     const metadataOnly = experimentalGenome('GCF_000000002.1');
     metadataOnly.primarySequence = null;
-    let detailCalls = 0;
-    const getByAccession = prediction.getByAccession.bind(prediction);
-    prediction.getByAccession = async (accession) => { detailCalls += 1; return getByAccession(accession); };
-    const repository = new CompositeUnifiedGenomeRepository(prediction, experimentalRepository([metadataOnly]));
+    const repository = new CompositeUnifiedGenomeRepository(prediction, experimentalRepository([metadataOnly]), [{
+      canonicalAccession: 'GCF_000000002.1', predictionAccession: 'GCF_000000002.1',
+      experimentalAccession: 'GCF_000000002.1', relation: 'exact',
+    }]);
 
     const result = await repository.search(query({ evidence: 'experimental' }));
-    expect(result.items[0]).toMatchObject({ experimentalAccession: 'GCF_000000002.1', evidenceState: 'experimental_only' });
-    expect(detailCalls).toBe(0);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      predictionAccession: 'GCF_000000002.1', experimentalAccession: 'GCF_000000002.1',
+      evidenceState: 'both', predictedPromoterCount: 42,
+    });
   });
 
   it('keeps prediction search and detail available before an experimental release is published', async () => {

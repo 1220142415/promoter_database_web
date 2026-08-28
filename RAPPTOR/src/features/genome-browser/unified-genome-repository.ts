@@ -124,7 +124,7 @@ export async function readD1UnifiedGenomeAliases(database: D1Database): Promise<
     'JOIN release_genomes experimental ON experimental.release_id = experimental_state.active_release_id',
     'AND experimental.genome_id = prediction.genome_id',
     'JOIN genome_registry registry ON registry.genome_id = prediction.genome_id',
-    'WHERE prediction_state.singleton = 1 AND prediction.accession <> experimental.accession',
+    'WHERE prediction_state.singleton = 1',
     'AND registry.canonical_accession IN (prediction.accession, experimental.accession)',
     'ORDER BY registry.canonical_accession',
   ].join(' ')).all<{
@@ -136,7 +136,7 @@ export async function readD1UnifiedGenomeAliases(database: D1Database): Promise<
     canonicalAccession: row.canonical_accession,
     predictionAccession: row.prediction_accession,
     experimentalAccession: row.experimental_accession,
-    relation: 'ncbi_reciprocal',
+    relation: row.prediction_accession === row.experimental_accession ? 'exact' : 'ncbi_reciprocal',
   }));
 }
 
@@ -376,14 +376,18 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
   }
 
   private addAlias(alias: UnifiedGenomeAlias) {
+    const validExact = alias.relation === 'exact'
+      && alias.canonicalAccession === alias.predictionAccession
+      && alias.predictionAccession === alias.experimentalAccession;
+    const validReciprocal = alias.relation === 'ncbi_reciprocal'
+      && alias.predictionAccession !== alias.experimentalAccession
+      && [alias.predictionAccession, alias.experimentalAccession].includes(alias.canonicalAccession);
     if (
-      alias.relation !== 'ncbi_reciprocal'
-      || !ACCESSION_PATTERN.test(alias.canonicalAccession)
+      !ACCESSION_PATTERN.test(alias.canonicalAccession)
       || !ACCESSION_PATTERN.test(alias.predictionAccession)
       || !ACCESSION_PATTERN.test(alias.experimentalAccession)
-      || alias.predictionAccession === alias.experimentalAccession
-      || ![alias.predictionAccession, alias.experimentalAccession].includes(alias.canonicalAccession)
-    ) throw new UnifiedGenomeAliasError('A reciprocal alias must name two distinct accessions and choose one as canonical.');
+      || !validExact && !validReciprocal
+    ) throw new UnifiedGenomeAliasError('A genome link must be an exact accession or a reciprocal GCA/GCF alias.');
     const existing = this.aliasByCanonical.get(alias.canonicalAccession);
     if (existing
       && existing.predictionAccession === alias.predictionAccession
@@ -394,7 +398,7 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
     if (existing) {
       throw new UnifiedGenomeAliasError(`Duplicate canonical accession: ${alias.canonicalAccession}`);
     }
-    for (const accession of [alias.predictionAccession, alias.experimentalAccession]) {
+    for (const accession of new Set([alias.predictionAccession, alias.experimentalAccession])) {
       if (this.canonicalByAccession.has(accession)) throw new UnifiedGenomeAliasError(`Accession belongs to multiple aliases: ${accession}`);
       this.canonicalByAccession.set(accession, alias.canonicalAccession);
     }
@@ -423,12 +427,14 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
     const predictionSha256 = prediction.referenceSha256 || prediction.details?.referenceSha256 || null;
     const experimentalSha256 = experimental.referenceSha256 || null;
     const alias = this.aliasByCanonical.get(canonicalAccession);
+    const linkedCompatibility = alias?.relation === 'exact' ? 'exact'
+      : alias ? 'reciprocal_alias' : null;
     if (predictionSha256 && experimentalSha256) {
       if (predictionSha256 !== experimentalSha256) return 'mismatch';
-      return alias ? 'reciprocal_alias'
-        : prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch';
+      return linkedCompatibility
+        || (prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch');
     }
-    if (alias) return 'reciprocal_alias';
+    if (linkedCompatibility) return linkedCompatibility;
     const predictionReference = prediction.details?.referenceAccession || prediction.genome.accession;
     const experimentalReference = experimental.referenceAccession || experimental.genbankAssemblyAccession || experimental.accession;
     if (predictionReference !== experimentalReference) return 'mismatch';

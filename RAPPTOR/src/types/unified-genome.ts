@@ -16,7 +16,7 @@ export interface UnifiedGenomeAlias {
   canonicalAccession: string;
   predictionAccession: string;
   experimentalAccession: string;
-  relation: 'ncbi_reciprocal';
+  relation: 'exact' | 'ncbi_reciprocal';
 }
 
 export interface UnifiedGenomeReleases {

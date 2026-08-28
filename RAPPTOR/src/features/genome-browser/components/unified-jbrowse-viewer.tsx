@@ -116,7 +116,11 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   const studies = useMemo(() => sortedStudies(experimental?.studies || []), [experimental?.studies]);
   const allowedStudyIds = useMemo(() => new Set(studies.map((study) => study.studyId)), [studies]);
   const assemblyName = prediction?.assemblyName || experimental?.assemblyName || experimental!.accession;
-  const defaultLocus = experimental?.defaultLocus || prediction!.defaultLocus;
+  // The prediction assembly supplies the reference FASTA whenever both
+  // evidence types are present, so its contig name is the only safe default
+  // location. Experimental metadata may use an accession fallback that is
+  // not a FASTA reference name.
+  const defaultLocus = prediction?.defaultLocus || experimental?.defaultLocus || `${assemblyName}:1-10000`;
   const [shareAvailable, setShareAvailable] = useState(false);
   const [shareUnavailableReason, setShareUnavailableReason] = useState(
     'Sharing is available for a single reference sequence after the browser loads.',

@@ -145,6 +145,16 @@ describe('unified JBrowse viewer', () => {
     expect(config.tracks[2].metadata).toMatchObject({ rapptorEvidenceType: 'experimental_tss' });
   });
 
+  it('uses the prediction reference location when experimental metadata has a fallback accession', async () => {
+    const tree = stateTree();
+    vi.mocked(createViewState).mockReturnValue(tree as never);
+    const experimentalAssembly = experimental();
+    experimentalAssembly.defaultLocus = `${experimentalAssembly.accession}:1-10000`;
+    experimentalAssembly.primarySequence = null;
+    render(<UnifiedJBrowseViewer prediction={prediction()} experimental={experimentalAssembly} />);
+    await waitFor(() => expect(tree.session.view.navToLocString).toHaveBeenCalledWith('NC_016810.1:1-10000', accession));
+  });
+
   it('supports an experimental-only assembly without inventing prediction tracks', () => {
     render(<UnifiedJBrowseViewer experimental={experimental()} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {

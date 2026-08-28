@@ -309,10 +309,15 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       const trackId = `${assemblyName}-experimental-tss-${study.studyId}`;
       const dataUrl = resolveAsset(experimental!.assetBase, study.assets.data);
       studyRegistry[study.studyId] = trackId;
+      const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(study.pmid)}/`;
+      const doiUrl = study.publication.doi
+        ? `https://doi.org/${study.publication.doi.split('/').map(encodeURIComponent).join('/')}`
+        : null;
       tracks.push({
         trackId,
-        name: `Experimental TSS · PMID ${study.pmid}`,
-        description: study.publication.title || `${study.recordCount.toLocaleString('en-US')} original observations`,
+        name: `Experimental TSS · ${study.year} · PMID ${study.pmid}`,
+        description: [study.publication.title, study.publication.journal, `${study.recordCount.toLocaleString('en-US')} original observations`]
+          .filter(Boolean).join(' · '),
         metadata: {
           rapptorEvidenceType: 'experimental_tss',
           rapptorStudy: {
@@ -322,6 +327,9 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
             recordCount: study.recordCount,
             title: study.publication.title,
             journal: study.publication.journal,
+            authors: study.publication.authors,
+            pubmedUrl,
+            doiUrl,
           },
           rapptorExperimentalDownloads: [
             {

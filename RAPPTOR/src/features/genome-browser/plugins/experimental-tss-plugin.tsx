@@ -65,7 +65,7 @@ export const ExperimentalTssTooltip = observer(function ExperimentalTssTooltip({
         {refName}:{experimentalTssCoordinate(feature).toLocaleString('en-US')}<br />
         strand: {strandLabel(feature.get('strand'))}
         {study ? <><br />study: {study}</> : null}
-        {pmid ? <><br />PMID: {pmid}</> : null}
+        {pmid ? <><br />PMID: {pmid} <a href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(pmid)}/`} target="_blank" rel="noreferrer">Open article</a></> : null}
       </div>
     </BaseTooltip>
   );

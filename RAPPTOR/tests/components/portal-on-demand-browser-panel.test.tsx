@@ -95,14 +95,8 @@ describe('on-demand genome browser', () => {
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-locus', 'NC_000001.1:1-10000');
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-scores', 'true');
-    expect(screen.getByTestId('prepared-browser')).toHaveAttribute(
-      'data-score-plus',
-      plannedAssets.promoterScoresPlus,
-    );
-    expect(screen.getByTestId('prepared-browser')).toHaveAttribute(
-      'data-score-minus',
-      plannedAssets.promoterScoresMinus,
-    );
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-plus', 'blob:scores-plus');
+    expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-score-minus', 'blob:scores-minus');
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');
     await vi.waitFor(() => expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableScoresAvailableAnnotationAvailable'));
     await vi.waitFor(() => expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(5));
@@ -159,7 +153,7 @@ describe('on-demand genome browser', () => {
     expect(shouldDownloadWholeAsset).toHaveBeenCalledTimes(2);
   });
 
-  it('starts the browser before score-size checks finish', async () => {
+  it('waits for small score files before mounting the browser', async () => {
     let resolveSize!: (small: boolean) => void;
     const sizeCheck = new Promise<boolean>((resolve) => { resolveSize = resolve; });
     vi.mocked(shouldDownloadWholeAsset).mockReturnValue(sizeCheck);
@@ -172,9 +166,10 @@ describe('on-demand genome browser', () => {
       />,
     );
 
+    expect(screen.queryByTestId('prepared-browser')).not.toBeInTheDocument();
+    resolveSize(false);
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-score-plus', plannedAssets.promoterScoresPlus);
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
-    resolveSize(false);
     await vi.waitFor(() => expect(screen.getByLabelText('Genome files')).toHaveTextContent('ScoresAvailable'));
   });
 

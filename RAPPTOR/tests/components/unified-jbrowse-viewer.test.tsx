@@ -123,8 +123,8 @@ describe('unified JBrowse viewer', () => {
     expect(config.tracks.map((track) => track.name)).toEqual([
       'RAPPTOR raw scores (+ / - strands)',
       'RAPPTOR predicted promoters',
-      'Experimental TSS · PMID 22251276',
-      'Experimental TSS · PMID 22538806',
+      'Experimental TSS · 2012 · PMID 22251276',
+      'Experimental TSS · 2013 · PMID 22538806',
       'NCBI genome annotation',
     ]);
     expect(config.defaultSession.view.tracks.map((track) => track.configuration)).toEqual([
@@ -162,8 +162,8 @@ describe('unified JBrowse viewer', () => {
       assembly: { sequence: { adapter: { type: string } } };
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'Experimental TSS · PMID 22251276',
-      'Experimental TSS · PMID 22538806',
+      'Experimental TSS · 2012 · PMID 22251276',
+      'Experimental TSS · 2013 · PMID 22538806',
       'NCBI genome annotation',
     ]);
     expect(config.assembly.sequence.adapter.type).toBe('BgzipFastaAdapter');

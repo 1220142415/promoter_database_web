@@ -61,5 +61,6 @@ describe('experimental TSS plugin', () => {
     expect(screen.getByTestId('experimental-tss-tooltip')).toHaveTextContent('NC_016810.1:100');
     expect(screen.getByTestId('experimental-tss-tooltip')).toHaveTextContent('strand: -');
     expect(screen.getByTestId('experimental-tss-tooltip')).toHaveTextContent('PMID: 22251276');
+    expect(screen.getByTestId('experimental-tss-tooltip').querySelector('a')).toHaveAttribute('href', 'https://pubmed.ncbi.nlm.nih.gov/22251276/');
   });
 });

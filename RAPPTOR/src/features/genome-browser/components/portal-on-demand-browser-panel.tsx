@@ -122,13 +122,10 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
           assetCacheKey(cachePrefix, 'scores-minus', plannedAssets.promoterScoresMinus, plannedAssets.cacheVersions.promoterScoresMinus),
         ] as const;
 
-        // Range streaming is the first-load path. Cache synchronization runs in
-        // the background and never delays the browser or turns a cache failure
-        // into a genome failure.
         const syncSmallScore = async (url: string, cacheKey: string) => {
           try {
-            if (!await shouldDownloadWholeAsset(url, controller.signal)) return false;
-            await loadCachedGenomeAsset(url, cacheKey, controller.signal, {
+            if (!await shouldDownloadWholeAsset(url, controller.signal)) return null;
+            return await loadCachedGenomeAsset(url, cacheKey, controller.signal, {
               maximumBytes: MAX_FULL_SCORE_DOWNLOAD_BYTES,
               onProgress: (progress) => {
                 if (!controller.signal.aborted) {
@@ -136,16 +133,16 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
                 }
               },
             });
-            return true;
           } catch {
-            return false;
+            return null;
           }
         };
 
         const loadScoreSource = async (url: string, cacheKey: string) => {
           const cached = await readCachedGenomeAsset(cacheKey, { maximumBytes: MAX_FULL_SCORE_DOWNLOAD_BYTES });
           if (cached) return cached;
-          void syncSmallScore(url, cacheKey);
+          const downloaded = await syncSmallScore(url, cacheKey);
+          if (downloaded) return downloaded;
           return url;
         };
 

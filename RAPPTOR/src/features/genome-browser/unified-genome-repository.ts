@@ -125,7 +125,8 @@ export async function readD1UnifiedGenomeAliases(database: D1Database): Promise<
     'AND experimental.genome_id = prediction.genome_id',
     'JOIN genome_registry registry ON registry.genome_id = prediction.genome_id',
     'WHERE prediction_state.singleton = 1',
-    'AND registry.canonical_accession IN (prediction.accession, experimental.accession)',
+    'AND (registry.canonical_accession IN (prediction.accession, experimental.accession)',
+    'OR prediction.accession = experimental.accession)',
     'ORDER BY registry.canonical_accession',
   ].join(' ')).all<{
     canonical_accession: string;
@@ -377,7 +378,6 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
 
   private addAlias(alias: UnifiedGenomeAlias) {
     const validExact = alias.relation === 'exact'
-      && alias.canonicalAccession === alias.predictionAccession
       && alias.predictionAccession === alias.experimentalAccession;
     const validReciprocal = alias.relation === 'ncbi_reciprocal'
       && alias.predictionAccession !== alias.experimentalAccession

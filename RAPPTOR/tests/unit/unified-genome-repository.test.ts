@@ -184,7 +184,7 @@ describe('unified genome repository', () => {
               prediction_accession: 'GCA_000210855.2',
               experimental_accession: 'GCF_000210855.2',
             }, {
-              canonical_accession: 'GCF_000006985.1',
+              canonical_accession: 'GCA_000006985.1',
               prediction_accession: 'GCF_000006985.1',
               experimental_accession: 'GCF_000006985.1',
             }] };
@@ -206,7 +206,8 @@ describe('unified genome repository', () => {
 
     const items = (await repository.search(query())).items;
     expect(items).toHaveLength(2);
-    expect(items.find((item) => item.canonicalAccession === 'GCF_000006985.1')).toMatchObject({
+    expect(items.find((item) => item.canonicalAccession === 'GCA_000006985.1')).toMatchObject({
+      aliases: ['GCA_000006985.1', 'GCF_000006985.1'],
       evidenceState: 'both', predictedPromoterCount: 4335, assemblyCompatibility: 'exact',
     });
     await repository.getByAccession('GCF_000210855.2');

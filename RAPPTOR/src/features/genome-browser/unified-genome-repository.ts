@@ -483,7 +483,9 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       const canonical = this.resolveCanonicalAccession(genome.accession)!;
       const alias = this.aliasByCanonical.get(canonical);
       const predictionAccession = alias?.predictionAccession || canonical;
-      const match = await this.predictionRepository.getByAccession(predictionAccession);
+      const match = alias || genome.primarySequence
+        ? await this.predictionRepository.getByAccession(predictionAccession)
+        : null;
       if (match && match.releaseId !== predictionRelease.releaseId) {
         throw new Error('Prediction release changed while experimental evidence was being composed.');
       }

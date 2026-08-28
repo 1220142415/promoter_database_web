@@ -44,7 +44,7 @@ export default function GenomeFileStatus({ states, progress = {} }: Props) {
         {files.map(({ kind, label, state }) => {
           const Icon = stateIcons[state];
           const currentProgress = progress[kind];
-          const statusLabel = currentProgress && (state === 'preparing' || state === 'available')
+          const statusLabel = currentProgress && state === 'preparing'
             ? currentProgress.label
             : stateLabels[state];
           return (

@@ -5,7 +5,7 @@ RAPPTOR is a genome-first portal for the GTDB test release supplied on 2026-08-0
 See [`docs/architecture.md`](docs/architecture.md) for directory ownership,
 runtime request flows, and file-placement rules.
 
-Experimental transcription-start-site observations use an independent release and asset catalog, but are rendered with predictions and annotations on the unified `/genomes/[accession]` page. Public discovery stays disabled unless `RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE=on`; the legacy `/experimental-tss/genomes/[accession]` URL redirects to the unified page.
+Experimental transcription-start-site observations use an independent release and asset catalog, but are rendered with predictions and annotations on the unified `/genomes/[accession]` page. Public discovery is enabled by default; set `RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE=off` to hide it. The legacy `/experimental-tss/genomes/[accession]` URL redirects to the unified page.
 
 ## Release
 

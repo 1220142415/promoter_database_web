@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe('experimental data asset proxy', () => {
   it('returns 404 without resolving assets when public access is off', async () => {
-    delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
+    process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = 'off';
     const response = await GET(new Request('http://localhost/test'), context(['reference.fa.gz']));
     expect(response.status).toBe(404);
     expect(resolveAsset).not.toHaveBeenCalled();

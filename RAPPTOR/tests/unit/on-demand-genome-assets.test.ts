@@ -3,6 +3,7 @@ import {
   firstFastaRefName,
   loadCachedGenomeAsset,
   maybeDecompressGzip,
+  readCachedGenomeAsset,
   shouldDownloadWholeAsset,
 } from '@/features/genome-browser/on-demand-genome-assets';
 
@@ -70,6 +71,18 @@ describe('on-demand genome assets', () => {
     expect(cache.delete).not.toHaveBeenCalled();
     expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ phase: 'downloading', loaded: 17, total: 17 }));
     expect(onProgress).toHaveBeenLastCalledWith({ phase: 'cached', loaded: 17, total: 17 });
+  });
+
+  it('checks Cache Storage without a network fallback', async () => {
+    const cache = { match: vi.fn().mockResolvedValue(new Response('cached scores')) } as unknown as Cache;
+    const fetchMock = vi.fn();
+    vi.stubGlobal('caches', { open: vi.fn().mockResolvedValue(cache) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const blob = await readCachedGenomeAsset('release/accession/scores-plus');
+
+    expect(await blob?.text()).toBe('cached scores');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('rejects static assets before reading a declared oversized response body', async () => {

@@ -22,6 +22,7 @@
         "data:d1:legacy": "node scripts/database/build-legacy-d1-import.mjs",
         "data:d1:sample": "node scripts/database/build-d1-feature-sample.mjs",
         "data:d1:gtdb-metadata": "node scripts/database/build-gtdb-metadata-d1-import.mjs",
+        "data:d1:experimental-hf": "node scripts/database/build-experimental-tss-hf-release.mjs",
         "hf:plan": "node scripts/huggingface/create-upload-plan.mjs",
         "hf:upload:browser": "node scripts/huggingface/upload-hf-open-browser.mjs",
         "hf:reclaim:pack": "node scripts/huggingface/reclaim-uploaded-pack.mjs",

@@ -18,7 +18,7 @@ crons = ["17 3 * * *"]
 RAPPTOR_ANALYTICS = "on"
 RAPPTOR_ANALYTICS_PRECISION = "city"
 RAPPTOR_USAGE_PUBLIC_PAGE = "on"
-RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = "off"
+RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = "on"
 UNIFIED_GENOME_ALIASES_JSON = '[{"canonicalAccession":"GCA_000007325.1","predictionAccession":"GCA_000007325.1","experimentalAccession":"GCF_000007325.1","relation":"ncbi_reciprocal"}]'
 
 [[d1_databases]]

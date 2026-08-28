@@ -29,8 +29,10 @@ describe('portal header', () => {
     const open = screen.getByRole('button', { name: 'Open navigation' });
     expect(open).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('link', { name: 'Genomes' })).toHaveClass('is-active');
+    expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage');
     expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Cyanobacteria' })).not.toBeInTheDocument();
 
     await user.click(open);
     expect(screen.getByRole('button', { name: 'Close navigation' })).toHaveAttribute('aria-expanded', 'true');
@@ -43,5 +45,6 @@ describe('portal header', () => {
   it('hides usage when the public report is switched off', () => {
     render(<PortalHeader />);
     expect(screen.queryByRole('link', { name: 'Usage' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
   });
 });

@@ -103,7 +103,13 @@ function assetUrl(base: string, path: string, download = false) {
   return `${base.replace(/\/$/, '')}/${path}${download ? '?download=1' : ''}`;
 }
 
-function ExperimentalStudies({ genome }: { genome: ExperimentalTssGenome }) {
+function ExperimentalStudies({
+  genome,
+  showReferenceDownload,
+}: {
+  genome: ExperimentalTssGenome;
+  showReferenceDownload: boolean;
+}) {
   return (
     <section className="experimental-download-section" aria-labelledby="experimental-evidence-heading">
       <div className="experimental-section-heading">
@@ -111,7 +117,7 @@ function ExperimentalStudies({ genome }: { genome: ExperimentalTssGenome }) {
         <p>{genome.studies.length} independent study {genome.studies.length === 1 ? 'track' : 'tracks'} · {genome.studies.reduce((sum, study) => sum + study.recordCount, 0).toLocaleString()} raw observations.</p>
       </div>
       <div className="experimental-reference-downloads" aria-label="Experimental assembly downloads">
-        <a href={assetUrl(genome.assetBase, genome.assets.fasta, true)} download><span><strong>Reference sequence</strong><small>{genome.assets.fastaFai && genome.assets.fastaGzi ? 'BGZF FASTA' : 'FASTA'}</small></span><DownloadRoundedIcon aria-hidden="true" /></a>
+        {showReferenceDownload ? <a href={assetUrl(genome.assetBase, genome.assets.fasta, true)} download><span><strong>Reference sequence</strong><small>{genome.assets.fastaFai && genome.assets.fastaGzi ? 'BGZF FASTA' : 'FASTA'}</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
         {genome.assets.ncbiAnnotations ? <a href={assetUrl(genome.assetBase, genome.assets.ncbiAnnotations, true)} download><span><strong>NCBI annotation</strong><small>Indexed GFF3</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
       </div>
       <div className="experimental-study-details">
@@ -185,7 +191,11 @@ export default async function GenomeDetailPage({
   const organismName = genome?.organismName || experimental!.organismName;
   const strain = genome?.strain || experimental?.strain;
   const browserPrediction = predictionAssembly(prediction);
-  const browserExperimental = experimental && (!prediction || match.overlayAllowed === true) ? experimental : null;
+  const browserExperimental = experimental
+    && (prediction || experimental.primarySequence)
+    && (!prediction || match.overlayAllowed === true)
+    ? experimental
+    : null;
   const experimentalObservations = experimental?.studies.reduce((sum, study) => sum + study.recordCount, 0) || 0;
   const promoterDensityPerMb = genome?.genomeSizeBp && genome.genomeSizeBp > 0
     ? genome.predictedPromoterCount * 1_000_000 / genome.genomeSizeBp
@@ -294,7 +304,7 @@ export default async function GenomeDetailPage({
           </div>
         </section>
 
-        {experimental ? <ExperimentalStudies genome={experimental} /> : null}
+        {experimental ? <ExperimentalStudies genome={experimental} showReferenceDownload={!prediction && Boolean(experimental.primarySequence)} /> : null}
       </section>
     </main>
   );

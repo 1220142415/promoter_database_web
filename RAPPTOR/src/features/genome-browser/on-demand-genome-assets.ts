@@ -14,6 +14,11 @@ type LoadGenomeAssetOptions = {
   onProgress?: (progress: GenomeAssetProgress) => void;
 };
 
+function cacheRequest(cacheKey: string) {
+  const cacheOrigin = typeof location === 'undefined' ? 'https://rapptor.invalid' : location.origin;
+  return new Request(new URL(`/__rapptor-browser-cache/${encodeURIComponent(cacheKey)}`, cacheOrigin));
+}
+
 function responseSize(headers: Headers) {
   const header = headers.get('content-length') || headers.get('x-linked-size');
   if (!header) return null;
@@ -87,8 +92,7 @@ export async function loadCachedGenomeAsset(
   signal: AbortSignal,
   { maximumBytes = MAX_STATIC_ASSET_DOWNLOAD_BYTES, onProgress }: LoadGenomeAssetOptions = {},
 ) {
-  const cacheOrigin = typeof location === 'undefined' ? 'https://rapptor.invalid' : location.origin;
-  const request = new Request(new URL(`/__rapptor-browser-cache/${encodeURIComponent(cacheKey)}`, cacheOrigin));
+  const request = cacheRequest(cacheKey);
   let cache: Cache | null = null;
   let response: Response | undefined;
   if ('caches' in globalThis) {
@@ -127,6 +131,24 @@ export async function loadCachedGenomeAsset(
   }
   onProgress?.({ phase: 'cached', loaded: blob.size, total: blob.size });
   return blob;
+}
+
+/** Read a complete asset from Cache Storage without falling back to network. */
+export async function readCachedGenomeAsset(
+  cacheKey: string,
+  { maximumBytes = MAX_STATIC_ASSET_DOWNLOAD_BYTES, onProgress }: LoadGenomeAssetOptions = {},
+) {
+  if (!('caches' in globalThis)) return null;
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const response = await cache.match(cacheRequest(cacheKey));
+    if (!response) return null;
+    const blob = await readBlob(response, maximumBytes);
+    onProgress?.({ phase: 'cached', loaded: blob.size, total: blob.size });
+    return blob;
+  } catch {
+    return null;
+  }
 }
 
 export async function shouldDownloadWholeAsset(

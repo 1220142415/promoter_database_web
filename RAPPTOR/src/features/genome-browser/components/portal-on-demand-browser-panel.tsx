@@ -11,6 +11,7 @@ import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-br
 import {
   firstFastaRefName,
   loadCachedGenomeAsset,
+  readCachedGenomeAsset,
   MAX_FULL_SCORE_DOWNLOAD_BYTES,
   maybeDecompressGzip,
   shouldDownloadWholeAsset,
@@ -141,24 +142,19 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
           }
         };
 
-        void Promise.all(scoreUrls.map((url, index) => syncSmallScore(url, scoreKeys[index]))).then((cached) => {
-          if (controller.signal.aborted) return;
-          const cachedCount = cached.filter(Boolean).length;
-          setFileStates((current) => ({ ...current, scores: 'available' }));
-          setFileProgress((current) => ({
-            ...current,
-            scores: {
-              label: cachedCount === cached.length
-                ? 'Cached'
-                : cachedCount > 0
-                  ? 'Partially cached · range streaming'
-                  : 'Range streaming',
-              value: 100,
-            },
-          }));
-        });
+        const loadScoreSource = async (url: string, cacheKey: string) => {
+          const cached = await readCachedGenomeAsset(cacheKey, { maximumBytes: MAX_FULL_SCORE_DOWNLOAD_BYTES });
+          if (cached) return cached;
+          void syncSmallScore(url, cacheKey);
+          return url;
+        };
 
-        return scoreUrls;
+        const sources = await Promise.all(scoreUrls.map((url, index) => loadScoreSource(url, scoreKeys[index])));
+        if (!controller.signal.aborted) {
+          setFileStates((current) => ({ ...current, scores: 'available' }));
+          setFileProgress((current) => ({ ...current, scores: { label: 'Available', value: 100 } }));
+        }
+        return sources;
       };
       const [reference, promoterGff, annotationGff, scores] = await Promise.all([
         load('reference', plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference)),

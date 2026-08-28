@@ -41,7 +41,7 @@ describe('unified genome catalog page', () => {
   });
 
   it('hides experimental statistics and ignores its URL filter when switched off', async () => {
-    delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
+    process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = 'off';
     vi.mocked(unifiedGenomeRepository.search).mockResolvedValue(result);
     render(await GenomesPage({ searchParams: Promise.resolve({ evidence: 'experimental' }) }));
 

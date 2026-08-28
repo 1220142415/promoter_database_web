@@ -36,7 +36,6 @@ export default function HomePage() {
             <p className="portal-hero-lead">Genome-resolved promoter predictions, reference assemblies and contextual NCBI annotations in a release-ready research portal.</p>
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
-              <Link href="/cyanobacteria" className="portal-button">Cyanobacteria collection <ArrowForwardRoundedIcon fontSize="small" /></Link>
               {showExperimental ? <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link> : null}
             </div>
           </div>

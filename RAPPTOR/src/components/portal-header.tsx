@@ -9,13 +9,15 @@ import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 const links = [
   { href: '/', label: 'Overview' },
   { href: '/genomes', label: 'Genomes' },
-  { href: '/cyanobacteria', label: 'Cyanobacteria' },
 ];
 
 export default function PortalHeader({ showUsage = false }: { showUsage?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const visibleLinks = showUsage ? [...links, { href: '/usage', label: 'Usage' }] : links;
+  const visibleLinks = [
+    ...links,
+    ...(showUsage ? [{ href: '/usage', label: 'Usage' }] : []),
+  ];
 
   return (
     <header className="portal-header">

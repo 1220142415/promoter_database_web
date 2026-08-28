@@ -46,7 +46,7 @@ describe('legacy experimental TSS routes', () => {
   });
 
   it('returns not found for both legacy routes when public access is off', async () => {
-    delete process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE;
+    process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = 'off';
     expect(() => ExperimentalTssPage()).toThrow('not-found');
     await expect(ExperimentalGenomePage({ params: Promise.resolve({ accession: 'GCF_000210855.2' }) }))
       .rejects.toThrow('not-found');

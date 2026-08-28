@@ -21,12 +21,12 @@ describe('cyanobacteria collection pages', () => {
     expect(screen.getByText('35,720')).toBeInTheDocument();
   });
 
-  it('maps the verified ASM970v1 study into the unified browser', async () => {
+  it('keeps unpublished cyanobacteria evidence out of the public browser config', async () => {
     const page = await CyanobacteriaGenomePage({ params: Promise.resolve({ genomeId: 'ASM970v1' }) });
     render(page);
-    expect(screen.getByText('Literature evidence')).toBeInTheDocument();
+    expect(screen.queryByText('Literature evidence')).not.toBeInTheDocument();
     const config = JSON.parse(screen.getByTestId('cyanobacteria-browser-config').textContent || '{}');
     expect(config.prediction.assemblyName).toBe('ASM970v1');
-    expect(config.experimental.studies[0].pmid).toBe('22135468');
+    expect(config.experimental).toBeNull();
   });
 });

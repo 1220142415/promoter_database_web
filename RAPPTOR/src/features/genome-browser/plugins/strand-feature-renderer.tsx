@@ -101,6 +101,18 @@ export function isFormalPromoter(feature: Feature) {
   return type === 'promoter' && end - start === 100;
 }
 
+export function isPromoterPeak(feature: Feature) {
+  const type = String(feature.get('type') || '').toLowerCase();
+  const { start, end } = featureCoordinates(feature);
+  return type === 'promoter_peak' && end - start <= 1;
+}
+
+export function isExperimentalTssPoint(feature: Feature) {
+  const type = String(feature.get('type') || '').toLowerCase();
+  const { start, end } = featureCoordinates(feature);
+  return type === 'experimental_tss' && end - start <= 1;
+}
+
 function featureCoordinates(feature: Feature) {
   const start = Number(feature.get('start'));
   const end = Number(feature.get('end'));
@@ -120,6 +132,14 @@ export function promoterAnchorCoordinate(feature: Feature) {
 
 export function promoterAnchorPosition(feature: Feature) {
   return promoterAnchorCoordinate(feature) - 0.5;
+}
+
+export function promoterPeakCoordinate(feature: Feature) {
+  return featureCoordinates(feature).start + 1;
+}
+
+export function promoterPeakPosition(feature: Feature) {
+  return promoterPeakCoordinate(feature) - 0.5;
 }
 
 export function isRegionFeature(feature: Feature) {
@@ -275,7 +295,13 @@ function separateArrowFromBody(
   return { left, right, placement };
 }
 
-function promoterFlag(anchorX: number, top: number, direction: NormalizedStrand, color: string) {
+function promoterFlag(
+  anchorX: number,
+  top: number,
+  direction: NormalizedStrand,
+  color: string,
+  anchorKind: '80th-base' | 'exact-peak' = '80th-base',
+) {
   const poleTop = top + PROMOTER_FLAG_TOP_OFFSET;
   const poleBottom = poleTop + PROMOTER_FLAG_POLE_HEIGHT;
   const flagCenter = poleTop + PROMOTER_FLAG_HALF_HEIGHT;
@@ -283,7 +309,7 @@ function promoterFlag(anchorX: number, top: number, direction: NormalizedStrand,
   return <>
     <line
       data-role="promoter-flag-pole"
-      data-anchor="80th-base"
+      data-anchor={anchorKind}
       x1={anchorX}
       x2={anchorX}
       y1={poleTop}
@@ -299,10 +325,65 @@ function promoterFlag(anchorX: number, top: number, direction: NormalizedStrand,
   </>;
 }
 
+function renderPromoterPeak(
+  feature: Feature,
+  props: Pick<StrandRendererProps, 'bpPerPx' | 'displayModel' | 'layout' | 'regions'>,
+) {
+  const { bpPerPx, displayModel, layout, regions } = props;
+  const region = regions[0];
+  const id = String(feature.id());
+  const { start, end } = featureCoordinates(feature);
+  const strand = normalizeStrand(feature.get('strand'));
+  const direction = screenDirection(strand, region.reversed);
+  const color = strandColor(strand);
+  const anchorPosition = promoterPeakPosition(feature);
+  const anchorX = bpToPx(anchorPosition, region, bpPerPx);
+  const viewportWidth = (region.end - region.start) / bpPerPx;
+  if (!endpointInViewport(anchorX, viewportWidth)) return null;
+  const bounds = promoterFlagLayoutBounds(start, end, anchorPosition, strand, bpPerPx);
+  const top = layout.addRect(id, bounds.start, bounds.end, PROMOTER_GLYPH_HEIGHT, {
+    label: feature.get('name') || feature.get('id'),
+    refName: feature.get('refName'),
+  });
+  if (top === null) return null;
+
+  const flagTipX = anchorX + direction * PROMOTER_FLAG_LENGTH;
+  const visualLeft = Math.min(anchorX, flagTipX) - PROMOTER_FLAG_HIT_PADDING;
+  const visualRight = Math.max(anchorX, flagTipX) + PROMOTER_FLAG_HIT_PADDING;
+  const visualTop = top + PROMOTER_FLAG_TOP_OFFSET;
+  const visualBottom = visualTop + PROMOTER_FLAG_POLE_HEIGHT;
+  const selected = displayModel?.selectedFeatureId === id;
+  const hovered = displayModel?.featureIdUnderMouse === id
+    || displayModel?.featureUnderMouse?.id?.() === id;
+  const score = feature.get('prediction_score') ?? feature.get('score');
+  const coordinate = promoterPeakCoordinate(feature);
+  const refName = String(feature.get('refName') || region.refName || 'reference');
+  const experimentalTss = isExperimentalTssPoint(feature);
+
+  return (
+    <g
+      key={id}
+      data-feature-id={id}
+      data-feature-type={experimentalTss ? 'experimental_tss' : 'promoter_peak'}
+      data-formal-promoter="false"
+      data-strand={strandLabel(strand)}
+      data-screen-direction={direction}
+    >
+      <title>{experimentalTss
+        ? `Experimentally supported TSS: ${refName}:${coordinate}`
+        : `Predicted promoter peak: ${refName}:${coordinate}; model score ${score ?? 'not reported'}`}</title>
+      {promoterFlag(anchorX, top, direction, color, 'exact-peak')}
+      {hovered ? <rect data-role="promoter-hover" x={visualLeft} y={visualTop} width={visualRight - visualLeft} height={visualBottom - visualTop} fill="#000000" fillOpacity="0.12" /> : null}
+      {selected ? <rect data-role="promoter-selected" x={visualLeft - 1} y={visualTop - 1} width={visualRight - visualLeft + 2} height={visualBottom - visualTop + 2} fill="none" stroke="#00b8ff" strokeWidth="2" /> : null}
+    </g>
+  );
+}
+
 function renderPromoterFeature(
   feature: Feature,
   props: Pick<StrandRendererProps, 'bpPerPx' | 'displayModel' | 'layout' | 'regions'>,
 ) {
+  if (isPromoterPeak(feature) || isExperimentalTssPoint(feature)) return renderPromoterPeak(feature, props);
   const { bpPerPx, displayModel, layout, regions } = props;
   const region = regions[0];
   const id = String(feature.id());

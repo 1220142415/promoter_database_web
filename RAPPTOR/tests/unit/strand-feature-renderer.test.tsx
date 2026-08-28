@@ -17,11 +17,14 @@ import {
   UNKNOWN_STRAND_COLOR,
   annotationLayoutId,
   annotationLabelPlacement,
+  isExperimentalTssPoint,
   isFormalPromoter,
+  isPromoterPeak,
   isRegionFeature,
   normalizeStrand,
   promoterAnchorCoordinate,
   promoterFlagLayoutBounds,
+  promoterPeakCoordinate,
   screenDirection,
   shouldShowPromoterBody,
   strandColor,
@@ -186,14 +189,42 @@ describe('strand feature SVG output', () => {
     expect(glyph?.querySelector('[data-role="promoter-flag"]')?.getAttribute('points')).toContain(String(220.5 - PROMOTER_FLAG_LENGTH));
   });
 
-  it('renders legacy promoter peaks as point-compatible bodies without an overlapping arrow or false anchor', () => {
+  it('renders promoter peaks as exact-coordinate flags without interval bodies', () => {
     const peak = feature('peak', 'promoter_peak', -1, 50, 51);
     const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
     const glyph = container.querySelector('[data-feature-id="peak"]');
+    expect(isPromoterPeak(peak)).toBe(true);
+    expect(promoterPeakCoordinate(peak)).toBe(51);
     expect(glyph).toHaveAttribute('data-formal-promoter', 'false');
-    expect(glyph?.querySelector('[data-role="promoter-body"]')).toHaveAttribute('width', '3');
-    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toBeNull();
+    expect(glyph?.querySelector('[data-role="promoter-body"]')).toBeNull();
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('data-anchor', 'exact-peak');
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('x1', '50.5');
+    expect(glyph?.querySelector('[data-role="promoter-flag"]')).toHaveAttribute('fill', MINUS_STRAND_COLOR);
     expect(glyph?.querySelector('[data-role="promoter-arrow"]')).toBeNull();
+    expect(glyph?.querySelector('title')).toHaveTextContent('contig_1:51');
+  });
+
+  it('renders experimental TSS points with the same exact-coordinate flag geometry', () => {
+    const tss = feature('tss', 'experimental_tss', 1, 50, 51, { name: '6210' });
+    const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[tss.id(), tss]]))} />);
+    const glyph = container.querySelector('[data-feature-id="tss"]');
+    expect(isExperimentalTssPoint(tss)).toBe(true);
+    expect(glyph).toHaveAttribute('data-feature-type', 'experimental_tss');
+    expect(glyph?.querySelector('[data-role="promoter-flag"]')).toHaveAttribute('fill', PLUS_STRAND_COLOR);
+    expect(glyph?.querySelector('title')).toHaveTextContent('Experimentally supported TSS: contig_1:51');
+  });
+
+  it('reverses an exact peak flag on screen while preserving biological strand color', () => {
+    const peak = feature('peak-reversed', 'promoter_peak', 1, 50, 51, { score: 0.95 });
+    const props = {
+      ...renderingProps(new Map([[peak.id(), peak]])),
+      regions: [{ ...forwardRegion, reversed: true }],
+    } as ComponentProps<typeof PromoterFeatureRendering>;
+    const { container } = render(<PromoterFeatureRendering {...props} />);
+    const glyph = container.querySelector('[data-feature-id="peak-reversed"]');
+    expect(glyph).toHaveAttribute('data-screen-direction', '-1');
+    expect(glyph?.querySelector('[data-role="promoter-flag"]')).toHaveAttribute('fill', PLUS_STRAND_COLOR);
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('data-anchor', 'exact-peak');
   });
 
   it('does not fake a formal promoter flag at a clipped anchor', () => {

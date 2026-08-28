@@ -49,9 +49,11 @@ describe('strand tooltips', () => {
     } as ComponentProps<typeof StrandFeatureTooltip>;
     const { rerender } = render(<StrandFeatureTooltip {...plusProps} />);
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('contig_1:20..119');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction class: predicted promoter interval');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('sequence: contig_1');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('predicted anchor (80th base): contig_1:99');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: +');
-    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('score: 0.95');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('model score: 0.95');
 
     const unknownProps = {
       clientMouseCoord: [10, 10],
@@ -70,7 +72,7 @@ describe('strand tooltips', () => {
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: unknown');
   });
 
-  it('does not invent an 80th-base anchor for legacy point peaks', () => {
+  it('shows the exact 1-based coordinate and model score for point predictions', () => {
     const props = {
       clientMouseCoord: [10, 10],
       model: {
@@ -87,7 +89,45 @@ describe('strand tooltips', () => {
     } as ComponentProps<typeof StrandFeatureTooltip>;
     render(<StrandFeatureTooltip {...props} />);
     expect(screen.getByTestId('strand-feature-tooltip')).not.toHaveTextContent('predicted anchor');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction class: predicted promoter peak');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('sequence: contig_1');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('predicted peak: contig_1:20');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: -');
-    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('score: 0.91');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('model score: 0.91');
+  });
+
+  it('shows study provenance for experimental TSS without exposing the BED score', () => {
+    const props = {
+      clientMouseCoord: [10, 10],
+      model: {
+        featureUnderMouse: feature({
+          id: 'experimental_tss_000001',
+          refName: 'NC_003272.1',
+          start: 99,
+          end: 100,
+          strand: 1,
+          type: 'experimental_tss',
+          study_id: '2011_22135468_GCF_000009705.1',
+          pmid: '22135468',
+          source_name: 'atpH',
+          source_signal: '42',
+          score: 42,
+        }),
+      },
+    } as ComponentProps<typeof StrandFeatureTooltip>;
+    render(<StrandFeatureTooltip {...props} />);
+
+    const tooltip = screen.getByTestId('strand-feature-tooltip');
+    expect(tooltip).toHaveTextContent('evidence: experimentally supported TSS observation');
+    expect(tooltip).toHaveTextContent('sequence: NC_003272.1');
+    expect(tooltip).toHaveTextContent('NC_003272.1:100');
+    expect(tooltip).toHaveTextContent('strand: +');
+    expect(tooltip).toHaveTextContent('study: 2011_22135468_GCF_000009705.1');
+    expect(tooltip).toHaveTextContent('PMID: 22135468');
+    expect(tooltip).toHaveTextContent('source identifier: atpH');
+    expect(tooltip).not.toHaveTextContent('source signal');
+    expect(tooltip).not.toHaveTextContent('score');
+    expect(tooltip).not.toHaveTextContent('model score');
+    expect(tooltip).not.toHaveTextContent('prediction class');
   });
 });

@@ -13,7 +13,9 @@ import { observer } from 'mobx-react';
 import {
   DirectionalAnnotationRendering,
   isFormalPromoter,
+  isPromoterPeak,
   promoterAnchorCoordinate,
+  promoterPeakCoordinate,
   PromoterFeatureRendering,
   strandLabel,
 } from '@/features/genome-browser/plugins/strand-feature-renderer';
@@ -21,7 +23,7 @@ import {
 export const PROMOTER_FEATURE_RENDERER = 'RAPPTORPromoterFeatureRenderer';
 export const DIRECTIONAL_ANNOTATION_RENDERER = 'RAPPTORDirectionalAnnotationRenderer';
 
-export type StrandFeatureMode = 'annotation' | 'promoter';
+export type StrandFeatureMode = 'annotation' | 'promoter' | 'experimental-tss';
 
 type StrandTooltipModel = {
   featureUnderMouse?: Feature;
@@ -40,7 +42,9 @@ function strandFeatureMode(model: object): StrandFeatureMode | undefined {
   try {
     const track = getContainingTrack(model);
     const metadata = getConf(track, 'metadata') as { rapptorStrandFeatureMode?: unknown };
-    return metadata.rapptorStrandFeatureMode === 'promoter' || metadata.rapptorStrandFeatureMode === 'annotation'
+    return metadata.rapptorStrandFeatureMode === 'promoter'
+      || metadata.rapptorStrandFeatureMode === 'annotation'
+      || metadata.rapptorStrandFeatureMode === 'experimental-tss'
       ? metadata.rapptorStrandFeatureMode
       : undefined;
   } catch {
@@ -77,19 +81,32 @@ export const StrandFeatureTooltip = observer(function StrandFeatureTooltip({ mod
   if (!feature) return null;
   const mode = strandFeatureMode(model as object);
   const promoter = isPromoterFeature(feature, mode);
+  const experimentalTss = mode === 'experimental-tss'
+    || String(feature.get('type') || '').toLowerCase() === 'experimental_tss';
   // Keep the native score detail for both promoter and NCBI annotation
   // features when the source provides one.
   const score = featureScore(feature);
   const refName = String(feature.get('refName') || '');
   const anchor = promoter && isFormalPromoter(feature) ? promoterAnchorCoordinate(feature) : undefined;
+  const peak = promoter && isPromoterPeak(feature) ? promoterPeakCoordinate(feature) : undefined;
+  const studyId = experimentalTss ? feature.get('study_id') : undefined;
+  const pmid = experimentalTss ? feature.get('pmid') : undefined;
+  const sourceName = experimentalTss ? feature.get('source_name') : undefined;
   return (
     <BaseTooltip clientPoint={{ x: clientMouseCoord[0] + 5, y: clientMouseCoord[1] }}>
       <div data-testid="strand-feature-tooltip">
         {featureTitle(feature)}<br />
+        {promoter ? <>prediction class: {peak === undefined ? 'predicted promoter interval' : 'predicted promoter peak'}<br /></> : null}
+        {experimentalTss ? <>evidence: experimentally supported TSS observation<br /></> : null}
+        {promoter || experimentalTss ? <>sequence: {refName}<br /></> : null}
         {coordinateLabel(feature)}<br />
         {anchor === undefined ? null : <>predicted anchor (80th base): {refName}:{anchor.toLocaleString('en-US')}<br /></>}
+        {peak === undefined ? null : <>predicted peak: {refName}:{peak.toLocaleString('en-US')}<br /></>}
         strand: {strandLabel(feature.get('strand'))}
-        {score === undefined ? null : <><br />score: {score}</>}
+        {studyId === undefined ? null : <><br />study: {String(studyId)}</>}
+        {pmid === undefined ? null : <><br />PMID: {String(pmid)}</>}
+        {sourceName === undefined ? null : <><br />source identifier: {String(sourceName)}</>}
+        {score === undefined || experimentalTss ? null : <><br />{promoter ? 'model score' : 'score'}: {score}</>}
       </div>
     </BaseTooltip>
   );

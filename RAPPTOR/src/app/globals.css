@@ -451,3 +451,72 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .usage-metrics > div:first-child { border-top: 0; }
   .usage-panel { padding: 16px 14px 18px; }
 }
+
+.cyanobacteria-hero { border-bottom: 1px solid var(--line); background: linear-gradient(135deg, #edf8f5 0%, #f8f5e8 100%); }
+.cyanobacteria-hero-layout { min-height: 370px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .65fr); gap: 72px; align-items: center; padding-block: 72px; }
+.cyanobacteria-hero h1 { max-width: 800px; margin: 0; font: 600 clamp(44px, 6vw, 72px)/1.02 Georgia, "Times New Roman", serif; letter-spacing: -.03em; }
+.cyanobacteria-hero p:not(.portal-kicker) { max-width: 720px; margin: 22px 0 0; color: var(--ink-soft); font-size: 18px; line-height: 1.65; }
+.cyanobacteria-release-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border: 1px solid var(--line-strong); border-radius: 9px; overflow: hidden; background: rgba(255, 255, 255, .82); }
+.cyanobacteria-release-summary > div { min-height: 112px; display: grid; align-content: center; gap: 8px; padding: 20px; border-right: 1px solid var(--line); }
+.cyanobacteria-release-summary > div:nth-child(2n) { border-right: 0; }
+.cyanobacteria-release-summary > div:last-child { border-right: 0; }
+.cyanobacteria-release-summary dt { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.cyanobacteria-release-summary dd { margin: 0; font: 650 29px/1.1 Georgia, serif; font-variant-numeric: tabular-nums; }
+.cyanobacteria-collection { padding-block: 72px 86px; }
+.cyanobacteria-section-heading { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 72px; align-items: end; }
+.cyanobacteria-section-heading h2 { margin: 0; font: 600 36px/1.15 Georgia, serif; }
+.cyanobacteria-section-heading > p { max-width: 680px; margin: 0; color: var(--ink-soft); line-height: 1.7; }
+.cyanobacteria-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 38px; }
+.cyanobacteria-card { min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--paper); overflow: hidden; }
+.cyanobacteria-card header { min-height: 195px; padding: 24px 24px 21px; border-bottom: 1px solid var(--line); background: #f7faf9; }
+.cyanobacteria-card header > span { display: block; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.cyanobacteria-card code { display: block; margin-top: 8px; color: var(--teal-dark); font-size: 12px; }
+.cyanobacteria-card h3 { margin: 24px 0 0; font: 600 22px/1.25 Georgia, serif; }
+.cyanobacteria-card h3 i { font-weight: inherit; }
+.cyanobacteria-card header p { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
+.cyanobacteria-card > dl { flex: 1; margin: 0; padding: 12px 24px; }
+.cyanobacteria-card > dl > div { display: grid; grid-template-columns: 122px 1fr; gap: 12px; padding: 11px 0; border-bottom: 1px solid #e8ecea; font-size: 12px; }
+.cyanobacteria-card > dl > div:last-child { border-bottom: 0; }
+.cyanobacteria-card dt { color: var(--muted); }
+.cyanobacteria-card dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+.cyanobacteria-card-link { min-height: 55px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 24px; border-top: 1px solid var(--line); color: var(--teal-dark); font-size: 13px; font-weight: 800; }
+.cyanobacteria-card-link:hover { background: var(--teal-dark); color: white; }
+.cyanobacteria-card-link svg { width: 19px; }
+.cyanobacteria-detail-page .genome-file-status-items,
+.cyanobacteria-detail-page .genome-metrics-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.cyanobacteria-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.cyanobacteria-detail-grid.has-experimental-evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cyanobacteria-method-card { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 22px; background: var(--paper); }
+.cyanobacteria-method-card h3, .cyanobacteria-downloads h3 { margin: 0; font: 600 24px/1.2 Georgia, serif; }
+.cyanobacteria-method-card > p:not(.portal-kicker) { color: var(--ink-soft); font-size: 13px; line-height: 1.7; }
+.cyanobacteria-method-card dl { margin: 20px 0 0; border-top: 1px solid var(--line); }
+.cyanobacteria-method-card dl > div { display: grid; grid-template-columns: 130px 1fr; gap: 18px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.cyanobacteria-method-card dt { color: var(--muted); }
+.cyanobacteria-method-card dd { margin: 0; font-weight: 650; }
+.cyanobacteria-experimental-card a { color: var(--teal-dark); text-decoration: underline; text-underline-offset: 2px; }
+.cyanobacteria-limitation { border-left: 3px solid var(--gold); padding: 10px 13px; background: var(--gold-soft); color: #71420d !important; }
+.cyanobacteria-downloads { padding-top: 10px; }
+.cyanobacteria-downloads > div:first-child { margin-bottom: 18px; }
+.cyanobacteria-downloads .release-downloads { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media (max-width: 1000px) {
+  .cyanobacteria-hero-layout { grid-template-columns: 1fr; gap: 38px; }
+  .cyanobacteria-release-summary { max-width: 620px; }
+  .cyanobacteria-card-grid { grid-template-columns: 1fr; }
+  .cyanobacteria-card header { min-height: 0; }
+}
+
+@media (max-width: 720px) {
+  .cyanobacteria-section-heading { grid-template-columns: 1fr; gap: 26px; }
+  .cyanobacteria-hero-layout { min-height: 0; padding-block: 50px; }
+  .cyanobacteria-hero h1 { font-size: 43px; }
+  .cyanobacteria-release-summary { grid-template-columns: 1fr; }
+  .cyanobacteria-release-summary > div, .cyanobacteria-release-summary > div:nth-child(2n) { grid-column: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .cyanobacteria-release-summary > div:last-child { grid-column: auto; border-bottom: 0; }
+  .cyanobacteria-collection { padding-block: 52px 62px; }
+  .cyanobacteria-card > dl > div { grid-template-columns: 1fr; gap: 4px; }
+  .cyanobacteria-detail-page .genome-file-status-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cyanobacteria-detail-page .genome-metrics-grid { grid-template-columns: 1fr; }
+  .cyanobacteria-detail-grid.has-experimental-evidence { grid-template-columns: 1fr; }
+  .cyanobacteria-downloads .release-downloads { grid-template-columns: 1fr; }
+}

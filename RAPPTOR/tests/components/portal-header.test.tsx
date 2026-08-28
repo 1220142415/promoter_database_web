@@ -43,5 +43,6 @@ describe('portal header', () => {
   it('hides usage when the public report is switched off', () => {
     render(<PortalHeader />);
     expect(screen.queryByRole('link', { name: 'Usage' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Cyanobacteria' })).not.toBeInTheDocument();
   });
 });

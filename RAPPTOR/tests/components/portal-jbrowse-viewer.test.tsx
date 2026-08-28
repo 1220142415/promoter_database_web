@@ -188,6 +188,79 @@ describe('release JBrowse configuration', () => {
     expect(config.defaultSession.view.tracks.map((track) => track.displays[0].heightPreConfig)).toEqual([120, 180, 170, 170]);
   });
 
+  it('uses collection-specific labels and a generic annotation download without changing defaults', () => {
+    render(<PortalJBrowseViewer assembly={{
+      ...assembly(true, true),
+      annotationTrackKind: 'annotation',
+      trackLabels: {
+        scores: 'Raw prediction scores (+ / - strands)',
+        promoters: 'Predicted promoters (score > 0.9)',
+        annotation: 'Prodigal CDS prediction',
+      },
+    }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: ReadonlyArray<{
+        trackId: string;
+        name: string;
+        metadata: { rapptorDownload?: { kind: string }; rapptorDownloads?: ReadonlyArray<{ label: string }> };
+      }>;
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'Raw prediction scores (+ / - strands)',
+      'Predicted promoters (score > 0.9)',
+      'Prodigal CDS prediction',
+    ]);
+    expect(config.tracks[0].metadata.rapptorDownloads?.map((item) => item.label)).toEqual([
+      'Raw prediction scores (+ / - strands) (+ strand)',
+      'Raw prediction scores (+ / - strands) (- strand)',
+    ]);
+    expect(config.tracks[2].trackId).toContain('genome-annotations');
+    expect(config.tracks[2].metadata.rapptorDownload?.kind).toBe('annotation');
+  });
+
+  it('places the verified experimental TSS track between predictions and annotation', () => {
+    const withExperimental = assembly(true, true);
+    withExperimental.assets.experimentalTss = 'ASM970v1/experimentally-supported-tss.gff3.gz';
+    withExperimental.assets.experimentalTssIndex = 'ASM970v1/experimentally-supported-tss.gff3.gz.tbi';
+    render(<PortalJBrowseViewer assembly={{
+      ...withExperimental,
+      trackLabels: { experimentalTss: 'Experimentally supported TSS (Mitschke et al., 2011)' },
+    }} />);
+
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: ReadonlyArray<{
+        name: string;
+        adapter: Record<string, unknown>;
+        metadata: { rapptorDownload?: { kind: string }; rapptorStrandFeatureMode?: string };
+      }>;
+      defaultSession: { view: { tracks: ReadonlyArray<{ configuration: string }> } };
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'RAPPTOR raw scores (+ / - strands)',
+      'RAPPTOR predicted promoters',
+      'Experimentally supported TSS (Mitschke et al., 2011)',
+      'NCBI genome annotation',
+    ]);
+    expect(config.tracks[2].adapter).toMatchObject({
+      type: 'Gff3TabixAdapter',
+      index: { indexType: 'TBI' },
+    });
+    expect(config.tracks[2]).toMatchObject({
+      displays: [{ renderer: { type: 'RAPPTORPromoterFeatureRenderer' } }],
+      metadata: {
+      rapptorDownload: { kind: 'experimental-tss' },
+      rapptorStrandFeatureMode: 'experimental-tss',
+      },
+    });
+    expect(config.defaultSession.view.tracks.map((track) => track.configuration)).toEqual([
+      expect.stringContaining('reference-sequence'),
+      expect.stringContaining('promoter-scores'),
+      expect.stringContaining('predicted-promoters'),
+      expect.stringContaining('experimentally-supported-tss'),
+      expect.stringContaining('ncbi-annotations'),
+    ]);
+  });
+
   it('uses whole-file adapters for a browser-prepared staged genome', () => {
     const unindexed = { ...assembly(true), adapterMode: 'unindexed' as const };
     unindexed.assets.ncbiAnnotationsIndex = null;

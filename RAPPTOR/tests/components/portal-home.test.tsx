@@ -22,6 +22,8 @@ describe('portal home', () => {
     expect(screen.getByLabelText('Release statistics')).not.toHaveTextContent('gtdb-r214-2026-08-13');
     expect(screen.getByText('80,789 assemblies')).toBeInTheDocument();
     expect(screen.getByText('Pseudomonadota')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Cyanobacterial promoter predictions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open collection' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Release downloads')).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('gtdb-r214-2026-08-13');
     expect(fetchSpy).not.toHaveBeenCalled();

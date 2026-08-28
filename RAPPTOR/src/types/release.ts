@@ -9,6 +9,8 @@ export interface ReleaseAssets {
   ncbiAnnotations: string | null;
   ncbiAnnotationsIndex: string | null;
   metadata: string | null;
+  experimentalTss?: string | null;
+  experimentalTssIndex?: string | null;
 }
 
 export interface PackedAsset {
@@ -133,4 +135,11 @@ export interface JBrowseReleaseAssembly {
   assets: ReleaseAssets;
   regionExportBase?: string;
   adapterMode?: 'indexed' | 'unindexed';
+  annotationTrackKind?: 'ncbi' | 'annotation';
+  trackLabels?: {
+    scores?: string;
+    promoters?: string;
+    experimentalTss?: string;
+    annotation?: string;
+  };
 }

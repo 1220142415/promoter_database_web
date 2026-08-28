@@ -10,6 +10,7 @@ type Props = {
     reference: GenomeFileState;
     promoters: GenomeFileState;
     scores?: GenomeFileState;
+    experimentalTss?: GenomeFileState;
     annotation: GenomeFileState;
   };
 };
@@ -35,6 +36,7 @@ export default function GenomeFileStatus({ states }: Props) {
     { label: 'Reference', state: states.reference },
     { label: 'Promoters', state: states.promoters },
     ...(states.scores ? [{ label: 'Scores', state: states.scores }] : []),
+    ...(states.experimentalTss ? [{ label: 'Experimental TSS', state: states.experimentalTss }] : []),
     { label: 'Annotation', state: states.annotation },
   ];
 

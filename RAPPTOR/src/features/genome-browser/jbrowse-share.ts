@@ -1,4 +1,4 @@
-export const SHARE_TRACK_TOKENS = ['sequence', 'scores', 'promoters', 'annotation'] as const;
+export const SHARE_TRACK_TOKENS = ['sequence', 'scores', 'promoters', 'experimental', 'annotation'] as const;
 
 export type ShareTrackToken = (typeof SHARE_TRACK_TOKENS)[number];
 

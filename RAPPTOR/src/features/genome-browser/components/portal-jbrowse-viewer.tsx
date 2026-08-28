@@ -73,6 +73,11 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
   const { viewState, trackRegistry, initialWarnings } = useMemo(() => {
     const unindexed = assembly.adapterMode === 'unindexed';
     const regionExportBase = assembly.regionExportBase || '';
+    const scoreTrackLabel = assembly.trackLabels?.scores || 'RAPPTOR raw scores (+ / - strands)';
+    const promoterTrackLabel = assembly.trackLabels?.promoters || 'RAPPTOR predicted promoters';
+    const experimentalTssTrackLabel = assembly.trackLabels?.experimentalTss || 'Experimentally supported TSS';
+    const annotationTrackLabel = assembly.trackLabels?.annotation || 'NCBI genome annotation';
+    const annotationTrackKind = assembly.annotationTrackKind || 'ncbi';
     const downloadMetadata = (
       kind: TrackDownloadMetadata['kind'],
       label: string,
@@ -99,12 +104,12 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
       const minusUrl = resolveAsset(assembly.assetBase, assembly.assets.promoterScoresMinus);
       tracks.push({
         trackId,
-        name: 'RAPPTOR raw scores (+ / - strands)',
+        name: scoreTrackLabel,
         metadata: {
           rapptorMirroredScore: true,
           rapptorDownloads: [
-            downloadMetadata('scores-plus', 'RAPPTOR raw scores (+ strand)', plusUrl, false).rapptorDownload,
-            downloadMetadata('scores-minus', 'RAPPTOR raw scores (- strand)', minusUrl, false).rapptorDownload,
+            downloadMetadata('scores-plus', `${scoreTrackLabel} (+ strand)`, plusUrl, false).rapptorDownload,
+            downloadMetadata('scores-minus', `${scoreTrackLabel} (- strand)`, minusUrl, false).rapptorDownload,
           ],
         },
         assemblyNames: [assembly.assemblyName],
@@ -133,11 +138,11 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
     trackTokens.set(predictedTrackId, 'promoters');
     tracks.push({
         trackId: predictedTrackId,
-        name: 'RAPPTOR predicted promoters',
+        name: promoterTrackLabel,
         metadata: {
           ...downloadMetadata(
             'promoters',
-            'RAPPTOR predicted promoters',
+            promoterTrackLabel,
             resolveAsset(assembly.assetBase, assembly.assets.predictedPromoters),
           ),
           rapptorStrandFeatureMode: 'promoter',
@@ -172,16 +177,56 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
         }],
       });
 
+    if (assembly.assets.experimentalTss && assembly.assets.experimentalTssIndex && !unindexed) {
+      const experimentalTrackId = `${assembly.assemblyName}-experimentally-supported-tss`;
+      trackTokens.set(experimentalTrackId, 'experimental');
+      tracks.push({
+        trackId: experimentalTrackId,
+        name: experimentalTssTrackLabel,
+        metadata: {
+          ...downloadMetadata(
+            'experimental-tss',
+            experimentalTssTrackLabel,
+            resolveAsset(assembly.assetBase, assembly.assets.experimentalTss),
+          ),
+          rapptorStrandFeatureMode: 'experimental-tss',
+        },
+        assemblyNames: [assembly.assemblyName],
+        type: 'FeatureTrack',
+        adapter: {
+          type: 'Gff3TabixAdapter',
+          gffGzLocation: { uri: resolveAsset(assembly.assetBase, assembly.assets.experimentalTss) },
+          index: {
+            indexType: 'TBI',
+            location: { uri: resolveAsset(assembly.assetBase, assembly.assets.experimentalTssIndex) },
+          },
+        },
+        displays: [{
+          displayId: `${experimentalTrackId}-display`,
+          type: 'LinearBasicDisplay',
+          renderer: {
+            type: PROMOTER_FEATURE_RENDERER,
+            height: 18,
+            showLabels: false,
+            showDescriptions: false,
+            maxFeatureGlyphExpansion: 24,
+          },
+        }],
+      });
+    }
+
     if (assembly.assets.ncbiAnnotations && (unindexed || assembly.assets.ncbiAnnotationsIndex)) {
-      const ncbiTrackId = `${assembly.assemblyName}-ncbi-annotations`;
+      const ncbiTrackId = assembly.annotationTrackKind === 'annotation'
+        ? `${assembly.assemblyName}-genome-annotations`
+        : `${assembly.assemblyName}-ncbi-annotations`;
       trackTokens.set(ncbiTrackId, 'annotation');
       tracks.push({
         trackId: ncbiTrackId,
-        name: 'NCBI genome annotation',
+        name: annotationTrackLabel,
         metadata: {
           ...downloadMetadata(
-            'ncbi',
-            'NCBI genome annotation',
+            annotationTrackKind,
+            annotationTrackLabel,
             resolveAsset(assembly.assetBase, assembly.assets.ncbiAnnotations),
           ),
           rapptorStrandFeatureMode: 'annotation',

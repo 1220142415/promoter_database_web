@@ -64,6 +64,8 @@ const nextConfig: NextConfig = {
     "/api/local-data/**": localReleaseTraceExcludes,
     "/api/local-region/**": localReleaseTraceExcludes,
     "/api/local-release/**": localReleaseTraceExcludes,
+    "/api/cyanobacteria-data/**": localReleaseTraceExcludes,
+    "/api/cyanobacteria-region/**": localReleaseTraceExcludes,
   },
   transpilePackages: [
     "@jbrowse/product-core",

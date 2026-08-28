@@ -12,6 +12,7 @@ const registry: ShareTrackRegistry = {
   sequence: 'GCA_000411415.1-reference-sequence',
   scores: 'GCA_000411415.1-promoter-scores',
   promoters: 'GCA_000411415.1-predicted-promoters',
+  experimental: 'GCA_000411415.1-experimentally-supported-tss',
   annotation: 'GCA_000411415.1-ncbi-annotations',
 };
 
@@ -108,7 +109,7 @@ describe('JBrowse share URL codec', () => {
 
   it('accepts reordered tracks and bounded fractional CSS-pixel heights', () => {
     const parsed = parseJBrowseShareParams(params(
-      'view=1&ref=chr1&center=10&zoom=2e-2&rev=1&tracks=annotation:1000,sequence:20.5,promoters:99',
+      'view=1&ref=chr1&center=10&zoom=2e-2&rev=1&tracks=annotation:1000,experimental:170,sequence:20.5,promoters:99',
     ));
 
     expect(parsed).toEqual({
@@ -121,6 +122,7 @@ describe('JBrowse share URL codec', () => {
         reversed: true,
         tracks: [
           { token: 'annotation', height: 1000 },
+          { token: 'experimental', height: 170 },
           { token: 'sequence', height: 20.5 },
           { token: 'promoters', height: 99 },
         ],

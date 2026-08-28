@@ -157,14 +157,14 @@ export default class RapptorMirroredScorePlugin extends Plugin {
   install(pluginManager: PluginManager) {
     pluginManager.addRendererType((pm) => new MirroredBarsRenderer({
       name: MIRRORED_BARS_RENDERER,
-      displayName: 'Mirrored bars',
+      displayName: 'Bars',
       ReactComponent: MirroredScoreRendering,
       configSchema: rendererConfig,
       pluginManager: pm,
     }));
     pluginManager.addRendererType((pm) => new MirroredLinesRenderer({
       name: MIRRORED_LINES_RENDERER,
-      displayName: 'Mirrored lines',
+      displayName: 'Lines',
       ReactComponent: MirroredScoreRendering,
       configSchema: rendererConfig,
       pluginManager: pm,
@@ -227,8 +227,8 @@ export default class RapptorMirroredScorePlugin extends Plugin {
                 {
                   label: 'Renderer type',
                   subMenu: [
-                    { label: 'Mirrored bars', key: 'xyplot' },
-                    { label: 'Mirrored lines', key: 'multiline' },
+                    { label: 'Bars', key: 'xyplot' },
+                    { label: 'Lines', key: 'multiline' },
                   ].map(({ label, key }) => ({
                     label,
                     type: 'radio',

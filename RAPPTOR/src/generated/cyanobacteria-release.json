@@ -1,0 +1,440 @@
+{
+  "releaseId": "2026-08-27",
+  "generatedAt": "2026-08-27T14:22:30.157945Z",
+  "title": "RAPPTOR cyanobacterial promoter predictions",
+  "description": "Three cyanobacterial reference genomes with scored candidate peaks, score > 0.9 promoter predictions, genome annotations and study-linked experimental TSS evidence where available.",
+  "assetBaseUrl": "https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main/cyanobacteria/releases/2026-08-27",
+  "manifest": "manifest.tsv",
+  "checksums": "checksums.sha256",
+  "releaseMetadata": "release.json",
+  "totalGenomes": 3,
+  "totalCandidatePeaks": 2609318,
+  "totalPredictedPromoters": 112862,
+  "totalExperimentallySupportedGenomes": 1,
+  "totalExperimentalTssObservations": 13705,
+  "genomes": [
+    {
+      "id": "ASM970v1",
+      "identifierType": "assembly name",
+      "organismName": "Nostoc sp. PCC 7120",
+      "strain": "PCC 7120",
+      "genomeSizeBp": 7211789,
+      "gcContent": 41.27,
+      "contigCount": 7,
+      "primarySequence": "NC_003272.1",
+      "defaultLocus": "NC_003272.1:1-10000",
+      "candidatePeakCount": 877651,
+      "candidatePeakStrands": {
+        "plus": 438561,
+        "minus": 439090
+      },
+      "predictedPromoterCount": 40789,
+      "predictedPromoterStrands": {
+        "plus": 20450,
+        "minus": 20339
+      },
+      "annotation": {
+        "source": "NCBI",
+        "label": "NCBI genome annotation",
+        "description": "NCBI gene, CDS, rRNA and tRNA features across the chromosome and six plasmids.",
+        "featureCounts": {
+          "gene": 6050,
+          "CDS": 6107,
+          "rRNA": 12,
+          "tRNA": 70
+        },
+        "limitations": null
+      },
+      "assets": {
+        "fasta": "reference.fa.gz",
+        "fastaFai": "reference.fa.gz.fai",
+        "fastaGzi": "reference.fa.gz.gzi",
+        "predictedPromoters": "predicted-promoters.gff3.gz",
+        "predictedPromotersIndex": "predicted-promoters.gff3.gz.tbi",
+        "promoterScoresPlus": "candidate-peak-scores.plus.bw",
+        "promoterScoresMinus": "candidate-peak-scores.minus.bw",
+        "ncbiAnnotations": "genome-annotations.gff3.gz",
+        "ncbiAnnotationsIndex": "genome-annotations.gff3.gz.tbi",
+        "metadata": "metadata.json",
+        "candidateSource": "sources/candidate-peaks.source.gff3.gz",
+        "predictionSource": "sources/final-predictions.source.gff3.gz",
+        "annotationSource": "sources/genome-annotation.source.gff3.gz",
+        "experimentalTss": "experimentally-supported-tss.gff3.gz",
+        "experimentalTssIndex": "experimentally-supported-tss.gff3.gz.tbi",
+        "experimentalTssSource": "sources/experimentally-supported-tss.source.bed.gz"
+      },
+      "experimentalEvidence": {
+        "status": "experimentally_supported",
+        "label": "Experimentally supported TSS (Mitschke et al., 2011)",
+        "studyId": "2011_22135468_GCF_000009705.1",
+        "pmid": "22135468",
+        "year": 2011,
+        "title": "Dynamics of transcriptional start site selection during nitrogen stress-induced cell differentiation in Anabaena sp. PCC7120.",
+        "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+        "doi": "10.1073/pnas.1112724108",
+        "assemblyAccession": "GCF_000009705.1",
+        "observationCount": 13705,
+        "uniqueTssCount": 13705,
+        "crossStudySupportedTssCount": 0,
+        "methodBoundary": "Study-level TSS observations under the conditions reported by the source publication; not universal promoter validation.",
+        "hfPath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed"
+      },
+      "validation": {
+        "referenceSequences": [
+          {
+            "name": "NC_003272.1",
+            "length": 6413771
+          },
+          {
+            "name": "NC_003276.1",
+            "length": 408101
+          },
+          {
+            "name": "NC_003240.1",
+            "length": 186614
+          },
+          {
+            "name": "NC_003273.1",
+            "length": 55414
+          },
+          {
+            "name": "NC_003270.1",
+            "length": 40340
+          },
+          {
+            "name": "NC_003267.1",
+            "length": 101965
+          },
+          {
+            "name": "NC_003241.1",
+            "length": 5584
+          }
+        ],
+        "candidatePeakCount": 877651,
+        "candidatePeakStrands": {
+          "plus": 438561,
+          "minus": 439090
+        },
+        "predictedPromoterCount": 40789,
+        "predictedPromoterStrands": {
+          "plus": 20450,
+          "minus": 20339
+        },
+        "finalSubsetRule": "candidate model score > 0.9",
+        "finalSubsetVerified": true,
+        "annotationFeatureCounts": {
+          "region": 7,
+          "gene": 6050,
+          "CDS": 6107,
+          "pseudogene": 119,
+          "tmRNA": 1,
+          "exon": 86,
+          "tRNA": 70,
+          "direct_repeat": 8,
+          "riboswitch": 9,
+          "SRP_RNA": 1,
+          "rRNA": 12,
+          "ncRNA": 1,
+          "RNase_P_RNA": 1,
+          "sequence_feature": 1
+        },
+        "annotationCircularOriginSplitFeatures": 10,
+        "experimentalTss": {
+          "observationCount": 13705,
+          "uniqueTssCount": 13705,
+          "duplicateObservationCount": 0,
+          "strands": {
+            "plus": 6929,
+            "minus": 6776
+          },
+          "sequenceCount": 7,
+          "sequences": [
+            "NC_003272.1",
+            "NC_003276.1",
+            "NC_003240.1",
+            "NC_003273.1",
+            "NC_003270.1",
+            "NC_003267.1",
+            "NC_003241.1"
+          ]
+        }
+      },
+      "coordinateSystems": {
+        "sourceGff3": "1-based closed",
+        "bigWig": "0-based half-open single-base intervals",
+        "browserDisplay": "1-based coordinates"
+      },
+      "evidenceBoundary": "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. Genome annotations provide context and do not validate a promoter call.",
+      "sources": {
+        "reference": {
+          "originalFileName": "reference.fa",
+          "releaseAsset": "reference.fa.gz",
+          "sha256": "0b0f68800914f8531602f8fedfb207bf7b408cef8334f88864b999a6201322fe",
+          "note": "Reference FASTA previously sequence-matched to all prediction and annotation inputs."
+        },
+        "candidatePeaks": {
+          "originalFileName": "ASM970v1.smoothed_peaks_gt_0.gff3",
+          "releaseAsset": "sources/candidate-peaks.source.gff3.gz",
+          "sha256": "a9e5941301f444df0c2df4fd2e6d7978b4bc48b637b1308500911e97a16bb9bf",
+          "selection": "smoothed promoter_peak records with model score > 0"
+        },
+        "finalPredictions": {
+          "originalFileName": "ASM970v1.smoothed_peaks_gt_0.9.gff3",
+          "releaseAsset": "sources/final-predictions.source.gff3.gz",
+          "sha256": "8a7b3d6474447cf3c727434ca4ba43bb72f30eb4ead06dcccc4f66720f131a99",
+          "selection": "strict subset of candidate peaks with model score > 0.9"
+        },
+        "genomeAnnotation": {
+          "originalFileName": "ASM970v1.ncbi.gff3",
+          "releaseAsset": "sources/genome-annotation.source.gff3.gz",
+          "sha256": "5b721e88e52bd6b3e5e6e7bf4f90dfe6360fba603d232a4a117a44033839a48b",
+          "source": "NCBI genome annotation"
+        },
+        "experimentalTss": {
+          "originalFileName": "2011_22135468_GCF_000009705.1.bed",
+          "releaseAsset": "sources/experimentally-supported-tss.source.bed.gz",
+          "normalizedTrack": "experimentally-supported-tss.gff3.gz",
+          "sha256": "f47d7a2623ceb9c9d4b164ea69827ae41671f0ce97a5e8fe47fbc5c0e8a3f283",
+          "huggingFacePath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
+          "sourceManifestSha256": "1c27312b8a5fedd9973df058672e7da14d0e9ecfb67e0d019df20d556f85dac5",
+          "studyId": "2011_22135468_GCF_000009705.1",
+          "pmid": "22135468",
+          "coordinateConversion": "BED 0-based half-open single-base intervals to GFF3 1-based closed points",
+          "seqidNormalization": "removed exact prefix GCF_000009705.1:"
+        }
+      }
+    },
+    {
+      "id": "Cf6912",
+      "identifierType": "dataset identifier",
+      "organismName": "Chlorogloeopsis fritschii PCC 6912",
+      "strain": "PCC 6912",
+      "genomeSizeBp": 7836557,
+      "gcContent": 41.51,
+      "contigCount": 3,
+      "primarySequence": "contig_1",
+      "defaultLocus": "contig_1:1-10000",
+      "candidatePeakCount": 963037,
+      "candidatePeakStrands": {
+        "plus": 481667,
+        "minus": 481370
+      },
+      "predictedPromoterCount": 36353,
+      "predictedPromoterStrands": {
+        "plus": 18191,
+        "minus": 18162
+      },
+      "annotation": {
+        "source": "Prodigal",
+        "label": "Prodigal CDS prediction",
+        "description": "Prodigal v2.6.3 protein-coding CDS predictions produced in single-genome mode with translation table 11.",
+        "featureCounts": {
+          "CDS": 6856
+        },
+        "limitations": "Prodigal does not provide functional product annotation and does not predict rRNA or tRNA features."
+      },
+      "assets": {
+        "fasta": "reference.fa.gz",
+        "fastaFai": "reference.fa.gz.fai",
+        "fastaGzi": "reference.fa.gz.gzi",
+        "predictedPromoters": "predicted-promoters.gff3.gz",
+        "predictedPromotersIndex": "predicted-promoters.gff3.gz.tbi",
+        "promoterScoresPlus": "candidate-peak-scores.plus.bw",
+        "promoterScoresMinus": "candidate-peak-scores.minus.bw",
+        "ncbiAnnotations": "genome-annotations.gff3.gz",
+        "ncbiAnnotationsIndex": "genome-annotations.gff3.gz.tbi",
+        "metadata": "metadata.json",
+        "candidateSource": "sources/candidate-peaks.source.gff3.gz",
+        "predictionSource": "sources/final-predictions.source.gff3.gz",
+        "annotationSource": "sources/genome-annotation.source.gff3.gz",
+        "experimentalTss": null,
+        "experimentalTssIndex": null,
+        "experimentalTssSource": null
+      },
+      "experimentalEvidence": null,
+      "validation": {
+        "referenceSequences": [
+          {
+            "name": "contig_1",
+            "length": 7514802
+          },
+          {
+            "name": "contig_2",
+            "length": 275681
+          },
+          {
+            "name": "contig_3",
+            "length": 46074
+          }
+        ],
+        "candidatePeakCount": 963037,
+        "candidatePeakStrands": {
+          "plus": 481667,
+          "minus": 481370
+        },
+        "predictedPromoterCount": 36353,
+        "predictedPromoterStrands": {
+          "plus": 18191,
+          "minus": 18162
+        },
+        "finalSubsetRule": "candidate model score > 0.9",
+        "finalSubsetVerified": true,
+        "annotationFeatureCounts": {
+          "CDS": 6856
+        },
+        "annotationCircularOriginSplitFeatures": 0
+      },
+      "coordinateSystems": {
+        "sourceGff3": "1-based closed",
+        "bigWig": "0-based half-open single-base intervals",
+        "browserDisplay": "1-based coordinates"
+      },
+      "evidenceBoundary": "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. Genome annotations provide context and do not validate a promoter call.",
+      "sources": {
+        "reference": {
+          "originalFileName": "reference.fa",
+          "releaseAsset": "reference.fa.gz",
+          "sha256": "26e4af205b0a15db28685a1335515255e32b24c388b67ef6990da9a7878031e4",
+          "note": "Reference FASTA previously sequence-matched to all prediction and annotation inputs."
+        },
+        "candidatePeaks": {
+          "originalFileName": "Cf6912.smoothed_peaks_gt_0.gff3",
+          "releaseAsset": "sources/candidate-peaks.source.gff3.gz",
+          "sha256": "987bf1295afe3353f0a99af389be1367e8995af31ba147e4b5aaf6470420c578",
+          "selection": "smoothed promoter_peak records with model score > 0"
+        },
+        "finalPredictions": {
+          "originalFileName": "Cf6912.smoothed_peaks_gt_0.9.gff3",
+          "releaseAsset": "sources/final-predictions.source.gff3.gz",
+          "sha256": "6132cc8c3255534db940142821f573fba4fe5c3b8884beee740f4f28582f2aaa",
+          "selection": "strict subset of candidate peaks with model score > 0.9"
+        },
+        "genomeAnnotation": {
+          "originalFileName": "Cf6912.prodigal.gff3",
+          "releaseAsset": "sources/genome-annotation.source.gff3.gz",
+          "sha256": "2cce961bdd27847923c46438a566a7955179896c0cc7b2af173869e2de985aca",
+          "source": "Prodigal CDS prediction"
+        }
+      }
+    },
+    {
+      "id": "CP003597.1",
+      "identifierType": "sequence accession",
+      "organismName": "Chroococcidiopsis thermalis PCC 7203",
+      "strain": "PCC 7203",
+      "genomeSizeBp": 6315792,
+      "gcContent": 44.44,
+      "contigCount": 1,
+      "primarySequence": "CP003597.1",
+      "defaultLocus": "CP003597.1:1-10000",
+      "candidatePeakCount": 768630,
+      "candidatePeakStrands": {
+        "plus": 384248,
+        "minus": 384382
+      },
+      "predictedPromoterCount": 35720,
+      "predictedPromoterStrands": {
+        "plus": 17832,
+        "minus": 17888
+      },
+      "annotation": {
+        "source": "NCBI",
+        "label": "NCBI genome annotation",
+        "description": "NCBI gene, CDS, rRNA and tRNA features for sequence CP003597.1.",
+        "featureCounts": {
+          "gene": 5466,
+          "CDS": 5408,
+          "rRNA": 9,
+          "tRNA": 46
+        },
+        "limitations": null
+      },
+      "assets": {
+        "fasta": "reference.fa.gz",
+        "fastaFai": "reference.fa.gz.fai",
+        "fastaGzi": "reference.fa.gz.gzi",
+        "predictedPromoters": "predicted-promoters.gff3.gz",
+        "predictedPromotersIndex": "predicted-promoters.gff3.gz.tbi",
+        "promoterScoresPlus": "candidate-peak-scores.plus.bw",
+        "promoterScoresMinus": "candidate-peak-scores.minus.bw",
+        "ncbiAnnotations": "genome-annotations.gff3.gz",
+        "ncbiAnnotationsIndex": "genome-annotations.gff3.gz.tbi",
+        "metadata": "metadata.json",
+        "candidateSource": "sources/candidate-peaks.source.gff3.gz",
+        "predictionSource": "sources/final-predictions.source.gff3.gz",
+        "annotationSource": "sources/genome-annotation.source.gff3.gz",
+        "experimentalTss": null,
+        "experimentalTssIndex": null,
+        "experimentalTssSource": null
+      },
+      "experimentalEvidence": null,
+      "validation": {
+        "referenceSequences": [
+          {
+            "name": "CP003597.1",
+            "length": 6315792
+          }
+        ],
+        "candidatePeakCount": 768630,
+        "candidatePeakStrands": {
+          "plus": 384248,
+          "minus": 384382
+        },
+        "predictedPromoterCount": 35720,
+        "predictedPromoterStrands": {
+          "plus": 17832,
+          "minus": 17888
+        },
+        "finalSubsetRule": "candidate model score > 0.9",
+        "finalSubsetVerified": true,
+        "annotationFeatureCounts": {
+          "region": 1,
+          "gene": 5466,
+          "CDS": 5408,
+          "signal_peptide_region_of_CDS": 886,
+          "pseudogene": 203,
+          "tRNA": 46,
+          "exon": 58,
+          "RNase_P_RNA": 1,
+          "ncRNA": 1,
+          "repeat_region": 2,
+          "SRP_RNA": 1,
+          "rRNA": 9
+        },
+        "annotationCircularOriginSplitFeatures": 0
+      },
+      "coordinateSystems": {
+        "sourceGff3": "1-based closed",
+        "bigWig": "0-based half-open single-base intervals",
+        "browserDisplay": "1-based coordinates"
+      },
+      "evidenceBoundary": "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. Genome annotations provide context and do not validate a promoter call.",
+      "sources": {
+        "reference": {
+          "originalFileName": "reference.fa",
+          "releaseAsset": "reference.fa.gz",
+          "sha256": "305629fcd28f3cd11d8b3b84e9a98c8e6b93f8a7472178143fa7604166f8356f",
+          "note": "Reference FASTA previously sequence-matched to all prediction and annotation inputs."
+        },
+        "candidatePeaks": {
+          "originalFileName": "CP003597.1.smoothed_peaks_gt_0.gff3",
+          "releaseAsset": "sources/candidate-peaks.source.gff3.gz",
+          "sha256": "719558f2273a4bac5762dc4865e8355416216aa213d1cbef996185d22cd7feff",
+          "selection": "smoothed promoter_peak records with model score > 0"
+        },
+        "finalPredictions": {
+          "originalFileName": "CP003597.1.smoothed_peaks_gt_0.9.gff3",
+          "releaseAsset": "sources/final-predictions.source.gff3.gz",
+          "sha256": "5288d7289592f8aec07baee2a0d586f735b449ee8c17ca96deb6c7f86fc1a5a1",
+          "selection": "strict subset of candidate peaks with model score > 0.9"
+        },
+        "genomeAnnotation": {
+          "originalFileName": "CP003597.1.gff3",
+          "releaseAsset": "sources/genome-annotation.source.gff3.gz",
+          "sha256": "5a427ab5362d91f4b635e6e349850316903e01f1993d712f33ca4bd7af14c40a",
+          "source": "NCBI genome annotation"
+        }
+      }
+    }
+  ]
+}

@@ -73,6 +73,39 @@ describe('track download helpers', () => {
     );
   });
 
+  it('uses a source-neutral annotation filename and regional track token', () => {
+    const annotation: TrackDownloadMetadata = {
+      ...metadata,
+      kind: 'annotation',
+      accession: 'Cf6912',
+      label: 'Prodigal CDS prediction',
+      regionExportBase: '/api/cyanobacteria-region',
+      wholeAssetUrl: '/api/cyanobacteria-data/Cf6912/genome-annotations.gff3.gz',
+    };
+    expect(defaultTrackDownloadFilename(annotation, 'whole', null)).toBe('genome-annotation_Cf6912.gff3.gz');
+    const url = new URL(regionTrackDownloadUrl(annotation, { refName: 'contig_1', start: 1, end: 20 }, 'region.gff3'), 'http://localhost');
+    expect(url.searchParams.get('tracks')).toBe('annotation');
+  });
+
+  it('uses a separate experimental TSS filename and regional track token', () => {
+    const experimental: TrackDownloadMetadata = {
+      ...metadata,
+      kind: 'experimental-tss',
+      accession: 'ASM970v1',
+      label: 'Experimentally supported TSS (Mitschke et al., 2011)',
+      regionExportBase: '/api/cyanobacteria-region',
+      wholeAssetUrl: '/api/cyanobacteria-data/ASM970v1/experimentally-supported-tss.gff3.gz',
+    };
+    expect(defaultTrackDownloadFilename(experimental, 'whole', null)).toBe(
+      'experimentally-supported-TSS_ASM970v1.gff3.gz',
+    );
+    const url = new URL(
+      regionTrackDownloadUrl(experimental, { refName: 'NC_003272.1', start: 1, end: 20 }, 'tss.gff3'),
+      'http://localhost',
+    );
+    expect(url.searchParams.get('tracks')).toBe('experimental-tss');
+  });
+
   it('exports a visible FASTA interval from a browser-prepared assembly', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       '>contig_1 first\nAACCGGTT\n>contig_2\nTTTT\n',

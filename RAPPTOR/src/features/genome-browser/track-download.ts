@@ -1,4 +1,4 @@
-export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi' | 'scores-plus' | 'scores-minus';
+export type TrackDownloadKind = 'reference' | 'promoters' | 'experimental-tss' | 'ncbi' | 'annotation' | 'scores-plus' | 'scores-minus';
 
 export type TrackDownloadFormat = 'fasta' | 'gff3' | 'bigwig';
 
@@ -30,7 +30,7 @@ const KIND_SETTINGS: Record<TrackDownloadKind, {
   format: TrackDownloadFormat;
   regionExtension: string;
   wholeExtension: string;
-  track?: 'promoters' | 'ncbi';
+  track?: 'promoters' | 'experimental-tss' | 'ncbi' | 'annotation';
 }> = {
   reference: {
     prefix: 'reference',
@@ -45,12 +45,26 @@ const KIND_SETTINGS: Record<TrackDownloadKind, {
     wholeExtension: '.gff3.gz',
     track: 'promoters',
   },
+  'experimental-tss': {
+    prefix: 'experimentally-supported-TSS',
+    format: 'gff3',
+    regionExtension: '.gff3',
+    wholeExtension: '.gff3.gz',
+    track: 'experimental-tss',
+  },
   ncbi: {
     prefix: 'NCBI-annotation',
     format: 'gff3',
     regionExtension: '.gff3',
     wholeExtension: '.gff3.gz',
     track: 'ncbi',
+  },
+  annotation: {
+    prefix: 'genome-annotation',
+    format: 'gff3',
+    regionExtension: '.gff3',
+    wholeExtension: '.gff3.gz',
+    track: 'annotation',
   },
   'scores-plus': {
     prefix: 'RAPPTOR-raw-scores-plus',
@@ -76,7 +90,7 @@ export function isTrackDownloadMetadata(value: unknown): value is TrackDownloadM
   if (!value || typeof value !== 'object') return false;
   const metadata = value as Partial<TrackDownloadMetadata>;
   return (
-    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus')
+    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'experimental-tss' || metadata.kind === 'ncbi' || metadata.kind === 'annotation' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus')
     && typeof metadata.accession === 'string'
     && typeof metadata.label === 'string'
     && typeof metadata.regionExportBase === 'string'

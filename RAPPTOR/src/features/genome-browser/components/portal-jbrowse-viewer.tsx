@@ -19,7 +19,7 @@ import {
   type ShareTrackToken,
 } from '@/features/genome-browser/jbrowse-share';
 import { visibleTrackRegion, type TrackDownloadMetadata } from '@/features/genome-browser/track-download';
-import type { JBrowseReleaseAssembly } from '@/types/release';
+import type { JBrowseAssemblyConfig } from '@/features/genome-browser/types';
 
 export interface BrowserRegion {
   refName: string;
@@ -52,7 +52,7 @@ function resolveAsset(base: string, path: string) {
   return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
-export default function PortalJBrowseViewer({ assembly, onRegionChange }: { assembly: JBrowseReleaseAssembly; onRegionChange?: (region: BrowserRegion) => void }) {
+export default function PortalJBrowseViewer({ assembly, onRegionChange }: { assembly: JBrowseAssemblyConfig; onRegionChange?: (region: BrowserRegion) => void }) {
   const [shareAvailable, setShareAvailable] = useState(false);
   const [shareUnavailableReason, setShareUnavailableReason] = useState(
     'Sharing is available for a single reference sequence after the browser loads.',
@@ -132,6 +132,29 @@ export default function PortalJBrowseViewer({ assembly, onRegionChange }: { asse
             MultiXYPlotRenderer: { summaryScoreMode: 'max' },
             MultiLineRenderer: { summaryScoreMode: 'max' },
           },
+        }],
+      });
+    } else if (assembly.assets.promoterScoresPlus) {
+      const trackId = `${assembly.assemblyName}-promoter-scores`;
+      const plusUrl = resolveAsset(assembly.assetBase, assembly.assets.promoterScoresPlus);
+      trackTokens.set(trackId, 'scores');
+      tracks.push({
+        trackId,
+        name: scoreTrackLabel,
+        metadata: downloadMetadata('scores-plus', `${scoreTrackLabel} (+ strand)`, plusUrl, false),
+        assemblyNames: [assembly.assemblyName],
+        type: 'QuantitativeTrack',
+        adapter: {
+          type: 'BigWigAdapter',
+          bigWigLocation: { uri: plusUrl },
+        },
+        displays: [{
+          displayId: `${trackId}-display`,
+          type: 'LinearWiggleDisplay',
+          defaultRendering: 'xyplot',
+          autoscale: 'local',
+          minScore: 0,
+          maxScore: 1,
         }],
       });
     }

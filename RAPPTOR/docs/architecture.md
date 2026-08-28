@@ -72,6 +72,18 @@ src/features/genome-browser/
 ```
 
 ```text
+src/features/prediction/
+├── components/                 homepage form, Turnstile and result/status UI
+├── capabilities.ts             public model/input limits and deployment mode
+├── provider.ts                 stable demo/remote provider boundary
+├── demo-provider.ts            metadata-only demo with D1/local-memory storage
+├── remote-provider.ts          future Docker service adapter
+├── runtime.ts                  provider selection and Turnstile verification
+├── types.ts                    versioned public prediction contracts
+└── validation.ts               DNA, FASTA, ticket and job validation
+```
+
+```text
 src/features/storage/
 ├── hf-batch-assets.ts         Hugging Face asset URL planning
 └── storage-layout.ts          packed-release path and offset rules
@@ -129,16 +141,28 @@ independently controlled by `RAPPTOR_USAGE_PUBLIC_PAGE`. These compatibility
 environment names, the `RAPPTOR_DB` D1 binding, existing worker/database names,
 and internal JBrowse identifiers must not be renamed during source cleanup.
 
-### Promoter prediction service (proposed)
+### Promoter prediction interface
 
 ```text
-browser -> Cloudflare one-time ticket and limits -> Docker prediction API
-        -> Redis/RQ queue -> CPU/GPU model worker -> R2 result
-        -> D1 permanent job metadata
+browser -> same-origin prediction routes -> demo provider -> D1 metadata only
+                                  \\-> remote provider -> Docker API (future)
 ```
 
-The implementation boundary, security rules, API contract, and delivery
-estimate are recorded in [prediction-service.md](prediction-service.md).
+The website implements the versioned contract, one-time demo ticket, direct
+upload slot, protected job status and result UI. Demo mode never sends or
+stores raw sequences; D1 contains only checksums, file metadata, job timing and
+access-token hashes. Local development falls back to process memory.
+
+Prediction contract version 2 reports 1-based inclusive 100 bp promoter
+windows. Candidate submissions declare `predictionKind: "candidate"`, and the
+capabilities response currently advertises only that kind. Live results may
+include expiring reference, BigWig and indexed GFF3 assets; when complete, the
+result page maps them into the same generic JBrowse assembly configuration used
+by catalog genomes. Demo results never offer a sequence browser because the
+Demo provider does not receive candidate sequence data.
+
+The real model/queue/storage implementation boundary, security rules and
+delivery estimate remain recorded in [prediction-service.md](prediction-service.md).
 
 ## Placement checklist
 

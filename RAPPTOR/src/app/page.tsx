@@ -6,6 +6,8 @@ import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import releaseSummary from '@/generated/release-summary.json';
 import type { ActiveReleaseSummary } from '@/types/release';
+import { predictionCapabilities } from '@/features/prediction/capabilities';
+import PredictionForm from '@/features/prediction/components/prediction-form';
 
 const catalog = releaseSummary as ActiveReleaseSummary;
 
@@ -23,6 +25,7 @@ export default function HomePage() {
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
   const releaseLabel = `RAPPTOR ${catalog.releaseDate || catalog.releaseId}`;
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
+  const predictor = predictionCapabilities();
 
   return (
     <main>
@@ -34,6 +37,7 @@ export default function HomePage() {
             <p className="portal-hero-lead">Genome-resolved promoter predictions, reference assemblies and contextual NCBI annotations in a release-ready research portal.</p>
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
+              <Link href="/#predict" className="portal-button portal-button-secondary">Predict a promoter</Link>
             </div>
           </div>
           <div className="sequence-figure" role="img" aria-label="Genome sequence and promoter track overview">
@@ -56,6 +60,8 @@ export default function HomePage() {
           <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>
+
+      <PredictionForm capabilities={predictor} />
 
       <section className="portal-section">
         <div className="portal-shell split-section">

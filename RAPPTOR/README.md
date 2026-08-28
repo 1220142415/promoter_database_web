@@ -23,6 +23,15 @@ The source archive does not identify its GTDB release. The portal therefore repo
 4. Download the indexed files and genome metadata for that assembly.
 5. Use the Data & methods page for provenance, evidence boundaries, formats, manifests, and checksums.
 
+The homepage also contains a promoter-prediction interface. Its default
+`demo` mode returns a fixed, explicitly labelled UI fixture and never sends raw
+candidate or genome sequences to the server. Apply
+`database/migrations/0007_prediction_demo.sql` before enabling the demo on a
+Cloudflare deployment; only ticket hashes, checksums and job metadata are
+stored. Set `RAPPTOR_PREDICTION_MODE=remote` only after configuring the remote
+Docker API, server token and both Turnstile keys documented in
+`.env.local.example`.
+
 Predicted promoters and NCBI annotations are separate evidence classes. The portal does not infer promoter-gene assignments and does not label predicted peaks as experimental TSS.
 
 ## Requirements
@@ -202,7 +211,7 @@ npm run build:cf
 
 If the checkout is shared under `/mnt/d`, running `npm ci` from WSL replaces its Windows-specific dependency tree. Re-run `npm ci` from Windows before using that same checkout with Windows Node.js again.
 
-Next.js output tracing deliberately excludes `.data/**` from the three local-only routes (`/api/local-data`, `/api/local-region`, and `/api/local-release`). The postbuild step fails if a standalone bundle still contains a `.data` directory, so the 1,000-genome release and future Packs cannot be copied into the deploy artifact accidentally. Use WSL for production builds: Next.js 15's trace-exclusion matcher does not reliably match Windows backslash paths, and the guard will reject that oversized Windows artifact. This affects production packaging only: local development still reads `.data` normally. A standalone deployment that intentionally uses the local routes must mount the release separately and set `LOCAL_DATA_ROOT` and `LOCAL_RELEASE_ROOT`; the D1/Hugging Face production path does not need that mount.
+Next.js output tracing deliberately excludes `.data/**` from the local-only data routes. Next.js 15 does not reliably apply those globs to Windows backslash paths, so the postbuild step removes any traced `.data` directory only from inside the verified standalone output and then checks that none remain. The 1,000-genome release and future Packs therefore cannot enter the deploy artifact accidentally. This affects production packaging only: local development still reads `.data` normally. A standalone deployment that intentionally uses the local routes must mount the release separately and set `LOCAL_DATA_ROOT` and `LOCAL_RELEASE_ROOT`; the D1/Hugging Face production path does not need that mount.
 
 ## Packed single-repository releases and D1
 

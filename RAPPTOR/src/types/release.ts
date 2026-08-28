@@ -1,16 +1,7 @@
-export interface ReleaseAssets {
-  fasta: string;
-  fastaFai: string;
-  fastaGzi: string;
-  predictedPromoters: string;
-  predictedPromotersIndex: string;
-  promoterScoresPlus: string | null;
-  promoterScoresMinus: string | null;
-  ncbiAnnotations: string | null;
-  ncbiAnnotationsIndex: string | null;
+import type { JBrowseAssemblyAssets, JBrowseAssemblyConfig } from '@/features/genome-browser/types';
+
+export interface ReleaseAssets extends JBrowseAssemblyAssets {
   metadata: string | null;
-  experimentalTss?: string | null;
-  experimentalTssIndex?: string | null;
 }
 
 export interface PackedAsset {
@@ -128,18 +119,4 @@ export type ReleaseCatalogResult =
   | { status: 'ready'; catalog: ReleaseCatalog }
   | { status: 'missing' | 'invalid'; catalog: null; message: string };
 
-export interface JBrowseReleaseAssembly {
-  assemblyName: string;
-  defaultLocus: string;
-  assetBase: string;
-  assets: ReleaseAssets;
-  regionExportBase?: string;
-  adapterMode?: 'indexed' | 'unindexed';
-  annotationTrackKind?: 'ncbi' | 'annotation';
-  trackLabels?: {
-    scores?: string;
-    promoters?: string;
-    experimentalTss?: string;
-    annotation?: string;
-  };
-}
+export type JBrowseReleaseAssembly = JBrowseAssemblyConfig;

@@ -188,6 +188,24 @@ describe('release JBrowse configuration', () => {
     expect(config.defaultSession.view.tracks.map((track) => track.displays[0].heightPreConfig)).toEqual([120, 180, 170, 170]);
   });
 
+  it('supports a forward-only live prediction score track', () => {
+    const plusOnly = assembly(false, true);
+    plusOnly.assets.promoterScoresMinus = null;
+    render(<PortalJBrowseViewer assembly={plusOnly} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: ReadonlyArray<{ name: string; type: string; adapter: Record<string, unknown>; displays: ReadonlyArray<Record<string, unknown>> }>;
+    };
+    expect(config.tracks.map((track) => track.name)).toEqual([
+      'RAPPTOR raw scores (+ / - strands)',
+      'RAPPTOR predicted promoters',
+    ]);
+    expect(config.tracks[0]).toMatchObject({
+      type: 'QuantitativeTrack',
+      adapter: { type: 'BigWigAdapter', bigWigLocation: { uri: expect.stringContaining('promoter-scores.plus.bw') } },
+      displays: [{ type: 'LinearWiggleDisplay', minScore: 0, maxScore: 1 }],
+    });
+  });
+
   it('uses collection-specific labels and a generic annotation download without changing defaults', () => {
     render(<PortalJBrowseViewer assembly={{
       ...assembly(true, true),

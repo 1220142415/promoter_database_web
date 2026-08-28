@@ -13,7 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   const showUsage = process.env.RAPPTOR_USAGE_PUBLIC_PAGE?.toLowerCase() === 'on';
   const showCyanobacteriaEntry = process.env.RAPPTOR_CYANOBACTERIA_PUBLIC?.toLowerCase() !== 'off';
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <PortalHeader showUsage={showUsage} />
         {children}

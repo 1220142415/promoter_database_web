@@ -2,7 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readdir, rm } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -31,10 +31,20 @@ async function findBundledDataDirectories(directory, depth = 0) {
 
 const bundledDataDirectories = await findBundledDataDirectories(standalone);
 if (bundledDataDirectories.length > 0) {
-  console.error('Standalone output unexpectedly contains local release data:');
-  for (const path of bundledDataDirectories) console.error(`- ${path}`);
-  console.error('Check outputFileTracingExcludes before deploying this build.');
-  process.exit(1);
+  for (const path of bundledDataDirectories) {
+    const relativePath = relative(standalone, path);
+    if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) {
+      console.error(`Refusing to remove an unexpected standalone path: ${path}`);
+      process.exit(1);
+    }
+    await rm(path, { recursive: true, force: true });
+  }
+  const remainingDataDirectories = await findBundledDataDirectories(standalone);
+  if (remainingDataDirectories.length > 0) {
+    console.error('Standalone output still contains local release data after sanitization.');
+    process.exit(1);
+  }
+  console.warn(`Removed ${bundledDataDirectories.length} traced local .data director${bundledDataDirectories.length === 1 ? 'y' : 'ies'} from standalone output.`);
 }
 
 const copies = [

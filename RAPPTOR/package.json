@@ -9,8 +9,12 @@
         "postbuild": "node scripts/cloudflare/prepare-standalone.mjs",
         "start": "node .next/standalone/server.js",
         "lint": "eslint",
+        "typecheck": "tsc --noEmit",
+        "check": "npm run lint && npm run typecheck && npm test",
+        "verify": "npm run check && npm run build",
         "analytics:map": "node scripts/data/build-world-map.mjs",
         "data:build": "node scripts/data/build-gtdb-release.mjs",
+        "data:cyanobacteria": "python scripts/data/build-cyanobacteria-release.py",
         "data:validate": "node scripts/data/validate-gtdb-release.mjs",
         "data:pack": "node scripts/data/build-packed-release.mjs",
         "data:pack:materialize": "node scripts/data/materialize-packed-shard.mjs",
@@ -28,6 +32,7 @@
         "hf:verify": "node scripts/huggingface/verify-hf-pilot.mjs",
         "hf:upload:release": "python scripts/huggingface/upload-hf-release.py",
         "hf:verify:release": "python scripts/huggingface/verify-hf-release.py",
+        "hf:verify:cyanobacteria": "python scripts/huggingface/verify-cyanobacteria-release.py",
         "hf:batch-plan": "node scripts/huggingface/build-hf-batch-asset-plan.mjs",
         "data:experimental:build": "node scripts/huggingface/build-experimental-tss-release.mjs",
         "data:experimental:validate": "node scripts/huggingface/validate-experimental-tss-release.mjs",
@@ -40,7 +45,7 @@
         "test:api": "vitest run tests/api",
         "test:components": "vitest run tests/components",
         "test:e2e": "playwright test",
-        "build:cf": "node scripts/cloudflare/check-cloudflare-env.mjs && opennextjs-cloudflare build",
+        "build:cf": "npm run check && node scripts/cloudflare/check-cloudflare-env.mjs && node scripts/cloudflare/run-opennext-build.mjs",
         "preview:cf": "npm run build:cf && opennextjs-cloudflare preview",
         "deploy:cf": "npm run build:cf && opennextjs-cloudflare deploy",
         "cf:typegen": "wrangler types worker-configuration.d.ts --env-interface CloudflareEnv --env-file config/cloudflare-typegen.env"
@@ -57,12 +62,12 @@
         "@mui/icons-material": "^7.3.11",
         "@mui/material": "^7.3.11",
         "generic-filehandle2": "2.2.0",
-        "next": "15.5.21",
-        "react": "19.2.4",
-        "react-dom": "19.2.4"
+        "next": "^15.5.24",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
     },
     "devDependencies": {
-        "@opennextjs/cloudflare": "^1.20.2",
+        "@opennextjs/cloudflare": "^1.20.4",
         "@playwright/test": "^1.54.2",
         "@tailwindcss/postcss": "^4",
         "@testing-library/jest-dom": "^6.6.3",
@@ -74,7 +79,7 @@
         "@vitejs/plugin-react": "^4.4.1",
         "d3-geo": "^3.1.1",
         "eslint": "^9.39.5",
-        "eslint-config-next": "15.5.21",
+        "eslint-config-next": "^15.5.24",
         "i18n-iso-countries": "^7.14.0",
         "jsdom": "^26.1.0",
         "patch-package": "^8.0.1",
@@ -83,10 +88,12 @@
         "typescript": "^5",
         "vitest": "^3.2.4",
         "world-atlas": "^2.0.2",
-        "wrangler": "^4.113.0"
+        "wrangler": "^4.127.0"
     },
     "overrides": {
+        "dompurify": "3.4.14",
+        "nanoid": "3.3.18",
         "sharp": "0.35.0",
-        "postcss": "8.5.12"
+        "postcss": "8.5.26"
     }
 }

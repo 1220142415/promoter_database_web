@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import type { JBrowseReleaseAssembly } from '@/types/release';
-import type { BrowserRegion } from '@/features/genome-browser/components/portal-jbrowse-viewer';
+import type { BrowserRegion } from '@/features/genome-browser/components/unified-jbrowse-viewer';
 
 const UnifiedJBrowseViewer = dynamic(() => import('@/features/genome-browser/components/unified-jbrowse-viewer'), {
   ssr: false,

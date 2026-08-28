@@ -3,7 +3,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import PortalJBrowseViewer from '@/features/genome-browser/components/portal-jbrowse-viewer';
+import UnifiedJBrowseViewer from '@/features/genome-browser/components/unified-jbrowse-viewer';
 import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
 import { makeGenome } from '../fixtures/release';
 
@@ -75,7 +75,7 @@ function assembly(withNcbi: boolean, withScores = false) {
   return { assemblyName: accession, defaultLocus: `${accession}:1-10000`, assetBase: '/api/local-data', assets: genome.assets };
 }
 
-describe('release JBrowse configuration', () => {
+describe('prediction-only unified JBrowse configuration', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
     Object.defineProperty(navigator, 'clipboard', {
@@ -89,7 +89,7 @@ describe('release JBrowse configuration', () => {
   it('places Share view in the genome file status bar when available', async () => {
     render(<>
       <GenomeFileStatus states={{ reference: 'available', promoters: 'available', annotation: 'available' }} />
-      <PortalJBrowseViewer assembly={assembly(true)} />
+      <UnifiedJBrowseViewer prediction={assembly(true)} />
     </>);
 
     const slot = screen.getByTestId('genome-file-status-share');
@@ -98,7 +98,7 @@ describe('release JBrowse configuration', () => {
   });
 
   it('configures BGZF reference, predicted promoter, and optional NCBI tracks', () => {
-    render(<PortalJBrowseViewer assembly={assembly(true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true)} />);
     expect(screen.getByTestId('mock-jbrowse')).toBeInTheDocument();
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
       assembly: { sequence: { adapter: Record<string, unknown>; metadata: { rapptorDownload: { kind: string; visibleRegionDownload: boolean } } } };
@@ -137,13 +137,13 @@ describe('release JBrowse configuration', () => {
   });
 
   it('does not invent an NCBI track when the release has no NCBI asset', () => {
-    render(<PortalJBrowseViewer assembly={assembly(false)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(false)} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as { tracks: ReadonlyArray<{ name: string }> };
     expect(config.tracks.map((track) => track.name)).toEqual(['RAPPTOR predicted promoters']);
   });
 
   it('adds one fixed-scale mirrored raw score track before promoter peaks', () => {
-    render(<PortalJBrowseViewer assembly={assembly(true, true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true, true)} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
       tracks: ReadonlyArray<{
         name: string;
@@ -191,7 +191,7 @@ describe('release JBrowse configuration', () => {
   it('uses whole-file adapters for a browser-prepared staged genome', () => {
     const unindexed = { ...assembly(true), adapterMode: 'unindexed' as const };
     unindexed.assets.ncbiAnnotationsIndex = null;
-    render(<PortalJBrowseViewer assembly={unindexed} />);
+    render(<UnifiedJBrowseViewer prediction={unindexed} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
       assembly: { sequence: { adapter: Record<string, unknown>; metadata: { rapptorDownload: { downloadMode: string } } } };
       tracks: ReadonlyArray<{ adapter: Record<string, unknown>; metadata: { rapptorDownload: { downloadMode: string } } }>;
@@ -203,9 +203,32 @@ describe('release JBrowse configuration', () => {
     expect(config.tracks.every((track) => track.metadata.rapptorDownload.downloadMode === 'browser')).toBe(true);
   });
 
+  it('accepts an empty asset base for a browser-prepared prediction without experimental data', () => {
+    const source = assembly(true);
+    const prepared = {
+      ...source,
+      assetBase: '',
+      adapterMode: 'unindexed' as const,
+      assets: {
+        ...source.assets,
+        fasta: 'blob:reference',
+        predictedPromoters: 'blob:promoters',
+        ncbiAnnotations: 'blob:annotation',
+      },
+    };
+
+    render(<UnifiedJBrowseViewer prediction={prepared} />);
+
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      assembly: { sequence: { adapter: { fastaLocation: { uri: string } } } };
+    };
+    expect(config.assembly.sequence.adapter.fastaLocation.uri).toBe(prepared.assets.fasta);
+    expect(screen.getByTestId('mock-jbrowse')).toBeInTheDocument();
+  });
+
   it('wires view changes to the region download controller', () => {
     const onRegionChange = vi.fn();
-    render(<PortalJBrowseViewer assembly={assembly(false)} onRegionChange={onRegionChange} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(false)} onRegionChange={onRegionChange} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as { onChange?: () => void };
     expect(config.onChange).toBeTypeOf('function');
   });
@@ -230,7 +253,7 @@ describe('release JBrowse configuration', () => {
       reversed: true,
     });
     vi.mocked(createViewState).mockReturnValue(stateTree as never);
-    render(<PortalJBrowseViewer assembly={assembly(true, true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true, true)} />);
 
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
       defaultSession: {
@@ -275,7 +298,7 @@ describe('release JBrowse configuration', () => {
       '',
       `/genomes/${mockAssemblyName}?campaign=discard-me&asset=${encodeURIComponent('blob:private-object')}`,
     );
-    render(<PortalJBrowseViewer assembly={assembly(true, true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true, true)} />);
 
     await user.click(screen.getByRole('button', { name: 'Share current view' }));
 
@@ -300,7 +323,7 @@ describe('release JBrowse configuration', () => {
       value: { writeText },
     });
     window.history.replaceState({}, '', `/genomes/${mockAssemblyName}`);
-    render(<PortalJBrowseViewer assembly={assembly(true, true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true, true)} />);
 
     await user.click(screen.getByRole('button', { name: 'Share current view' }));
 
@@ -320,7 +343,7 @@ describe('release JBrowse configuration', () => {
       '',
       `/genomes/${mockAssemblyName}?view=1&ref=UNKNOWN_CONTIG&center=4321&zoom=0.25&rev=0&tracks=sequence:120`,
     );
-    render(<PortalJBrowseViewer assembly={assembly(true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true)} />);
 
     await waitFor(() => expect(stateTree.session.view.navToLocString).toHaveBeenCalledTimes(2));
     expect(stateTree.session.view.navToLocString.mock.calls).toEqual([
@@ -351,7 +374,7 @@ describe('release JBrowse configuration', () => {
       `/genomes/${mockAssemblyName}?view=1&ref=${mockAssemblyName}&center=99999&zoom=0.25&rev=0&tracks=sequence:120`,
     );
 
-    render(<PortalJBrowseViewer assembly={assembly(true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true)} />);
 
     await waitFor(() => expect(stateTree.session.view.navToLocString).toHaveBeenCalledTimes(2));
     expect(stateTree.session.view.navToLocString.mock.calls).toEqual([
@@ -372,11 +395,11 @@ describe('release JBrowse configuration', () => {
     });
     vi.mocked(createViewState).mockReturnValue(stateTree as never);
 
-    render(<PortalJBrowseViewer assembly={assembly(true)} />);
+    render(<UnifiedJBrowseViewer prediction={assembly(true)} />);
 
     const shareButton = screen.getByRole('button', { name: 'Share current view' });
     await waitFor(() => expect(shareButton).toBeDisabled());
-    expect(shareButton).toHaveAttribute('aria-describedby', 'browser-share-unavailable');
+    expect(shareButton).toHaveAttribute('aria-describedby', 'unified-browser-share-unavailable');
     expect(screen.getByText(/multiple reference regions/i)).toBeInTheDocument();
   });
 });

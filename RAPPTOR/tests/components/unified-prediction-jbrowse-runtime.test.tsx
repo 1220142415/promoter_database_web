@@ -2,7 +2,7 @@
 
 import { render } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import PortalJBrowseViewer from '@/features/genome-browser/components/portal-jbrowse-viewer';
+import UnifiedJBrowseViewer from '@/features/genome-browser/components/unified-jbrowse-viewer';
 import { makeGenome } from '../fixtures/release';
 
 vi.mock('@jbrowse/react-linear-genome-view', async (importOriginal) => ({
@@ -27,7 +27,7 @@ beforeAll(() => {
 
 afterAll(() => vi.unstubAllGlobals());
 
-describe('release JBrowse runtime', () => {
+describe('prediction-only unified JBrowse runtime', () => {
   it('creates the real JBrowse view state with strand renderers installed', () => {
     const accession = 'GCA_000411415.1';
     const genome = makeGenome({ accession });
@@ -40,6 +40,6 @@ describe('release JBrowse runtime', () => {
       assets: genome.assets,
     };
 
-    expect(() => render(<PortalJBrowseViewer assembly={assembly} />)).not.toThrow();
+    expect(() => render(<UnifiedJBrowseViewer prediction={assembly} />)).not.toThrow();
   });
 });

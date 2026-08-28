@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     if (cause instanceof GenomeCatalogUnavailableError || cause instanceof ExperimentalTssCatalogUnavailableError) {
       return Response.json({ error: cause.message }, { status: 503 });
     }
+    console.error('Genome catalog query failed.', cause);
     return Response.json({ error: 'Genome catalog query failed.' }, { status: 500 });
   }
 }

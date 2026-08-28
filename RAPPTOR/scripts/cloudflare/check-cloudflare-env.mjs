@@ -29,8 +29,12 @@ for (const name of required) {
 }
 
 const wrangler = readFileSync(path.join(process.cwd(), 'wrangler.toml'), 'utf8');
-if (!/^\s*main\s*=\s*["']\.open-next\/worker\.js["']\s*$/m.test(wrangler)) {
-  console.error('wrangler.toml must deploy .open-next/worker.js as a Cloudflare Worker.');
+if (!/^\s*main\s*=\s*["']config\/cloudflare-worker\.mjs["']\s*$/m.test(wrangler)) {
+  console.error('wrangler.toml must deploy the RAPPTOR Cloudflare wrapper.');
+  process.exit(1);
+}
+if (!/^\s*crons\s*=\s*\[[^\]]+\]\s*$/m.test(wrangler)) {
+  console.error('wrangler.toml must schedule usage-retention cleanup.');
   process.exit(1);
 }
 if (!/^\s*directory\s*=\s*["']\.open-next\/assets["']\s*$/m.test(wrangler)) {

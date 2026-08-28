@@ -49,6 +49,11 @@ const MAX_TEXT_LENGTH = 64;
 const ACCESSION_PATTERN = /^GC[AF]_\d+\.\d+$/i;
 const NUMERIC_PATTERN = /^\d+$/;
 const COUNTRY_PATTERN = /^[A-Za-z]{2}$/;
+const CHINA_REGION_NAMES: Record<string, [english: string, chinese: string]> = {
+  HK: ['Hong Kong, China', '中国香港'],
+  MO: ['Macao, China', '中国澳门'],
+  TW: ['Taiwan, China', '中国台湾'],
+};
 
 // Skipped outright: none of these represent a person reading a page.
 const NON_PAGE_PREFIXES = ['/api/', '/_next/', '/admin', '/usage', '/cdn-cgi/'];
@@ -205,6 +210,8 @@ export async function deriveVisitorHash(salt: string, address: string | null, us
 
 export function countryName(code: string, locale = 'en') {
   if (!COUNTRY_PATTERN.test(code) || code === UNKNOWN_COUNTRY) return 'Unknown';
+  const chinaRegion = CHINA_REGION_NAMES[code.toUpperCase()];
+  if (chinaRegion) return chinaRegion[locale.toLowerCase().startsWith('zh') ? 1 : 0];
   try {
     return new Intl.DisplayNames([locale], { type: 'region' }).of(code) || code;
   } catch {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { shiftDay, utcDay } from '@/features/usage/analytics';
+import { purgeExpiredUsage } from '@/features/usage/retention';
 
 const { getCloudflareContext } = vi.hoisted(() => ({ getCloudflareContext: vi.fn() }));
 
@@ -142,13 +143,12 @@ describe('recording a page view', () => {
     const firstHash = database.batches[1][0].binds[1];
 
     await store.recordUsage(database as unknown as D1Database, pageRequest('/data'), { country: 'DE' }, settings);
-    expect(database.batches[3][0].binds[1]).toBe(firstHash);
+    expect(database.batches[2][0].binds[1]).toBe(firstHash);
   });
 
-  it('deletes expired rows once, and drops salts after two days', async () => {
+  it('deletes expired rows and drops salts after two days', async () => {
     const database = new FakeD1();
-    await store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, { ...settings, retentionDays: 90 });
-    await store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, { ...settings, retentionDays: 90 });
+    await purgeExpiredUsage(database as unknown as D1Database, utcDay(), 90);
 
     const purges = database.batches.filter((batch) => batch.some((statement) => statement.sql.startsWith('DELETE')));
     expect(purges).toHaveLength(1);
@@ -160,12 +160,12 @@ describe('recording a page view', () => {
     ]);
   });
 
-  it('retries retention cleanup after a failed purge', async () => {
+  it('allows the next cron run to retry retention cleanup after a failed purge', async () => {
     const database = new FakeD1();
     database.purgeFailures = 1;
 
-    await expect(store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, settings)).rejects.toThrow('purge failed');
-    await expect(store.recordUsage(database as unknown as D1Database, pageRequest(), { country: 'DE' }, settings)).resolves.toBeUndefined();
+    await expect(purgeExpiredUsage(database as unknown as D1Database, utcDay(), 400)).rejects.toThrow('purge failed');
+    await expect(purgeExpiredUsage(database as unknown as D1Database, utcDay(), 400)).resolves.toBeUndefined();
 
     const purges = database.batches.filter((batch) => batch.every((statement) => statement.sql.startsWith('DELETE')));
     expect(purges).toHaveLength(2);
@@ -229,7 +229,7 @@ describe('reading the report', () => {
     ]);
     expect(report.firstRecordedDay).toBe('2026-08-01');
     expect(report.startDay).toBe(shiftDay(today, -6));
-    expect(database.batches[0].every((statement) => statement.sql.startsWith('DELETE'))).toBe(true);
+    expect(database.batches[0][0].sql).toContain('SELECT country_code');
   });
 
   it('reports every recorded day when the range is all time', async () => {
@@ -242,14 +242,12 @@ describe('reading the report', () => {
     expect(report.startDay).toBe(firstDay);
     expect(report.totals.views).toBe(0);
     expect(report.daily).toHaveLength(21);
-    expect(database.batches[1][0].binds[0]).toBe('0000-01-01');
+    expect(database.batches[0][0].binds[0]).toBe('0000-01-01');
   });
 
-  it('enforces retention when the protected report is read without traffic', async () => {
+  it('enforces the default retention window from the daily cleanup', async () => {
     const database = new FakeD1();
-    database.batchResults = [[], [], [], [], [], [], [], []];
-
-    await store.readUsageReport(database as unknown as D1Database, 30);
+    await purgeExpiredUsage(database as unknown as D1Database, utcDay(), 400);
 
     const purge = database.batches[0];
     expect(purge.map((statement) => statement.binds[0])).toEqual([

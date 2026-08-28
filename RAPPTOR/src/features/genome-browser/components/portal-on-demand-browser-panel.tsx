@@ -2,14 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
-import GenomeFileStatus, { type GenomeFileState } from '@/features/genome-browser/components/genome-file-status';
-import PortalBrowserPanel from '@/features/genome-browser/components/portal-browser-panel';
+import GenomeFileStatus, {
+  type GenomeFileKind,
+  type GenomeFileProgress,
+  type GenomeFileState,
+} from '@/features/genome-browser/components/genome-file-status';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
 import {
   firstFastaRefName,
   loadCachedGenomeAsset,
+  MAX_FULL_SCORE_DOWNLOAD_BYTES,
   maybeDecompressGzip,
   shouldDownloadWholeAsset,
+  type GenomeAssetProgress,
 } from '@/features/genome-browser/on-demand-genome-assets';
 import type { PlannedGenomeAssets } from '@/features/storage/hf-batch-assets';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
@@ -23,6 +28,7 @@ type Props = {
 };
 
 type FileStates = { reference: GenomeFileState; promoters: GenomeFileState; scores: GenomeFileState; annotation: GenomeFileState };
+type FileProgress = Partial<Record<GenomeFileKind, GenomeFileProgress>>;
 
 function initialFileStates(hasAnnotation: boolean, hasScores: boolean): FileStates {
   return {
@@ -41,12 +47,23 @@ function assetCacheKey(prefix: string, kind: string, url: string, version: strin
   return `${prefix}/${kind}/${version || url}`;
 }
 
+function progressLabel(progress: GenomeAssetProgress): GenomeFileProgress {
+  if (progress.phase === 'caching') return { label: 'Saving cache', value: 100 };
+  if (progress.phase === 'cached') return { label: 'Reading cache', value: 100 };
+  if (progress.total && progress.total > 0) {
+    const value = Math.min(100, Math.round(progress.loaded * 100 / progress.total));
+    return { label: `Downloading ${value}%`, value };
+  }
+  return { label: 'Downloading' };
+}
+
 export default function PortalOnDemandBrowserPanel({ accession, releaseId, plannedAssets, experimental }: Props) {
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
   const [error, setError] = useState('');
   const hasScores = Boolean(plannedAssets.promoterScoresPlus && plannedAssets.promoterScoresMinus);
   const [fileStates, setFileStates] = useState<FileStates>(() => initialFileStates(Boolean(plannedAssets.ncbiAnnotations), hasScores));
+  const [fileProgress, setFileProgress] = useState<FileProgress>({});
   const objectUrls = useRef<string[]>([]);
   const abortController = useRef<AbortController | null>(null);
 
@@ -65,13 +82,32 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     setStatus('loading');
     setError('');
     setFileStates(initialFileStates(Boolean(plannedAssets.ncbiAnnotations), hasScores));
+    setFileProgress({
+      reference: { label: 'Checking cache' },
+      promoters: { label: 'Checking cache' },
+      ...(hasScores ? { scores: { label: 'Range streaming' } } : {}),
+      ...(plannedAssets.ncbiAnnotations ? { annotation: { label: 'Checking cache' } } : {}),
+    });
     try {
       const cachePrefix = `${releaseId}/${accession}`;
       const load = async (kind: keyof FileStates, url: string, cacheKey: string) => {
         try {
-          const blob = await loadCachedGenomeAsset(url, cacheKey, controller.signal);
-          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, [kind]: 'available' }));
-          return blob;
+          const blob = await loadCachedGenomeAsset(url, cacheKey, controller.signal, {
+            onProgress: (progress) => {
+              if (!controller.signal.aborted) {
+                setFileProgress((current) => ({ ...current, [kind]: progressLabel(progress) }));
+              }
+            },
+          });
+          if (!controller.signal.aborted) {
+            setFileProgress((current) => ({ ...current, [kind]: { label: 'Decompressing' } }));
+          }
+          const prepared = await maybeDecompressGzip(blob);
+          if (!controller.signal.aborted) {
+            setFileStates((current) => ({ ...current, [kind]: 'available' }));
+            setFileProgress((current) => ({ ...current, [kind]: { label: 'Cached', value: 100 } }));
+          }
+          return prepared;
         } catch (cause) {
           if (!controller.signal.aborted) setFileStates((current) => ({ ...current, [kind]: 'failed' }));
           throw cause;
@@ -79,40 +115,58 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       };
       const loadScores = async () => {
         if (!plannedAssets.promoterScoresPlus || !plannedAssets.promoterScoresMinus) return [null, null] as const;
-        try {
-          const loadScore = async (url: string, cacheKey: string): Promise<Blob | string> => {
-            const download = await shouldDownloadWholeAsset(url, controller.signal);
-            return download ? loadCachedGenomeAsset(url, cacheKey, controller.signal) : url;
-          };
-          const scores = await Promise.all([
-            loadScore(
-              plannedAssets.promoterScoresPlus,
-              assetCacheKey(cachePrefix, 'scores-plus', plannedAssets.promoterScoresPlus, plannedAssets.cacheVersions.promoterScoresPlus),
-            ),
-            loadScore(
-              plannedAssets.promoterScoresMinus,
-              assetCacheKey(cachePrefix, 'scores-minus', plannedAssets.promoterScoresMinus, plannedAssets.cacheVersions.promoterScoresMinus),
-            ),
-          ]);
-          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, scores: 'available' }));
-          return scores;
-        } catch (cause) {
-          if (!controller.signal.aborted) setFileStates((current) => ({ ...current, scores: 'failed' }));
-          throw cause;
-        }
+        const scoreUrls = [plannedAssets.promoterScoresPlus, plannedAssets.promoterScoresMinus] as const;
+        const scoreKeys = [
+          assetCacheKey(cachePrefix, 'scores-plus', plannedAssets.promoterScoresPlus, plannedAssets.cacheVersions.promoterScoresPlus),
+          assetCacheKey(cachePrefix, 'scores-minus', plannedAssets.promoterScoresMinus, plannedAssets.cacheVersions.promoterScoresMinus),
+        ] as const;
+
+        // Range streaming is the first-load path. Cache synchronization runs in
+        // the background and never delays the browser or turns a cache failure
+        // into a genome failure.
+        const syncSmallScore = async (url: string, cacheKey: string) => {
+          try {
+            if (!await shouldDownloadWholeAsset(url, controller.signal)) return false;
+            await loadCachedGenomeAsset(url, cacheKey, controller.signal, {
+              maximumBytes: MAX_FULL_SCORE_DOWNLOAD_BYTES,
+              onProgress: (progress) => {
+                if (!controller.signal.aborted) {
+                  setFileProgress((current) => ({ ...current, scores: progressLabel(progress) }));
+                }
+              },
+            });
+            return true;
+          } catch {
+            return false;
+          }
+        };
+
+        void Promise.all(scoreUrls.map((url, index) => syncSmallScore(url, scoreKeys[index]))).then((cached) => {
+          if (controller.signal.aborted) return;
+          const cachedCount = cached.filter(Boolean).length;
+          setFileStates((current) => ({ ...current, scores: 'available' }));
+          setFileProgress((current) => ({
+            ...current,
+            scores: {
+              label: cachedCount === cached.length
+                ? 'Cached'
+                : cachedCount > 0
+                  ? 'Partially cached · range streaming'
+                  : 'Range streaming',
+              value: 100,
+            },
+          }));
+        });
+
+        return scoreUrls;
       };
-      const [compressedReference, promoters, annotation, scores] = await Promise.all([
+      const [reference, promoterGff, annotationGff, scores] = await Promise.all([
         load('reference', plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference)),
         load('promoters', plannedAssets.predictedPromoters, assetCacheKey(cachePrefix, 'promoters', plannedAssets.predictedPromoters, plannedAssets.cacheVersions.predictedPromoters)),
         plannedAssets.ncbiAnnotations
           ? load('annotation', plannedAssets.ncbiAnnotations, assetCacheKey(cachePrefix, 'ncbi', plannedAssets.ncbiAnnotations, plannedAssets.cacheVersions.ncbiAnnotations)).catch(() => null)
           : Promise.resolve(null),
         loadScores(),
-      ]);
-      const [reference, promoterGff, annotationGff] = await Promise.all([
-        maybeDecompressGzip(compressedReference),
-        maybeDecompressGzip(promoters),
-        annotation ? maybeDecompressGzip(annotation) : Promise.resolve(null),
       ]);
       const header = await reference.slice(0, 256 * 1024).text();
       const refName = firstFastaRefName(header);
@@ -160,15 +214,13 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
   }, [prepare]);
 
   if (assembly) return <>
-    <GenomeFileStatus states={fileStates} />
-    {experimental
-      ? <UnifiedBrowserPanel prediction={assembly} experimental={experimental} />
-      : <PortalBrowserPanel assembly={assembly} />}
+    <GenomeFileStatus states={fileStates} progress={fileProgress} />
+    <UnifiedBrowserPanel prediction={assembly} experimental={experimental} />
   </>;
 
   return (
     <>
-      <GenomeFileStatus states={fileStates} />
+      <GenomeFileStatus states={fileStates} progress={fileProgress} />
       <div className="browser-unavailable browser-on-demand">
         <strong>{status === 'loading' ? 'Preparing genome browser' : 'Genome browser could not be loaded'}</strong>
         {status === 'loading'

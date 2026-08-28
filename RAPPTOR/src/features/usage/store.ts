@@ -43,7 +43,6 @@ const TOP_CITIES = 25;
 const TOP_PATHS = 20;
 const MAX_SERIES_DAYS = 400;
 const EARLIEST_DAY = '0000-01-01';
-const SALT_RETENTION_DAYS = 2;
 
 const RECORD_VISITOR_SQL = `INSERT INTO analytics_visitor_day (day, visitor_hash, country_code, region, city)
   VALUES (?, ?, ?, ?, ?)
@@ -61,7 +60,6 @@ const RECORD_PATH_SQL = `INSERT INTO analytics_daily_path (day, path, views)
   ON CONFLICT(day, path) DO UPDATE SET views = views + 1`;
 
 let cachedSalt: { day: string; salt: string } | null = null;
-let lastPurgeDay: string | null = null;
 
 export function usageRuntime(): UsageRuntime | null {
   try {
@@ -92,24 +90,6 @@ async function resolveStoredSalt(database: D1Database, day: string) {
   return row?.salt || generated;
 }
 
-/**
- * Deletes expired rows once per worker instance per day. Salts are dropped after
- * two days, which permanently unlinks the stored visitor tokens.
- */
-async function purgeExpired(database: D1Database, day: string, retentionDays: number) {
-  if (lastPurgeDay === day) return;
-  // Today is the first retained date, so N days includes today plus N - 1
-  // preceding UTC dates. Likewise, two salt dates means today and yesterday.
-  const cutoff = shiftDay(day, -(retentionDays - 1));
-  await database.batch([
-    database.prepare('DELETE FROM analytics_visitor_day WHERE day < ?').bind(cutoff),
-    database.prepare('DELETE FROM analytics_daily_geo WHERE day < ?').bind(cutoff),
-    database.prepare('DELETE FROM analytics_daily_path WHERE day < ?').bind(cutoff),
-    database.prepare('DELETE FROM analytics_salt WHERE day < ?').bind(shiftDay(day, -(SALT_RETENTION_DAYS - 1))),
-  ]);
-  lastPurgeDay = day;
-}
-
 export async function writeUsageEvent(database: D1Database, event: UsageEvent) {
   const { day, path, geo, visitorHash } = event;
   await database.batch([
@@ -138,7 +118,6 @@ export async function recordUsage(
   );
 
   await writeUsageEvent(database, { day, path: normalizePath(request.nextUrl.pathname), geo, visitorHash });
-  await purgeExpired(database, day, settings.retentionDays);
 }
 
 /**
@@ -195,10 +174,6 @@ function buildDailySeries(startDay: string, endDay: string, views: Map<string, n
 export async function readUsageReport(database: D1Database, rangeDays: number): Promise<UsageReport> {
   const endDay = utcDay();
   const startDay = rangeDays > 0 ? shiftDay(endDay, -(rangeDays - 1)) : EARLIEST_DAY;
-
-  // Reading the protected dashboard is also an opportunity to enforce
-  // retention on otherwise quiet deployments.
-  await purgeExpired(database, endDay, readUsageSettings().retentionDays);
 
   const [
     countryViews,

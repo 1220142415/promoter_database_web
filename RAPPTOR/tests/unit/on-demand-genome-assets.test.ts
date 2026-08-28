@@ -44,13 +44,17 @@ describe('on-demand genome assets', () => {
       delete: vi.fn(),
     } as unknown as Cache;
     vi.stubGlobal('caches', { open: vi.fn().mockResolvedValue(cache) });
-    const fetchMock = vi.fn().mockResolvedValue(new Response('downloaded genome'));
+    const fetchMock = vi.fn().mockResolvedValue(new Response('downloaded genome', {
+      headers: { 'Content-Length': '17' },
+    }));
     vi.stubGlobal('fetch', fetchMock);
+    const onProgress = vi.fn();
 
     await loadCachedGenomeAsset(
       'https://huggingface.co/genome.fna.gz',
       'release/accession/reference',
       new AbortController().signal,
+      { onProgress },
     );
 
     expect(cache.put).toHaveBeenCalledOnce();
@@ -64,6 +68,24 @@ describe('on-demand genome assets', () => {
     );
     expect(cache.keys).not.toHaveBeenCalled();
     expect(cache.delete).not.toHaveBeenCalled();
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ phase: 'downloading', loaded: 17, total: 17 }));
+    expect(onProgress).toHaveBeenLastCalledWith({ phase: 'cached', loaded: 17, total: 17 });
+  });
+
+  it('rejects static assets before reading a declared oversized response body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('small body', {
+      headers: { 'Content-Length': String(65 * 1024 * 1024) },
+    })));
+
+    await expect(loadCachedGenomeAsset(
+      'https://huggingface.co/oversized.fna.gz',
+      'release/accession/reference',
+      new AbortController().signal,
+    )).rejects.toThrow('64 MiB browser download limit');
+  });
+
+  it('rejects an uncompressed asset beyond the decompressed limit', async () => {
+    await expect(maybeDecompressGzip(new Blob(['12345']), 4)).rejects.toThrow('4 bytes browser download limit');
   });
 
   it('downloads small score files and streams large or unknown files', async () => {

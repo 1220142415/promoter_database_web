@@ -1,4 +1,5 @@
 import worldMap from '@/generated/world-map.json';
+import { countryName } from '@/features/usage/analytics';
 import type { UsageCountryRow } from '@/features/usage/types';
 
 // Five teal steps from the portal palette. A log scale keeps a single dominant
@@ -32,7 +33,7 @@ export default function UsageWorldMap({ countries, metricLabel = 'visitors' }: U
       <svg
         viewBox={`0 0 ${worldMap.width} ${worldMap.height}`}
         role="img"
-        aria-label={`World map shading ${mapped} countries by ${metricLabel}. The country table below lists the same numbers.`}
+        aria-label={`World map shading ${mapped} countries or regions by ${metricLabel}. The table below lists the same numbers.`}
         preserveAspectRatio="xMidYMid meet"
       >
         <path className="usage-map-sphere" d={worldMap.sphere} />
@@ -49,7 +50,7 @@ export default function UsageWorldMap({ countries, metricLabel = 'visitors' }: U
               <title>
                 {row
                   ? `${row.name}: ${row.visitors.toLocaleString()} visitors, ${row.views.toLocaleString()} page views`
-                  : `${country.name}: no recorded visits`}
+                  : `${countryName(country.code)}: no recorded visits`}
               </title>
             </path>
           );

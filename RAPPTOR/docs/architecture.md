@@ -42,6 +42,7 @@ The current feature boundaries are:
 ```text
 src/features/usage/
 ├── analytics.ts              request filtering, IP/geo normalization, privacy helpers
+├── retention.ts              daily D1 retention cleanup used by Cloudflare Cron
 ├── store.ts                  Cloudflare runtime access and D1 reads/writes
 ├── types.ts                  usage collection and report contracts
 └── components/
@@ -122,6 +123,10 @@ request
   -> src/features/usage/analytics.ts validates and minimizes IP/geo data
   -> src/features/usage/store.ts schedules aggregate D1 writes
   -> /usage or /admin/usage reads the aggregate report
+
+daily Cloudflare Cron
+  -> config/cloudflare-worker.mjs
+  -> src/features/usage/retention.ts removes expired aggregate rows and salts
 ```
 
 Collection is controlled by `RAPPTOR_ANALYTICS`; the public report is

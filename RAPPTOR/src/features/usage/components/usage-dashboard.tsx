@@ -25,6 +25,11 @@ function percent(value: number) {
   return value < 0.001 ? '<0.1%' : `${(value * 100).toFixed(1)}%`;
 }
 
+function cityLocation(region: string, country: string) {
+  if (!region || country === region || country.startsWith(`${region},`)) return country || region;
+  return `${region}, ${country}`;
+}
+
 function UsageNotice({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="usage-notice">
@@ -51,7 +56,7 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
       <section className="usage-metrics" aria-label="Summary">
         <div><span>Visitors</span><strong>{report.totals.visitors.toLocaleString()}</strong><small>Approximate daily uniques, summed over the range</small></div>
         <div><span>Page views</span><strong>{report.totals.views.toLocaleString()}</strong><small>Full page loads; in-app navigation is not counted</small></div>
-        <div><span>Countries</span><strong>{report.totals.countries.toLocaleString()}</strong><small>With at least one visitor</small></div>
+        <div><span>Countries / regions</span><strong>{report.totals.countries.toLocaleString()}</strong><small>With at least one visitor</small></div>
         <div><span>Cities</span><strong>{report.totals.cities.toLocaleString()}</strong><small>Top locations recorded</small></div>
       </section>
 
@@ -67,11 +72,11 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
 
       <div className="usage-columns">
         <section className="usage-panel">
-          <h2>Countries</h2>
+          <h2>Countries / regions</h2>
           <div className="usage-table-wrap">
             <table className="usage-table">
               <thead>
-                <tr><th scope="col">Country</th><th scope="col">Visitors</th><th scope="col">Views</th><th scope="col">Share</th></tr>
+                <tr><th scope="col">Country / region</th><th scope="col">Visitors</th><th scope="col">Views</th><th scope="col">Share</th></tr>
               </thead>
               <tbody>
                 {report.countries.map((country) => (
@@ -104,7 +109,7 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
                   <tbody>
                     {report.cities.map((city) => (
                       <tr key={`${city.countryCode}-${city.region}-${city.city}`}>
-                        <th scope="row">{city.city}<small>{[city.region, city.countryName].filter(Boolean).join(', ')}</small></th>
+                        <th scope="row">{city.city}<small>{cityLocation(city.region, city.countryName)}</small></th>
                         <td>{city.visitors.toLocaleString()}</td>
                         <td>{city.views.toLocaleString()}</td>
                       </tr>

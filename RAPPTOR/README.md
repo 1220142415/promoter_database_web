@@ -5,7 +5,7 @@ RAPPTOR is a genome-first portal for the GTDB test release supplied on 2026-08-0
 See [`docs/architecture.md`](docs/architecture.md) for directory ownership,
 runtime request flows, and file-placement rules.
 
-Experimental transcription-start-site observations are published as a separate collection at `/experimental-tss`. Its GCF assemblies, study tracks, statistics, active-release pointer, and assets are independent from the prediction catalog.
+Experimental transcription-start-site observations use an independent release and asset catalog, but are rendered with predictions and annotations on the unified `/genomes/[accession]` page. Public discovery stays disabled unless `RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE=on`; the legacy `/experimental-tss/genomes/[accession]` URL redirects to the unified page.
 
 ## Release
 
@@ -31,7 +31,7 @@ Predicted promoters and NCBI annotations are separate evidence classes. The port
 
 - Node.js 20 or newer
 - npm
-- WSL Ubuntu on Windows, or a native Unix environment
+- Windows, WSL Ubuntu, or a native Unix environment; the offline data/indexing pipeline additionally needs Unix bioinformatics tools
 - `samtools`, `bgzip`, `tabix`, `gzip`, and `tar`
 
 On Ubuntu:
@@ -202,13 +202,13 @@ Raw BED files and generated releases are intentionally ignored by Git.
 ## Validation
 
 ```bash
-npm run lint
-npm test
+npm run verify
 npm run test:data
-npm run build
 npm run test:e2e
 npm run build:cf
 ```
+
+`build:cf` runs lint, TypeScript, and Vitest before creating the OpenNext bundle, so a failed local check cannot proceed to deployment.
 
 Deploy the validated OpenNext build to Cloudflare Workers with:
 
@@ -226,9 +226,9 @@ and cost controls are recorded in
 
 The full data validator checks collection counts, accession identity, feature types, score and strand bounds, FASTA/GFF3 coordinate containment, BGZF and Tabix indexes, manifests, and SHA-256 digests.
 
-### Standalone and Cloudflare builds from WSL
+### Standalone and Cloudflare builds on Windows or WSL
 
-Run production and Cloudflare builds with Linux-installed dependencies inside WSL when working from Windows. Prefer a WSL-native checkout with its own `node_modules`; a dependency tree installed by Windows does not contain the Linux native Lightning CSS/SWC binaries.
+Local web and Cloudflare builds can run directly on Windows. OpenNext currently loses its generated edge config on Windows under Node.js 22/24, so `npm run build:cf` automatically uses the newest Node.js 20 installation found under `NVM_HOME`. Install it once with `nvm install 20`; Linux and Cloudflare Workers Builds continue using their configured Node version.
 
 ```bash
 npm ci
@@ -236,9 +236,9 @@ npm run build
 npm run build:cf
 ```
 
-If the checkout is shared under `/mnt/d`, running `npm ci` from WSL replaces its Windows-specific dependency tree. Re-run `npm ci` from Windows before using that same checkout with Windows Node.js again.
+Use WSL only for offline release generation that needs `samtools`, `bgzip`, and `tabix`, or as a fallback for platform-specific build problems. A WSL checkout should keep its own `node_modules`; do not share one dependency tree between Windows and Linux.
 
-Next.js output tracing deliberately excludes `.data/**` from the three local-only routes (`/api/local-data`, `/api/local-region`, and `/api/local-release`). The postbuild step fails if a standalone bundle still contains a `.data` directory, so the 1,000-genome release and future Packs cannot be copied into the deploy artifact accidentally. Use WSL for production builds: Next.js 15's trace-exclusion matcher does not reliably match Windows backslash paths, and the guard will reject that oversized Windows artifact. This affects production packaging only: local development still reads `.data` normally. A standalone deployment that intentionally uses the local routes must mount the release separately and set `LOCAL_DATA_ROOT` and `LOCAL_RELEASE_ROOT`; the D1/Hugging Face production path does not need that mount.
+Next.js output tracing deliberately excludes `.data/**` from the three local-only routes (`/api/local-data`, `/api/local-region`, and `/api/local-release`). The postbuild step fails if a standalone bundle still contains a `.data` directory, so the 1,000-genome release and future Packs cannot be copied into the deploy artifact accidentally. This affects production packaging only: local development still reads `.data` normally. A standalone deployment that intentionally uses the local routes must mount the release separately and set `LOCAL_DATA_ROOT` and `LOCAL_RELEASE_ROOT`; the D1/Hugging Face production path does not need that mount.
 
 ## Packed single-repository releases and D1
 
@@ -297,7 +297,7 @@ npm run hf:batch-plan -- --input gtdb_genome_metadata_r214.tsv --output hf-batch
 
 ## Usage analytics
 
-Usage analytics are disabled by default and start only when `RAPPTOR_ANALYTICS=on` is set. The default country-level report shows where a deployment is used; city-level collection requires `RAPPTOR_ANALYTICS_PRECISION=city`. On Cloudflare, location comes from the edge (`request.cf`), so no third-party geolocation service is called. No address or user agent is stored: each request is reduced to coarse location fields and an unlinkable visitor token made from the address, user agent, and a random per-UTC-day salt. Each successful counted request or dashboard read removes salts older than today's and yesterday's; cleanup waits while the deployment is idle.
+Usage analytics are disabled by default and start only when `RAPPTOR_ANALYTICS=on` is set. The default country-level report shows where a deployment is used; city-level collection requires `RAPPTOR_ANALYTICS_PRECISION=city`. On Cloudflare, location comes from the edge (`request.cf`), so no third-party geolocation service is called. No address or user agent is stored: each request is reduced to coarse location fields and an unlinkable visitor token made from the address, user agent, and a random per-UTC-day salt. The Cloudflare Cron Trigger in `wrangler.toml` removes expired aggregate rows daily and drops salts older than today and yesterday, so page requests never perform retention deletes.
 
 API traffic, genome Range requests, static assets, router prefetches, usage dashboards, and known crawlers are never counted. The write runs as a Cloudflare background task after the response is sent, so counting never delays a page. A view means a full page load; navigating inside the app with the Next.js router is an RSC fetch that is indistinguishable from the prefetches the router fires for every visible link, so those are left out rather than counted twice. Visitor counts are unaffected.
 
@@ -322,7 +322,7 @@ Set `RAPPTOR_USAGE_PUBLIC_PAGE=on` to expose the same aggregated read-only repor
 | `RAPPTOR_ANALYTICS_USERNAME`, `RAPPTOR_ANALYTICS_PASSWORD` | Reveal and protect the dashboard. Unset means 404 for every admin path. |
 | `RAPPTOR_USAGE_PUBLIC_PAGE=on` | Exposes the aggregated read-only `/usage` report. Unset or another value hides it with 404. |
 | `RAPPTOR_ANALYTICS_PRECISION=city` | Opt in to city, region, and coordinates. The default is country only. |
-| `RAPPTOR_ANALYTICS_RETENTION_DAYS` | Days of history to keep, 400 by default. Expired rows are removed on the next successful counted request or dashboard read. |
+| `RAPPTOR_ANALYTICS_RETENTION_DAYS` | Days of history to keep, 400 by default. The daily Cloudflare Cron Trigger removes expired rows. |
 | `RAPPTOR_ANALYTICS_TRUST_PROXY_HEADERS=on` | Outside Cloudflare, trust IP and location headers from a controlled reverse proxy. Leave unset for direct or untrusted traffic. |
 
 The map is a build artifact: `npm run analytics:map` regenerates `src/generated/world-map.json` from Natural Earth 1:110m geometry (public domain, through `world-atlas`). It is projected at build time and rendered on the server as inline SVG, so the dashboard ships no client-side mapping library and stays within the portal Content Security Policy.

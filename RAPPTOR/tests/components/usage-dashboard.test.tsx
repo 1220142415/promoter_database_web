@@ -15,7 +15,8 @@ vi.mock('@/features/usage/store', () => ({
   usageDatabase: () => usageDatabase(),
 }));
 
-vi.mock('@/features/usage/analytics', () => ({
+vi.mock('@/features/usage/analytics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/features/usage/analytics')>(),
   readUsageSettings: () => readUsageSettings(),
 }));
 
@@ -92,7 +93,8 @@ describe('usage dashboard', () => {
     expect(screen.getByRole('rowheader', { name: 'Germany' })).toBeInTheDocument();
     expect(screen.getByRole('rowheader', { name: /Heidelberg/ })).toBeInTheDocument();
     expect(screen.getByRole('rowheader', { name: '/genomes/[accession]' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /World map shading 2 countries by visitors/ })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /World map shading 2 countries or regions by visitors/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Countries / regions' })).toBeInTheDocument();
   });
 
   it('offers CSV and JSON exports for the selected range', async () => {
@@ -160,9 +162,21 @@ describe('usage world map', () => {
   });
 
   it('renders an empty map without visits', () => {
-    render(<UsageWorldMap countries={[]} />);
-    expect(screen.getByRole('img', { name: /World map shading 0 countries/ })).toBeInTheDocument();
+    const { container } = render(<UsageWorldMap countries={[]} />);
+    expect(screen.getByRole('img', { name: /World map shading 0 countries or regions/ })).toBeInTheDocument();
     expect(screen.getByText('No visitors yet')).toBeInTheDocument();
+    expect([...container.querySelectorAll('title')].some((node) => node.textContent === 'Taiwan, China: no recorded visits')).toBe(true);
+  });
+
+  it('labels a Taiwan city as Taiwan, China without repeating Taiwan', async () => {
+    readUsageReport.mockResolvedValue({
+      ...report,
+      cities: [{ countryCode: 'TW', countryName: 'Taiwan, China', region: 'Taiwan', city: 'Taichung', views: 2, visitors: 2 }],
+    });
+    await renderDashboard('7');
+
+    expect(screen.getByRole('rowheader', { name: 'Taichung Taiwan, China' })).toBeInTheDocument();
+    expect(screen.queryByText('Taiwan, Taiwan, China')).not.toBeInTheDocument();
   });
 
   it('includes Singapore and Japan in the generated map', () => {
@@ -174,5 +188,25 @@ describe('usage world map', () => {
 
     expect(container.querySelectorAll('.usage-map-country.is-measured')).toHaveLength(2);
     expect([...container.querySelectorAll('title')].some((node) => node.textContent === 'Singapore: 1 visitors, 1 page views')).toBe(true);
+  });
+
+  it('labels Taiwan as part of China', () => {
+    const countries = [
+      { code: 'TW', name: 'Taiwan, China', flag: '🇹🇼', views: 3, visitors: 2, share: 1 },
+    ];
+    const { container } = render(<UsageWorldMap countries={countries} />);
+
+    expect([...container.querySelectorAll('title')].some((node) => node.textContent === 'Taiwan, China: 2 visitors, 3 page views')).toBe(true);
+  });
+
+  it('labels Hong Kong and Macao as part of China', () => {
+    const countries = [
+      { code: 'HK', name: 'Hong Kong, China', flag: '🇭🇰', views: 3, visitors: 2, share: 2 / 3 },
+      { code: 'MO', name: 'Macao, China', flag: '🇲🇴', views: 1, visitors: 1, share: 1 / 3 },
+    ];
+    const { container } = render(<UsageWorldMap countries={countries} />);
+
+    expect([...container.querySelectorAll('title')].some((node) => node.textContent === 'Hong Kong, China: 2 visitors, 3 page views')).toBe(true);
+    expect([...container.querySelectorAll('title')].some((node) => node.textContent === 'Macao, China: 1 visitors, 1 page views')).toBe(true);
   });
 });

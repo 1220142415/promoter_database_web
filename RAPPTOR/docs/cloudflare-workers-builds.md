@@ -1,9 +1,9 @@
 # Cloudflare Workers Builds
 
 This document records the production deployment path for RAPPTOR. The build is
-performed by Cloudflare Workers Builds on Linux; local Windows OpenNext builds
-are for development only because the OpenNext bundler is not fully compatible
-with Windows.
+performed by Cloudflare Workers Builds on Linux. Local Windows builds use the
+Node.js 20 selection in `scripts/cloudflare/run-opennext-build.mjs` to avoid the
+known OpenNext edge-config copy failure under Node.js 22/24.
 
 ## Current Configuration
 
@@ -42,9 +42,7 @@ be copied into the repository or pasted into build logs.
 1. Run the local checks that do not require a Cloudflare bundle:
 
    ```bash
-   npm test
-   npx tsc --noEmit
-   npm run lint
+   npm run check
    ```
 
 2. If the commit adds a numbered D1 migration, apply it before deploying the
@@ -59,7 +57,7 @@ be copied into the repository or pasted into build logs.
    schema is present, but D1 may scan the facet table; apply `0004` before
    production traffic so the bounded search path stays inexpensive.
 
-3. Push a commit to `feature/genome-resource-db-promoter-v1`.
+3. Push the reviewed commit or merge its PR into the deployment branch.
 4. Open the Worker Deployments/Builds page and wait for the Linux build.
 5. Inspect the build log. The expected sequence is `npm run build:cf`, then
    `npx @opennextjs/cloudflare deploy`.
@@ -115,9 +113,9 @@ do not satisfy this check.
 
 ### `ENOENT ... open-next.config.edge.mjs` on Windows
 
-This is the known OpenNext Windows bundling failure. `next build` can succeed
-before OpenNext fails while copying its generated edge configuration. Do not
-debug this as a D1 or authentication problem. Use Workers Builds (Linux), WSL,
+This is the known OpenNext Windows bundling failure under Node.js 22/24.
+Install Node.js 20 with `nvm install 20` and use `npm run build:cf`, which
+selects that runtime automatically. If it still fails, use Workers Builds, WSL,
 or another Linux CI runner. Do not add a generated `.open-next` file to Git.
 
 ### Build cannot find `package.json`

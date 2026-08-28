@@ -11,31 +11,23 @@ import {
 } from '@/features/genome-browser/on-demand-genome-assets';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 
-vi.mock('@/features/genome-browser/components/portal-browser-panel', () => ({
-  default: ({ assembly }: { assembly: { defaultLocus: string; assets: { promoterScoresPlus: string | null; promoterScoresMinus: string | null; ncbiAnnotations: string | null } } }) => (
-    <div
-      data-testid="prepared-browser"
-      data-locus={assembly.defaultLocus}
-      data-scores={String(Boolean(assembly.assets.promoterScoresPlus && assembly.assets.promoterScoresMinus))}
-      data-score-plus={assembly.assets.promoterScoresPlus || ''}
-      data-score-minus={assembly.assets.promoterScoresMinus || ''}
-      data-ncbi={String(Boolean(assembly.assets.ncbiAnnotations))}
-    />
-  ),
-}));
-
 vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
-  default: ({ prediction, experimental }: { prediction: { assemblyName: string; assets: { ncbiAnnotations: string | null } }; experimental: ExperimentalTssGenome }) => (
+  default: ({ prediction, experimental }: { prediction: { assemblyName: string; defaultLocus: string; assets: { promoterScoresPlus: string | null; promoterScoresMinus: string | null; ncbiAnnotations: string | null } }; experimental?: ExperimentalTssGenome }) => (
     <div
-      data-testid="prepared-unified-browser"
+      data-testid={experimental ? 'prepared-unified-browser' : 'prepared-browser'}
       data-prediction={prediction.assemblyName}
-      data-experimental={experimental.accession}
+      data-experimental={experimental?.accession || ''}
+      data-locus={prediction.defaultLocus}
+      data-scores={String(Boolean(prediction.assets.promoterScoresPlus && prediction.assets.promoterScoresMinus))}
+      data-score-plus={prediction.assets.promoterScoresPlus || ''}
+      data-score-minus={prediction.assets.promoterScoresMinus || ''}
       data-ncbi={String(Boolean(prediction.assets.ncbiAnnotations))}
     />
   ),
 }));
 
 vi.mock('@/features/genome-browser/on-demand-genome-assets', () => ({
+  MAX_FULL_SCORE_DOWNLOAD_BYTES: 8 * 1024 * 1024,
   firstFastaRefName: vi.fn(() => 'NC_000001.1'),
   loadCachedGenomeAsset: vi.fn(),
   maybeDecompressGzip: vi.fn((blob: Blob) => Promise.resolve(blob)),
@@ -103,15 +95,15 @@ describe('on-demand genome browser', () => {
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-scores', 'true');
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute(
       'data-score-plus',
-      'blob:scores-plus',
+      plannedAssets.promoterScoresPlus,
     );
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute(
       'data-score-minus',
-      'blob:scores-minus',
+      plannedAssets.promoterScoresMinus,
     );
     expect(screen.getByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'true');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableScoresAvailableAnnotationAvailable');
-    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(5);
+    await vi.waitFor(() => expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceCachedPromotersCachedScoresCachedAnnotationCached'));
+    await vi.waitFor(() => expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(5));
     expect(vi.mocked(loadCachedGenomeAsset).mock.calls.map(([url, key]) => [url, key])).toEqual([
       [plannedAssets.reference, `RAPPTOR 2026-08-13/GCA_000007325.1/reference/${'a'.repeat(64)}`],
       [plannedAssets.predictedPromoters, `RAPPTOR 2026-08-13/GCA_000007325.1/promoters/${'b'.repeat(64)}`],
@@ -165,6 +157,25 @@ describe('on-demand genome browser', () => {
     expect(shouldDownloadWholeAsset).toHaveBeenCalledTimes(2);
   });
 
+  it('starts the browser before score-size checks finish', async () => {
+    let resolveSize!: (small: boolean) => void;
+    const sizeCheck = new Promise<boolean>((resolve) => { resolveSize = resolve; });
+    vi.mocked(shouldDownloadWholeAsset).mockReturnValue(sizeCheck);
+
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_000007325.1"
+        releaseId="RAPPTOR 2026-08-13"
+        plannedAssets={plannedAssets}
+      />,
+    );
+
+    expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-score-plus', plannedAssets.promoterScoresPlus);
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
+    resolveSize(false);
+    await vi.waitFor(() => expect(screen.getByLabelText('Genome files')).toHaveTextContent('ScoresRange streaming'));
+  });
+
   it('combines staged predictions and annotation with experimental TSS', async () => {
     render(
       <PortalOnDemandBrowserPanel
@@ -201,7 +212,7 @@ describe('on-demand genome browser', () => {
     );
 
     expect(await screen.findByTestId('prepared-browser')).toHaveAttribute('data-ncbi', 'false');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersAvailableScoresAvailableAnnotationNot available');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceCachedPromotersCachedScoresCachedAnnotationNot available');
     expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(4);
   });
 
@@ -231,7 +242,7 @@ describe('on-demand genome browser', () => {
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Genome asset is unavailable (HTTP 404).');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceAvailablePromotersFailedScoresNot availableAnnotationNot available');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ReferenceCachedPromotersFailedScoresNot availableAnnotationNot available');
     expect(screen.queryByTestId('prepared-browser')).not.toBeInTheDocument();
   });
 });

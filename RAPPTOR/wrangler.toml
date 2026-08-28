@@ -1,5 +1,5 @@
 name = "rapptor"
-main = ".open-next/worker.js"
+main = "config/cloudflare-worker.mjs"
 compatibility_date = "2026-08-13"
 compatibility_flags = ["nodejs_compat"]
 
@@ -10,6 +10,9 @@ binding = "ASSETS"
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+[triggers]
+crons = ["17 3 * * *"]
 
 [vars]
 RAPPTOR_ANALYTICS = "on"

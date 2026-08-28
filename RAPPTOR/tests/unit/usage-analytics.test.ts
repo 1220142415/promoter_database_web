@@ -155,6 +155,12 @@ describe('visitor tokens', () => {
 describe('presentation helpers', () => {
   it('names and flags countries', () => {
     expect(countryName('DE')).toBe('Germany');
+    expect(countryName('HK')).toBe('Hong Kong, China');
+    expect(countryName('HK', 'zh-CN')).toBe('中国香港');
+    expect(countryName('MO')).toBe('Macao, China');
+    expect(countryName('MO', 'zh-CN')).toBe('中国澳门');
+    expect(countryName('TW')).toBe('Taiwan, China');
+    expect(countryName('TW', 'zh-CN')).toBe('中国台湾');
     expect(countryName(UNKNOWN_COUNTRY)).toBe('Unknown');
     expect(countryFlag('DE')).toBe('🇩🇪');
     expect(countryFlag(UNKNOWN_COUNTRY)).toBe('🏳️');

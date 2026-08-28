@@ -11,7 +11,7 @@ RAPPTOR 是面向 2026-08-07 GTDB 测试数据集的基因组优先型资源门�
 - 23,405,141 个 RAPPTOR `promoter_peak`，分数均大于 0.9
 - 1,000 个 assembly 的 GTDB taxonomy
 - 656 个 assembly 下载到 NCBI 注释，344 个明确缺失；29 个跨环状复制原点的注释被规范化为原点两侧分段，用于索引浏览器轨道
-- 不包含实验 TSS 数据集
+- 实验 TSS 使用独立 release 和资源目录；默认不公开，启用后在统一基因组详情页与预测、注释共同展示
 
 源压缩包没有记录 GTDB release，因此网站只显示数据集版本 `2026-08-07`，不猜测或声称具体 GTDB release。
 
@@ -29,7 +29,7 @@ RAPPTOR 预测峰与 NCBI 基因结构注释是不同的信息层。网站不推
 
 - Node.js 20 或更高版本
 - npm
-- Windows 下的 WSL Ubuntu，或原生 Unix 环境
+- Windows、WSL Ubuntu 或原生 Unix 环境；离线数据和索引流水线另外需要 Unix 生物信息工具
 - `samtools`、`bgzip`、`tabix`、`gzip` 和 `tar`
 
 Ubuntu 安装命令：
@@ -166,13 +166,13 @@ HF_STORAGE_BASE_URL=https://huggingface.co/datasets/<owner>/<repo>/resolve/main/
 ## 验证
 
 ```bash
-npm run lint
-npm test
+npm run verify
 npm run test:data
-npm run build
 npm run test:e2e
 npm run build:cf
 ```
+
+`build:cf` 会先执行 lint、TypeScript 和 Vitest，任何本地检查失败都会阻止生成 OpenNext 部署包。
 
 验证通过后，用下面的命令部署到 Cloudflare Workers：
 
@@ -187,9 +187,9 @@ command 设置为 `npx @opennextjs/cloudflare deploy`。在 Cloudflare 构建环
 
 完整数据校验会检查集合数量、accession 对应关系、feature 类型、分数和链范围、FASTA/GFF3 坐标、BGZF/Tabix 索引、manifest 以及 SHA-256。
 
-### 在 WSL 中构建 standalone 与 Cloudflare 产物
+### 在 Windows 或 WSL 中构建 standalone 与 Cloudflare 产物
 
-Windows 环境下应使用由 Linux 安装的依赖在 WSL 内执行生产构建和 Cloudflare 构建。推荐使用带有独立 `node_modules` 的 WSL 原生 checkout；Windows 安装的依赖树不包含 Linux 所需的 Lightning CSS/SWC 原生二进制文件。
+网页和 Cloudflare 构建可以直接在 Windows 运行。OpenNext 目前在 Windows 的 Node.js 22/24 下会漏掉生成的 edge 配置，因此 `npm run build:cf` 会自动使用 `NVM_HOME` 中最新的 Node.js 20。只需执行一次 `nvm install 20`；Linux 和 Cloudflare Workers Builds 仍使用各自配置的 Node 版本。
 
 ```bash
 npm ci
@@ -197,9 +197,9 @@ npm run build
 npm run build:cf
 ```
 
-如果 checkout 位于 `/mnt/d` 并由 Windows 和 WSL 共用，在 WSL 中执行 `npm ci` 会把依赖树替换为 Linux 版本；之后若要再次用 Windows Node.js，应在 Windows 中重新执行 `npm ci`。
+只有需要 `samtools`、`bgzip`、`tabix` 的离线 release 构建，或出现其他平台问题时才需要 WSL。Windows 与 WSL 应分别保留自己的 `node_modules`，不要共用同一依赖树。
 
-Next.js 的 output tracing 会在三个仅供本地使用的路由（`/api/local-data`、`/api/local-region` 和 `/api/local-release`）中排除 `.data/**`。如果 standalone 产物里仍出现 `.data` 目录，postbuild 会直接失败，防止把 1,000 个基因组或未来的 Pack 意外复制进部署包。生产构建必须使用 WSL：Next.js 15 的 trace 排除匹配器不能可靠处理 Windows 反斜杠路径，保护检查会拒绝这种超大的 Windows 产物。该配置只影响生产打包，本地开发仍可正常读取 `.data`。如果 standalone 部署确实需要这些本地路由，应单独挂载 release，并设置 `LOCAL_DATA_ROOT` 和 `LOCAL_RELEASE_ROOT`；使用 D1/Hugging Face 的生产部署无需挂载本地 release。
+Next.js 的 output tracing 会在三个仅供本地使用的路由（`/api/local-data`、`/api/local-region` 和 `/api/local-release`）中排除 `.data/**`。如果 standalone 产物里仍出现 `.data` 目录，postbuild 会直接失败，防止把 1,000 个基因组或未来的 Pack 意外复制进部署包。该配置只影响生产打包，本地开发仍可正常读取 `.data`。如果 standalone 部署确实需要这些本地路由，应单独挂载 release，并设置 `LOCAL_DATA_ROOT` 和 `LOCAL_RELEASE_ROOT`；使用 D1/Hugging Face 的生产部署无需挂载本地 release。
 
 ## 单仓库 Pack release 与 D1
 
@@ -250,7 +250,7 @@ D1 binding 固定为 `RAPPTOR_DB`。先应用 `database/migrations/0001_rapptor_
 
 ## 访问统计
 
-访问统计默认关闭，只有显式设置 `RAPPTOR_ANALYTICS=on` 才开始收集。默认仅按国家汇总，用于说明部署在全球哪些地方被使用；城市级统计必须显式设置 `RAPPTOR_ANALYTICS_PRECISION=city`。在 Cloudflare 上，位置直接来自边缘的 `request.cf`，不调用第三方 IP 定位服务。系统不存储 IP 地址或 User-Agent：每个请求只保留粗粒度位置和一个不可反查的访客标识，该标识由地址、User-Agent 与随机的 UTC 当日盐值生成。每次成功统计请求或后台读取都会删除早于今天和昨天的盐；部署空闲时清理也会等待。
+访问统计默认关闭，只有显式设置 `RAPPTOR_ANALYTICS=on` 才开始收集。默认仅按国家汇总，用于说明部署在全球哪些地方被使用；城市级统计必须显式设置 `RAPPTOR_ANALYTICS_PRECISION=city`。在 Cloudflare 上，位置直接来自边缘的 `request.cf`，不调用第三方 IP 定位服务。系统不存储 IP 地址或 User-Agent：每个请求只保留粗粒度位置和一个不可反查的访客标识，该标识由地址、User-Agent 与随机的 UTC 当日盐值生成。`wrangler.toml` 中的 Cloudflare Cron Trigger 每天清理过期统计行和盐值，页面请求不再执行保留期删除。
 
 API 请求、基因组 Range 请求、静态资源、路由预取、统计展示页面以及已知爬虫都不计入。写入通过 Cloudflare 后台任务在响应发出之后执行，因此统计不会拖慢任何页面。「浏览量」指一次完整的页面加载；应用内用 Next.js 路由跳转产生的是 RSC 请求，与路由为每个可见链接发起的预取无法区分，因此宁可少算也不重复计数。访客数不受影响。
 
@@ -275,12 +275,12 @@ npx wrangler secret put RAPPTOR_ANALYTICS_PASSWORD
 | `RAPPTOR_ANALYTICS_USERNAME`、`RAPPTOR_ANALYTICS_PASSWORD` | 显示并保护后台面板。未设置时所有 admin 路径返回 404。 |
 | `RAPPTOR_USAGE_PUBLIC_PAGE=on` | 显示只读汇总页面 `/usage`；未设置或其他值时返回 404。 |
 | `RAPPTOR_ANALYTICS_PRECISION=city` | 显式开启城市、地区和经纬度记录；默认只记录国家。 |
-| `RAPPTOR_ANALYTICS_RETENTION_DAYS` | 保留天数，默认 400 天；过期行在下一次成功统计请求或后台读取时清理。 |
+| `RAPPTOR_ANALYTICS_RETENTION_DAYS` | 保留天数，默认 400 天；过期行由每日 Cloudflare Cron Trigger 清理。 |
 | `RAPPTOR_ANALYTICS_TRUST_PROXY_HEADERS=on` | 非 Cloudflare 部署可显式信任受控反向代理写入的 IP/位置头；直连或不可信流量不要开启。 |
 
 地图是构建期产物：`npm run analytics:map` 用 Natural Earth 1:110m 地理数据（公有领域，经 `world-atlas` 提供）重新生成 `src/generated/world-map.json`。投影在构建时完成，页面在服务端渲染为内联 SVG，因此后台面板不引入任何前端地图库，也不违反门户的 CSP。
 
-Cloudflare 提供的地址和 `request.cf` 默认可信。非 Cloudflare 环境下，只有设置 `RAPPTOR_ANALYTICS_TRUST_PROXY_HEADERS=on` 才读取转发 IP 和位置请求头，而且只应在受控代理会覆盖这些请求头时开启；否则位置记为未知。每日访客数是近似值：同一地址与 User-Agent 组合在每个 UTC 日只计一次，时间范围内的访客总数是各日值之和。清理由请求触发，因此无流量时不承诺在某个墙上时间准时删除。
+Cloudflare 提供的地址和 `request.cf` 默认可信。非 Cloudflare 环境下，只有设置 `RAPPTOR_ANALYTICS_TRUST_PROXY_HEADERS=on` 才读取转发 IP 和位置请求头，而且只应在受控代理会覆盖这些请求头时开启；否则位置记为未知。每日访客数是近似值：同一地址与 User-Agent 组合在每个 UTC 日只计一次，时间范围内的访客总数是各日值之和。Cloudflare 定时任务每天执行一次保留期清理。
 
 ## 坐标约定
 

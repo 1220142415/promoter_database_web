@@ -23,7 +23,12 @@ import {
 import { visibleTrackRegion, type TrackDownloadMetadata } from '@/features/genome-browser/track-download';
 import type { ExperimentalTssGenome, ExperimentalTssStudy } from '@/types/experimental-tss';
 import type { JBrowseReleaseAssembly } from '@/types/release';
-import type { BrowserRegion } from '@/features/genome-browser/components/portal-jbrowse-viewer';
+
+export interface BrowserRegion {
+  refName: string;
+  start: number;
+  end: number;
+}
 
 type SessionTrackSnapshot = {
   type: string;
@@ -427,7 +432,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           }];
         });
 
-    const referenceBase = prediction?.assetBase || experimental!.assetBase;
+    const referenceBase = prediction ? prediction.assetBase : experimental!.assetBase;
     const referenceAssets = prediction?.assets || experimental!.assets;
     const referenceAccession = prediction?.assemblyName || experimental!.accession;
     const referenceUrl = resolveAsset(referenceBase, referenceAssets.fasta);
@@ -466,7 +471,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       plugins: [
         RapptorMirroredScorePlugin,
         RapptorStrandFeaturePlugin,
-        RapptorExperimentalTssPlugin,
+        ...(experimental ? [RapptorExperimentalTssPlugin] : []),
         RapptorTrackDownloadPlugin,
       ],
       defaultSession: {

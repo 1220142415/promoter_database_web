@@ -2,16 +2,15 @@ import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutlineRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import CircularProgress from '@mui/material/CircularProgress';
 
 export type GenomeFileState = 'available' | 'preparing' | 'unavailable' | 'failed' | 'incompatible';
+export type GenomeFileKind = 'reference' | 'promoters' | 'scores' | 'experimentalTss' | 'annotation';
+export type GenomeFileProgress = { label: string; value?: number };
 
 type Props = {
-  states: {
-    reference: GenomeFileState;
-    promoters: GenomeFileState;
-    scores?: GenomeFileState;
-    annotation: GenomeFileState;
-  };
+  states: Record<Exclude<GenomeFileKind, 'scores' | 'experimentalTss'>, GenomeFileState> & { scores?: GenomeFileState; experimentalTss?: GenomeFileState };
+  progress?: Partial<Record<GenomeFileKind, GenomeFileProgress>>;
 };
 
 const stateLabels: Record<GenomeFileState, string> = {
@@ -30,24 +29,37 @@ const stateIcons = {
   incompatible: ErrorOutlineRoundedIcon,
 };
 
-export default function GenomeFileStatus({ states }: Props) {
+export default function GenomeFileStatus({ states, progress = {} }: Props) {
   const files = [
-    { label: 'Reference', state: states.reference },
-    { label: 'Promoters', state: states.promoters },
-    ...(states.scores ? [{ label: 'Scores', state: states.scores }] : []),
-    { label: 'Annotation', state: states.annotation },
+    { kind: 'reference' as const, label: 'Reference', state: states.reference },
+    { kind: 'promoters' as const, label: 'Promoters', state: states.promoters },
+    ...(states.scores ? [{ kind: 'scores' as const, label: 'Scores', state: states.scores }] : []),
+    ...(states.experimentalTss ? [{ kind: 'experimentalTss' as const, label: 'Experimental TSS', state: states.experimentalTss }] : []),
+    { kind: 'annotation' as const, label: 'Annotation', state: states.annotation },
   ];
 
   return (
     <div className="genome-file-status" aria-label="Genome files">
       <div className="genome-file-status-items">
-        {files.map(({ label, state }) => {
+        {files.map(({ kind, label, state }) => {
           const Icon = stateIcons[state];
+          const currentProgress = progress[kind];
+          const statusLabel = currentProgress && (state === 'preparing' || state === 'available')
+            ? currentProgress.label
+            : stateLabels[state];
           return (
             <span className={`genome-file-state genome-file-state-${state}`} key={label}>
-              <Icon aria-hidden="true" fontSize="small" />
+              {state === 'preparing'
+                ? <CircularProgress
+                    aria-label={`${label}: ${statusLabel}`}
+                    size={18}
+                    thickness={5}
+                    variant={currentProgress?.value === undefined ? 'indeterminate' : 'determinate'}
+                    value={currentProgress?.value}
+                  />
+                : <Icon aria-hidden="true" fontSize="small" />}
               <span>{label}</span>
-              <strong>{stateLabels[state]}</strong>
+              <strong>{statusLabel}</strong>
             </span>
           );
         })}

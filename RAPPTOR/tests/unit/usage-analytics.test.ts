@@ -67,9 +67,10 @@ describe('countable page requests', () => {
 });
 
 describe('path normalisation', () => {
-  it('collapses genome accessions into a single bucket', () => {
-    expect(normalizePath('/genomes/GCA_000411415.1')).toBe('/genomes/[accession]');
-    expect(normalizePath('/genomes/GCF_000005845.2')).toBe('/genomes/[accession]');
+  it('keeps public genome detail accessions for popularity ranking', () => {
+    expect(normalizePath('/genomes/GCA_000411415.1')).toBe('/genomes/GCA_000411415.1');
+    expect(normalizePath('/genomes/gcf_000005845.2')).toBe('/genomes/GCF_000005845.2');
+    expect(normalizePath('/other/GCA_000411415.1')).toBe('/other/[accession]');
   });
 
   it('keeps static routes and bounds unexpected depth', () => {

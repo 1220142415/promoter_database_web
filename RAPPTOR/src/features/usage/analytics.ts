@@ -127,8 +127,12 @@ export function isCountablePageRequest(request: {
 }
 
 export function normalizePath(pathname: string) {
-  const segments = pathname.split('/').filter(Boolean).slice(0, MAX_PATH_SEGMENTS).map((segment) => {
-    if (ACCESSION_PATTERN.test(segment)) return '[accession]';
+  const rawSegments = pathname.split('/').filter(Boolean).slice(0, MAX_PATH_SEGMENTS);
+  const isGenomeDetail = rawSegments.length === 2
+    && rawSegments[0]?.toLowerCase() === 'genomes'
+    && ACCESSION_PATTERN.test(rawSegments[1] ?? '');
+  const segments = rawSegments.map((segment, index) => {
+    if (ACCESSION_PATTERN.test(segment)) return isGenomeDetail && index === 1 ? segment.toUpperCase() : '[accession]';
     if (NUMERIC_PATTERN.test(segment)) return '[id]';
     return segment.slice(0, MAX_SEGMENT_LENGTH);
   });

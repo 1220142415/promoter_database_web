@@ -334,7 +334,9 @@ export default function PortalGenomeExplorer({
                 </td>
                 <td>{genome.annotationStatus === 'available'
                   ? <span className="evidence-available">Available</span>
-                  : <span className="evidence-muted">Missing</span>}</td>
+                  : genome.annotationStatus === 'incompatible'
+                    ? <span className="evidence-muted">Incompatible</span>
+                    : <span className="evidence-muted">{genome.evidenceState === 'experimental_only' ? 'Not cataloged' : 'Missing'}</span>}</td>
               </tr>
             ))}
             {result.items.length === 0 && <tr><td colSpan={6} className="catalog-empty">No genomes match the current filters.</td></tr>}

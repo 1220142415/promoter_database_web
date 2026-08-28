@@ -23,6 +23,7 @@ const report: UsageReport = {
   ],
   cities: [{ countryCode: 'DE', countryName: 'Germany', region: 'Baden-Wurttemberg', city: 'Heidelberg', views: 30, visitors: 5 }],
   paths: [{ path: '/genomes, all', views: 50 }],
+  genomes: [{ accession: 'GCA_000411415.1', path: '/genomes/GCA_000411415.1', views: 12 }],
   daily: [{ day: '2026-08-21', views: 40, visitors: 9 }],
 };
 

@@ -30,6 +30,12 @@ export interface UsagePathRow {
   views: number;
 }
 
+export interface UsageGenomeRow {
+  accession: string;
+  path: string;
+  views: number;
+}
+
 export interface UsageDayRow {
   day: string;
   views: number;
@@ -45,5 +51,6 @@ export interface UsageReport {
   countries: UsageCountryRow[];
   cities: UsageCityRow[];
   paths: UsagePathRow[];
+  genomes: UsageGenomeRow[];
   daily: UsageDayRow[];
 }

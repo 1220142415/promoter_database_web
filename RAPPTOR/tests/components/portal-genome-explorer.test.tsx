@@ -93,6 +93,24 @@ describe('portal genome explorer', () => {
     expect(screen.queryByText('No experimental TSS')).not.toBeInTheDocument();
   });
 
+  it('distinguishes experimental-only assemblies from missing catalog files', () => {
+    installFetch();
+    const result = response(genomes.slice(0, 1), 1);
+    result.items[0] = {
+      ...result.items[0],
+      predictionAccession: null,
+      experimentalAccession: 'GCF_000000001.1',
+      evidenceState: 'experimental_only',
+      annotationStatus: 'missing',
+    };
+
+    render(<GenomeExplorer initialResult={result} />);
+
+    const row = screen.getByText('Not cataloged').closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).queryByText('Missing')).not.toBeInTheDocument();
+  });
+
   it('uses a cursor stack for next and previous pages', async () => {
     installFetch();
     const user = userEvent.setup();

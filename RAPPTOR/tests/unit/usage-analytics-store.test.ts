@@ -125,7 +125,7 @@ describe('recording a page view', () => {
     expect(geo.sql).toContain('INSERT INTO analytics_daily_geo');
     expect(geo.binds).toEqual([day, 'DE', 'Baden-Wurttemberg', 'Heidelberg', 49.41, 8.69]);
     expect(path.sql).toContain('INSERT INTO analytics_daily_path');
-    expect(path.binds).toEqual([day, '/genomes/[accession]']);
+    expect(path.binds).toEqual([day, '/genomes/GCA_000411415.1']);
   });
 
   it('never sends the address or the user agent to the database', async () => {
@@ -199,7 +199,7 @@ describe('recording a page view', () => {
 });
 
 describe('reading the report', () => {
-  it('merges views and visitors into ranked countries, cities, pages and days', async () => {
+  it('merges views and visitors into ranked countries, cities, pages, genomes and days', async () => {
     const today = utcDay();
     const yesterday = shiftDay(today, -1);
     const database = new FakeD1();
@@ -209,6 +209,7 @@ describe('reading the report', () => {
       [{ country_code: 'DE', region: 'Baden-Wurttemberg', city: 'Heidelberg', views: 30 }],
       [{ country_code: 'DE', region: 'Baden-Wurttemberg', city: 'Heidelberg', visitors: 5 }],
       [{ path: '/genomes', views: 50 }],
+      [{ path: '/genomes/GCA_000411415.1', views: 12 }],
       [{ day: yesterday, views: 30 }, { day: today, views: 40 }],
       [{ day: today, visitors: 9 }],
       [{ first_day: '2026-08-01' }],
@@ -221,6 +222,7 @@ describe('reading the report', () => {
     expect(report.countries.find((country) => country.code === 'US')).toMatchObject({ visitors: 2, views: 0 });
     expect(report.cities[0]).toMatchObject({ city: 'Heidelberg', countryName: 'Germany', views: 30, visitors: 5 });
     expect(report.paths).toEqual([{ path: '/genomes', views: 50 }]);
+    expect(report.genomes).toEqual([{ accession: 'GCA_000411415.1', path: '/genomes/GCA_000411415.1', views: 12 }]);
     expect(report.daily).toHaveLength(7);
     expect(report.daily[0]).toEqual({ day: shiftDay(today, -6), views: 0, visitors: 0 });
     expect(report.daily.slice(-2)).toEqual([
@@ -230,12 +232,13 @@ describe('reading the report', () => {
     expect(report.firstRecordedDay).toBe('2026-08-01');
     expect(report.startDay).toBe(shiftDay(today, -6));
     expect(database.batches[0][0].sql).toContain('SELECT country_code');
+    expect(database.batches[0][5].binds).toEqual([shiftDay(today, -6), 10]);
   });
 
   it('reports every recorded day when the range is all time', async () => {
     const firstDay = shiftDay(utcDay(), -20);
     const database = new FakeD1();
-    database.batchResults = [[], [], [], [], [], [], [], [{ first_day: firstDay }]];
+    database.batchResults = [[], [], [], [], [], [], [], [], [{ first_day: firstDay }]];
 
     const report = await store.readUsageReport(database as unknown as D1Database, 0);
 

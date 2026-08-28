@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import UsageWorldMap from '@/features/usage/components/usage-world-map';
@@ -43,6 +43,7 @@ const report: UsageReport = {
   ],
   cities: [{ countryCode: 'DE', countryName: 'Germany', region: 'Baden-Wurttemberg', city: 'Heidelberg', views: 30, visitors: 5 }],
   paths: [{ path: '/genomes/[accession]', views: 50 }],
+  genomes: [{ accession: 'GCA_000411415.1', path: '/genomes/GCA_000411415.1', views: 50 }],
   daily: [
     { day: '2026-08-20', views: 30, visitors: 7 },
     { day: '2026-08-21', views: 40, visitors: 9 },
@@ -83,7 +84,7 @@ async function renderPublicDashboard(days?: string) {
 }
 
 describe('usage dashboard', () => {
-  it('summarises visitors, countries, cities and pages', async () => {
+  it('summarises visitors and locations without a pages module', async () => {
     await renderDashboard('7');
 
     expect(screen.getByRole('heading', { level: 1, name: 'Who is using RAPPTOR' })).toBeInTheDocument();
@@ -92,9 +93,26 @@ describe('usage dashboard', () => {
     expect(screen.getByText('70')).toBeInTheDocument();
     expect(screen.getByRole('rowheader', { name: 'Germany' })).toBeInTheDocument();
     expect(screen.getByRole('rowheader', { name: /Heidelberg/ })).toBeInTheDocument();
-    expect(screen.getByRole('rowheader', { name: '/genomes/[accession]' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Pages' })).not.toBeInTheDocument();
     expect(screen.getByRole('img', { name: /World map shading 2 countries or regions by visitors/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Countries / regions' })).toBeInTheDocument();
+  });
+
+  it('shows ranked popular genomes without exposing request counts', async () => {
+    await renderDashboard('7');
+
+    const panel = screen.getByRole('heading', { name: 'Popular genomes' }).closest('section');
+    expect(panel).not.toBeNull();
+    expect(within(panel as HTMLElement).getByRole('link', { name: 'GCA_000411415.1' })).toHaveAttribute('href', '/genomes/GCA_000411415.1');
+    expect(within(panel as HTMLElement).queryByText('50')).not.toBeInTheDocument();
+  });
+
+  it('plots daily visitors without page views', async () => {
+    await renderDashboard('7');
+
+    expect(screen.getByRole('img', { name: /Daily visitors from/ })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /page views/i })).not.toBeInTheDocument();
+    expect(screen.getByText('2026-08-21: 9 visitors')).toBeInTheDocument();
   });
 
   it('offers CSV and JSON exports for the selected range', async () => {

@@ -536,8 +536,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .usage-metrics small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .usage-panel { border: 1px solid var(--line); border-radius: 8px; background: var(--paper); padding: 20px 22px 24px; }
 .usage-panel h2 { margin: 0 0 16px; font-family: Georgia, "Times New Roman", serif; font-size: 21px; font-weight: 600; }
-.usage-columns { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 26px; align-items: start; }
-.usage-stack { display: grid; gap: 26px; }
+.usage-columns { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 26px; align-items: stretch; }
 .usage-map { margin: 0; }
 .usage-map svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #f7faf9; }
 .usage-map-sphere { fill: #f7faf9; stroke: var(--line); stroke-width: 1; }
@@ -552,6 +551,10 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .usage-trend figcaption em { display: inline-flex; align-items: center; gap: 6px; font-style: normal; }
 .usage-trend figcaption i { width: 10px; height: 10px; border-radius: 2px; }
 .usage-table-wrap { max-height: 460px; overflow: auto; }
+.usage-location-table { height: 360px; }
+.usage-genome-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 36px; margin: 0; padding-left: 32px; }
+.usage-genome-list li { padding: 9px 8px; border-bottom: 1px solid #e8ecea; color: var(--muted); font-variant-numeric: tabular-nums; }
+.usage-genome-list a { color: var(--teal-dark); font-weight: 700; }
 .usage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .usage-table th, .usage-table td { padding: 10px 12px; border-bottom: 1px solid #e8ecea; text-align: left; }
 .usage-table thead th { position: sticky; top: 0; background: #f7f9f8; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
@@ -584,4 +587,5 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .usage-metrics > div { border-right: 0; border-top: 1px solid var(--line); }
   .usage-metrics > div:first-child { border-top: 0; }
   .usage-panel { padding: 16px 14px 18px; }
+  .usage-genome-list { grid-template-columns: 1fr; }
 }

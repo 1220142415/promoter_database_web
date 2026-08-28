@@ -200,7 +200,7 @@ describe('unified genome repository', () => {
     expect(queries).toBe(1);
   });
 
-  it('accepts an explicit reciprocal alias when both releases name the same reference accession', async () => {
+  it('accepts a trusted reciprocal alias when checksums are unavailable and GCA/GCF reference names differ', async () => {
     const prediction = predictionRepository([
       makeCatalogRow(makeGenome({ accession: 'GCA_000007325.1', predictedPromoterCount: 748 })),
     ]);
@@ -211,7 +211,7 @@ describe('unified genome repository', () => {
       return match;
     };
     const experimental = experimentalGenome('GCF_000007325.1', 930, null);
-    experimental.referenceAccession = 'GCA_000007325.1';
+    experimental.referenceAccession = 'GCF_000007325.1';
     const repository = new CompositeUnifiedGenomeRepository(
       prediction,
       experimentalRepository([experimental]),

@@ -23,6 +23,7 @@ import type {
   UsageCityRow,
   UsageCountryRow,
   UsageDayRow,
+  UsageGenomeRow,
   UsagePathRow,
   UsageReport,
 } from '@/features/usage/types';
@@ -41,8 +42,10 @@ interface CountableRequest {
 
 const TOP_CITIES = 25;
 const TOP_PATHS = 20;
+const TOP_GENOMES = 10;
 const MAX_SERIES_DAYS = 400;
 const EARLIEST_DAY = '0000-01-01';
+const GENOME_PATH_PATTERN = /^\/genomes\/(GC[AF]_\d+\.\d+)$/i;
 
 const RECORD_VISITOR_SQL = `INSERT INTO analytics_visitor_day (day, visitor_hash, country_code, region, city)
   VALUES (?, ?, ?, ?, ?)
@@ -181,6 +184,7 @@ export async function readUsageReport(database: D1Database, rangeDays: number): 
     cityViews,
     cityVisitors,
     paths,
+    genomes,
     dailyViews,
     dailyVisitors,
     boundary,
@@ -194,6 +198,9 @@ export async function readUsageReport(database: D1Database, rangeDays: number): 
       FROM analytics_visitor_day WHERE day >= ? AND city <> ''
       GROUP BY country_code, region, city ORDER BY visitors DESC LIMIT ?`).bind(startDay, TOP_CITIES * 2),
     database.prepare('SELECT path, SUM(views) AS views FROM analytics_daily_path WHERE day >= ? GROUP BY path ORDER BY views DESC LIMIT ?').bind(startDay, TOP_PATHS),
+    database.prepare(`SELECT path, SUM(views) AS views FROM analytics_daily_path
+      WHERE day >= ? AND (path LIKE '/genomes/GCA!_%' ESCAPE '!' OR path LIKE '/genomes/GCF!_%' ESCAPE '!')
+      GROUP BY path ORDER BY views DESC LIMIT ?`).bind(startDay, TOP_GENOMES),
     database.prepare('SELECT day, SUM(views) AS views FROM analytics_daily_geo WHERE day >= ? GROUP BY day ORDER BY day').bind(startDay),
     database.prepare('SELECT day, COUNT(*) AS visitors FROM analytics_visitor_day WHERE day >= ? GROUP BY day ORDER BY day').bind(startDay),
     database.prepare('SELECT MIN(day) AS first_day FROM analytics_daily_geo'),
@@ -260,6 +267,11 @@ export async function readUsageReport(database: D1Database, rangeDays: number): 
   const activeDays = daily.filter((entry) => entry.views > 0).length;
 
   const pathRows: UsagePathRow[] = paths.results.map((row) => ({ path: toText(row.path), views: toNumber(row.views) }));
+  const genomeRows: UsageGenomeRow[] = genomes.results.flatMap((row) => {
+    const path = toText(row.path);
+    const match = GENOME_PATH_PATTERN.exec(path);
+    return match ? [{ accession: match[1].toUpperCase(), path, views: toNumber(row.views) }] : [];
+  });
 
   return {
     rangeDays,
@@ -276,6 +288,7 @@ export async function readUsageReport(database: D1Database, rangeDays: number): 
     countries,
     cities,
     paths: pathRows,
+    genomes: genomeRows,
     daily,
   };
 }

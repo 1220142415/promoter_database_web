@@ -422,14 +422,17 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
     if (!prediction || !experimental) return 'single_source';
     const predictionSha256 = prediction.referenceSha256 || prediction.details?.referenceSha256 || null;
     const experimentalSha256 = experimental.referenceSha256 || null;
+    const alias = this.aliasByCanonical.get(canonicalAccession);
+    if (predictionSha256 && experimentalSha256) {
+      if (predictionSha256 !== experimentalSha256) return 'mismatch';
+      return alias ? 'reciprocal_alias'
+        : prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch';
+    }
+    if (alias) return 'reciprocal_alias';
     const predictionReference = prediction.details?.referenceAccession || prediction.genome.accession;
     const experimentalReference = experimental.referenceAccession || experimental.genbankAssemblyAccession || experimental.accession;
-    const referencesMatch = predictionSha256 && experimentalSha256
-      ? predictionSha256 === experimentalSha256
-      : predictionReference === experimentalReference;
-    if (!referencesMatch) return 'mismatch';
-    return this.aliasByCanonical.has(canonicalAccession) ? 'reciprocal_alias'
-      : prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch';
+    if (predictionReference !== experimentalReference) return 'mismatch';
+    return prediction.genome.accession === experimental.accession ? 'exact' : 'mismatch';
   }
 
   private async activeExperimentalReleaseOrNull() {

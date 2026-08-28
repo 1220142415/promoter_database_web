@@ -70,10 +70,23 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
         <UsageTrend daily={report.daily} />
       </section>
 
+      <section className="usage-panel">
+        <h2>Popular genomes</h2>
+        {report.genomes.length === 0 ? (
+          <p className="usage-empty">No genome detail views recorded yet.</p>
+        ) : (
+          <ol className="usage-genome-list">
+            {report.genomes.slice(0, 10).map((genome) => (
+              <li key={genome.path}><Link href={genome.path}>{genome.accession}</Link></li>
+            ))}
+          </ol>
+        )}
+      </section>
+
       <div className="usage-columns">
         <section className="usage-panel">
           <h2>Countries / regions</h2>
-          <div className="usage-table-wrap">
+          <div className="usage-table-wrap usage-location-table">
             <table className="usage-table">
               <thead>
                 <tr><th scope="col">Country / region</th><th scope="col">Visitors</th><th scope="col">Views</th><th scope="col">Share</th></tr>
@@ -95,50 +108,29 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
           </div>
         </section>
 
-        <div className="usage-stack">
-          <section className="usage-panel">
-            <h2>Cities</h2>
-            {report.cities.length === 0 ? (
-              <p className="usage-empty">No city-level data. Set <code>RAPPTOR_ANALYTICS_PRECISION=city</code> and serve the portal through Cloudflare to record cities.</p>
-            ) : (
-              <div className="usage-table-wrap">
-                <table className="usage-table">
-                  <thead>
-                    <tr><th scope="col">City</th><th scope="col">Visitors</th><th scope="col">Views</th></tr>
-                  </thead>
-                  <tbody>
-                    {report.cities.map((city) => (
-                      <tr key={`${city.countryCode}-${city.region}-${city.city}`}>
-                        <th scope="row">{city.city}<small>{cityLocation(city.region, city.countryName)}</small></th>
-                        <td>{city.visitors.toLocaleString()}</td>
-                        <td>{city.views.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="usage-panel">
-            <h2>Pages</h2>
-            <div className="usage-table-wrap">
+        <section className="usage-panel">
+          <h2>Cities</h2>
+          {report.cities.length === 0 ? (
+            <p className="usage-empty">No city-level data. Set <code>RAPPTOR_ANALYTICS_PRECISION=city</code> and serve the portal through Cloudflare to record cities.</p>
+          ) : (
+            <div className="usage-table-wrap usage-location-table">
               <table className="usage-table">
                 <thead>
-                  <tr><th scope="col">Path</th><th scope="col">Views</th></tr>
+                  <tr><th scope="col">City</th><th scope="col">Visitors</th><th scope="col">Views</th></tr>
                 </thead>
                 <tbody>
-                  {report.paths.map((entry) => (
-                    <tr key={entry.path}>
-                      <th scope="row"><code>{entry.path}</code></th>
-                      <td>{entry.views.toLocaleString()}</td>
+                  {report.cities.map((city) => (
+                    <tr key={`${city.countryCode}-${city.region}-${city.city}`}>
+                      <th scope="row">{city.city}<small>{cityLocation(city.region, city.countryName)}</small></th>
+                      <td>{city.visitors.toLocaleString()}</td>
+                      <td>{city.views.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
-        </div>
+          )}
+        </section>
       </div>
 
       {!publicView && (

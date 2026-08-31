@@ -46,5 +46,11 @@ describe('portal header', () => {
     render(<PortalHeader />);
     expect(screen.queryByRole('link', { name: 'Usage' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
+  });
+
+  it('shows prediction only after its public switch is enabled', () => {
+    render(<PortalHeader showPrediction />);
+    expect(screen.getByRole('link', { name: 'Run RAPPTOR' })).toHaveAttribute('href', '/predict');
   });
 });

@@ -11,11 +11,12 @@ const links = [
   { href: '/genomes', label: 'Genomes' },
 ];
 
-export default function PortalHeader({ showUsage = false }: { showUsage?: boolean }) {
+export default function PortalHeader({ showPrediction = false, showUsage = false }: { showPrediction?: boolean; showUsage?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const visibleLinks = [
     ...links,
+    ...(showPrediction ? [{ href: '/predict', label: 'Run RAPPTOR' }] : []),
     ...(showUsage ? [{ href: '/usage', label: 'Usage' }] : []),
   ];
 

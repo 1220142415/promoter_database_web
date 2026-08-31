@@ -80,7 +80,7 @@ function randomTicket() {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function changedRows(result: D1Result) {
+function changedRows(result: { meta?: { changes?: unknown } }) {
   const changes = Number(result.meta?.changes);
   return Number.isFinite(changes) ? changes : 0;
 }

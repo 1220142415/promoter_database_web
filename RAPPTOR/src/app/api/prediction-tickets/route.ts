@@ -1,3 +1,8 @@
+import { predictionErrorResponse } from '@/features/prediction/api-response';
+import { predictionCapabilities } from '@/features/prediction/capabilities';
+import { PredictionProviderError } from '@/features/prediction/provider';
+import { predictionClientIp, predictionProvider, verifyPredictionTurnstile } from '@/features/prediction/runtime';
+import { parseTicketRequest } from '@/features/prediction/validation';
 import { usageDatabase } from '@/features/usage/store';
 import {
   issuePredictionTicket,
@@ -25,7 +30,7 @@ export async function POST(request: Request) {
     if (Number.isFinite(contentLength) && contentLength > MAX_TICKET_REQUEST_BYTES) {
       return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction ticket request is too large.' } }, { status: 413 });
     }
-    let body: { turnstileToken?: unknown; modelVersion?: unknown; bases?: unknown };
+    let body: { contractVersion?: unknown; turnstileToken?: unknown; modelVersion?: unknown; bases?: unknown };
     try {
       const raw = await request.text();
       if (new TextEncoder().encode(raw).byteLength > MAX_TICKET_REQUEST_BYTES) {
@@ -34,6 +39,17 @@ export async function POST(request: Request) {
       body = JSON.parse(raw) as typeof body;
     } catch {
       return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid prediction ticket request.' } }, { status: 400 });
+    }
+    if (body.contractVersion !== undefined) {
+      const capabilities = predictionCapabilities();
+      if (!capabilities.available) {
+        throw new PredictionProviderError('PREDICTION_UNAVAILABLE', capabilities.unavailableReason || 'Prediction is unavailable.', 503, true);
+      }
+      const input = parseTicketRequest(body, capabilities);
+      if (!await verifyPredictionTurnstile(input.turnstileToken, predictionClientIp(request))) {
+        throw new PredictionProviderError('INVALID_TURNSTILE', 'Turnstile verification failed.', 401);
+      }
+      return Response.json(await predictionProvider().issueTicket(input), { status: 201, headers: { 'Cache-Control': 'no-store' } });
     }
     if (typeof body.turnstileToken !== 'string' || !body.turnstileToken || body.turnstileToken.length > 4096
       || typeof body.modelVersion !== 'string' || body.modelVersion.length > 200 || typeof body.bases !== 'number') {
@@ -68,6 +84,7 @@ export async function POST(request: Request) {
     });
     return Response.json(ticket, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {
+    if (cause instanceof PredictionProviderError) return predictionErrorResponse(cause);
     if (cause instanceof PredictionTicketInputError) {
       return Response.json({ error: { code: cause.code, message: cause.message } }, { status: cause.code === 'INPUT_TOO_LARGE' ? 413 : 400 });
     }

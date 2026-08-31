@@ -32,6 +32,13 @@ type JobState = {
   result?: { artifacts?: Artifact[] };
   error?: { type?: string; message?: string };
 };
+type ApiError = { error?: { message?: string } };
+type TicketResponse = ApiError & { ticket?: string };
+type CreatedJobResponse = ApiError & {
+  job_id?: string;
+  access_token?: string;
+  artifacts_expires_at?: string | null;
+};
 
 type TurnstileWidget = NonNullable<Window['turnstile']> & { reset?: (widgetId?: string) => void };
 
@@ -277,8 +284,9 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ turnstileToken: localTest ? 'local-test' : turnstileToken, modelVersion, bases }),
       });
-      const ticketBody = await ticketResponse.json();
+      const ticketBody = await ticketResponse.json() as TicketResponse;
       if (!ticketResponse.ok) throw new Error(ticketBody.error?.message || 'Prediction ticket was rejected.');
+      if (!ticketBody.ticket) throw new Error('Prediction ticket response is invalid.');
       const request = mode === 'genome_scan'
         ? { mode, complete_genome: true, fasta, stride: 1, output_formats: ['bigwig', 'gff3'] }
         : { mode, complete_genome: true, sequence, genome_context: fastaSequence(fasta) };
@@ -287,8 +295,9 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
         headers: { 'Content-Type': 'application/json', Authorization: `Ticket ${ticketBody.ticket}` },
         body: JSON.stringify(request),
       });
-      const created = await response.json();
+      const created = await response.json() as CreatedJobResponse;
       if (!response.ok) throw new Error(created.error?.message || 'Prediction could not be queued.');
+      if (!created.job_id || !created.access_token) throw new Error('Prediction job response is invalid.');
       setJob({
         job_id: created.job_id,
         status: 'queued',

@@ -13,6 +13,11 @@ RAPPTOR-preview/
 .env
 .env.*
 !.env.example
+!RAPPTOR/services/prediction/.env.example
 node_modules/
 dist/
 build/
+
+# Local prediction model/runtime assets. Metadata stays versioned beside them.
+RAPPTOR/services/prediction/model-assets/*/best_model.pt
+RAPPTOR/services/prediction/runtime-data/

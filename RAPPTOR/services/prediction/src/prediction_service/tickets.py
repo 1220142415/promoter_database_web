@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+import httpx
+
+from .config import SETTINGS
+
+
+class TicketRejected(Exception):
+    pass
+
+
+def parse_ticket_header(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, sep, value = authorization.partition(" ")
+    if sep and scheme.lower() == "ticket" and value.strip():
+        return value.strip()
+    return None
+
+
+async def consume_ticket(ticket: str | None, *, model_version: str, bases: int) -> None:
+    mode = SETTINGS.ticket_validation_mode
+    if mode == "disabled":
+        return
+    if mode != "cloudflare":
+        raise RuntimeError(f"unsupported ticket validation mode: {mode}")
+    if not ticket:
+        raise TicketRejected("missing one-time prediction ticket")
+    if not SETTINGS.ticket_consume_url or not SETTINGS.ticket_service_secret:
+        raise RuntimeError("Cloudflare ticket validation is enabled but consume URL/secret is not configured")
+    headers = {"Authorization": f"Bearer {SETTINGS.ticket_service_secret}"}
+    payload = {"ticket": ticket, "modelVersion": model_version, "bases": bases}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(SETTINGS.ticket_consume_url, json=payload, headers=headers)
+    except httpx.HTTPError as exc:
+        raise RuntimeError("ticket validation service unavailable") from exc
+    if response.status_code != 200:
+        raise TicketRejected("ticket rejected")
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise RuntimeError("ticket validation returned invalid JSON") from exc
+    if body.get("allowed") is not True:
+        raise TicketRejected("ticket rejected")

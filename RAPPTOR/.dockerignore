@@ -1,0 +1,16 @@
+*
+!Dockerfile.web
+!.docker-runtime/
+!.docker-runtime/**
+!.next/
+.next/*
+!.next/standalone/
+!.next/standalone/**
+!services/
+services/*
+!services/prediction/
+services/prediction/*
+!services/prediction/Dockerfile
+!services/prediction/requirements.txt
+!services/prediction/src/
+!services/prediction/src/**

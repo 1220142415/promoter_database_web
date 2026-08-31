@@ -19,6 +19,7 @@ __pycache__/
 
 # next.js
 /.next/
+/.docker-runtime/
 /.next-*/
 /out/
 
@@ -38,6 +39,7 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.local.example
+!services/prediction/.env.example
 
 # vercel
 .vercel

@@ -1,0 +1,77 @@
+version: "2.3"
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [rapptor-prediction]
+
+  api:
+    image: rapptor-prediction:dev
+    build:
+      context: ../..
+      dockerfile: services/prediction/Dockerfile
+    command: ["python", "-m", "prediction_service"]
+    environment: &service_env
+      RAPPTOR_REDIS_URL: redis://redis:6379/0
+      RAPPTOR_QUEUE: prediction
+      RAPPTOR_MODEL_DIR: /models
+      RAPPTOR_DATA_ROOT: /data
+      RAPPTOR_MODEL_VERSION: ${RAPPTOR_MODEL_VERSION:-candidate-github-93cf}
+      RAPPTOR_DEVICE: cuda:0
+      RAPPTOR_TICKET_VALIDATION_MODE: ${RAPPTOR_TICKET_VALIDATION_MODE:-disabled}
+      RAPPTOR_TICKET_CONSUME_URL: ${RAPPTOR_TICKET_CONSUME_URL:-}
+      RAPPTOR_TICKET_SERVICE_SECRET: ${RAPPTOR_TICKET_SERVICE_SECRET:-}
+      RAPPTOR_JOB_CALLBACK_URL: ${RAPPTOR_JOB_CALLBACK_URL:-}
+      RAPPTOR_JOB_CALLBACK_SECRET: ${RAPPTOR_JOB_CALLBACK_SECRET:-}
+      RAPPTOR_FILE_RETENTION_SECONDS: ${RAPPTOR_FILE_RETENTION_SECONDS:-86400}
+      RAPPTOR_MIN_SCAN_STRIDE: ${RAPPTOR_MIN_SCAN_STRIDE:-1}
+      RAPPTOR_DEFAULT_SCAN_STRIDE: ${RAPPTOR_DEFAULT_SCAN_STRIDE:-1}
+      RAPPTOR_MAX_GENOME_BASES: ${RAPPTOR_MAX_GENOME_BASES:-6000000}
+      RAPPTOR_MAX_QUEUE_LENGTH: ${RAPPTOR_MAX_QUEUE_LENGTH:-100}
+      RAPPTOR_DEFAULT_BATCH_SIZE: ${RAPPTOR_DEFAULT_BATCH_SIZE:-1024}
+    volumes:
+      - ${RAPPTOR_MODEL_HOST_DIR:-./model-assets/candidate-github-93cf}:/models:ro
+      - rapptor-data:/data
+    ports:
+      - "127.0.0.1:${RAPPTOR_API_PORT:-8000}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [rapptor-prediction]
+
+  worker:
+    image: rapptor-prediction:dev
+    command: ["python", "-m", "prediction_service.worker"]
+    environment:
+      <<: *service_env
+      NVIDIA_VISIBLE_DEVICES: ${RAPPTOR_GPU_INDEX:-0}
+    runtime: nvidia
+    ipc: host
+    volumes:
+      - ${RAPPTOR_MODEL_HOST_DIR:-./model-assets/candidate-github-93cf}:/models:ro
+      - rapptor-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [rapptor-prediction]
+
+networks:
+  rapptor-prediction:
+    driver: bridge
+
+volumes:
+  rapptor-data:

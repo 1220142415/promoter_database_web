@@ -13,6 +13,8 @@
         "check": "npm run lint && npm run typecheck && npm test",
         "verify": "npm run check && npm run build",
         "analytics:map": "node scripts/data/build-world-map.mjs",
+        "prediction:test": "PYTHONPATH=services/prediction/src python -m pytest services/prediction/tests",
+        "prediction:compose:validate": "docker-compose -f services/prediction/compose.yaml config",
         "data:build": "node scripts/data/build-gtdb-release.mjs",
         "data:cyanobacteria": "python scripts/data/build-cyanobacteria-release.py",
         "data:validate": "node scripts/data/validate-gtdb-release.mjs",

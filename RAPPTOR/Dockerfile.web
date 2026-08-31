@@ -1,0 +1,15 @@
+FROM rapptor-stack-cpu:2026-08-29
+
+USER root
+COPY .docker-runtime/node /usr/local/bin/node
+
+WORKDIR /web
+COPY .next/standalone ./
+
+ENV NODE_ENV=production \
+    HOSTNAME=0.0.0.0 \
+    PORT=37732
+
+EXPOSE 37732
+USER rapptor
+CMD ["node", "server.js"]

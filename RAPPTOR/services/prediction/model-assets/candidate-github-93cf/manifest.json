@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "status": "candidate_not_production",
+  "source_repo": "duolaJohn/RAPPtor",
+  "source_commit": "0b44bf9a6f31d12638743197c4cc480104f75209",
+  "checkpoint_sha256": "93cfcbaf74e3a693dfd12406d11ad79fef0933b90913db83c230a3f3a99582ad",
+  "model_config_sha256": "882a1446480b08ec0c1fdea73f02204aac62f9c065cd08930061e8e32be139b3",
+  "note": "Candidate copied from repository for container smoke tests. Do not label as GTDB production checkpoint until the historical production weight identity is resolved."
+}

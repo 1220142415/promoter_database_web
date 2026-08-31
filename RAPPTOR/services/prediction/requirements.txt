@@ -1,0 +1,7 @@
+fastapi==0.112.2
+uvicorn[standard]==0.30.6
+redis==5.3.1
+rq==2.11.0
+httpx==0.28.1
+pyarrow==19.0.1
+pyBigWig==0.3.22

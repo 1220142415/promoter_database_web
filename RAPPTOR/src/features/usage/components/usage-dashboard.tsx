@@ -70,19 +70,6 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
         <UsageTrend daily={report.daily} />
       </section>
 
-      <section className="usage-panel">
-        <h2>Popular genomes</h2>
-        {report.genomes.length === 0 ? (
-          <p className="usage-empty">No genome detail views recorded yet.</p>
-        ) : (
-          <ol className="usage-genome-list">
-            {report.genomes.slice(0, 10).map((genome) => (
-              <li key={genome.path}><Link href={genome.path}>{genome.accession}</Link></li>
-            ))}
-          </ol>
-        )}
-      </section>
-
       <div className="usage-columns">
         <section className="usage-panel">
           <h2>Countries / regions</h2>

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { D1ExperimentalTssRepository, JsonExperimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
+import {
+  catalogFromExperimentalGenomeCollection,
+  D1ExperimentalTssRepository,
+  JsonExperimentalTssRepository,
+} from '@/features/genome-browser/experimental-tss-repository';
 
 const sha = 'a'.repeat(64);
 
@@ -48,7 +52,7 @@ describe('experimental TSS repository', () => {
     expect((await repository.search({ year: 2013 })).items).toHaveLength(0);
   });
 
-  it('builds a genome with all study tracks and keeps prediction fields out', async () => {
+  it('builds a genome with all study tracks and defaults absent collection predictions to zero', async () => {
     const genome = await new JsonExperimentalTssRepository(catalog()).getGenome('GCF_000210855.2');
     expect(genome).toMatchObject({
       accession: 'GCF_000210855.2', defaultLocus: 'NC_016810.1:1-1000', annotationStatus: 'available',
@@ -57,7 +61,82 @@ describe('experimental TSS repository', () => {
     });
     expect(genome?.studies).toHaveLength(2);
     expect(genome?.studies[0]?.assets.data).toContain('studies/2012_22251276_GCF_000210855.2/');
-    expect(genome).not.toHaveProperty('predictedPromoterCount');
+    expect(genome).toMatchObject({ predictedPromoterCount: 0, assets: { predictedPromoters: null } });
+  });
+
+  it('adapts the Hugging Face collection into the existing proxy contract', async () => {
+    const metadata = {
+      schemaVersion: 4,
+      generatedAt: '2026-08-31T11:33:46Z',
+      studies: [{
+        studyId: '2012_22251276_GCF_000210855.2', datasetRow: 9, accession: 'GCF_000210855.2',
+        pmid: '22251276', year: 2012, tssMethodCategory: 'differential_rna_seq',
+        tssMethodLabel: 'dRNA-seq', tssMethodRaw: 'dRNA-seq', recordCount: 2695,
+        sourceFile: 'source.bed', sourceSha256: sha,
+        publication: { title: 'Primary map', authors: [], journal: 'RNA', doi: null, status: 'resolved' },
+        genome: {
+          organismName: 'Salmonella enterica', strain: 'SL1344', assemblyName: 'ASM21085v2',
+          genbankAssemblyAccession: 'GCA_000210855.2',
+        },
+        bedPath: 'experimental_tss_by_study/2012_22251276_GCF_000210855.2.bed', bedSha256: sha,
+      }],
+    };
+    const genomes = [
+      'gcf\tcurrent_accession\torganism_name\tstrain\tassembly_name\tgenome_size_bp\tcontig_count\tpredicted_promoter_count\tgenome_path\tpromoter_path\tannotation_path',
+      'GCF_000210855.2\tGCF_000210855.2\tSalmonella enterica\tSL1344\tASM21085v2\t5067450\t4\t25933\tgenome_sequences/GCF_000210855.2.fna\tpromoter_predictions/GCF_000210855.2.promoter.gff3\tcds_function_annotations/GCF_000210855.2.eggnog.gff3',
+    ].join('\n');
+    const repository = new JsonExperimentalTssRepository(catalogFromExperimentalGenomeCollection(
+      metadata,
+      genomes,
+      'https://example.test/experimentally_supported_genomes',
+    ));
+
+    const genome = await repository.getGenome('GCF_000210855.2');
+    expect(genome).toMatchObject({
+      predictedPromoterCount: 25933,
+      annotationStatus: 'available',
+      assets: {
+        fasta: 'reference.fa',
+        predictedPromoters: 'predicted-promoters.gff3',
+        ncbiAnnotations: 'annotations.gff3',
+        ncbiAnnotationsIndex: null,
+      },
+    });
+    expect(genome?.studies[0]).toMatchObject({
+      tssMethodCategory: 'differential_rna_seq', tssMethodLabel: 'dRNA-seq',
+      assets: { data: 'studies/2012_22251276_GCF_000210855.2/experimental-tss.gff3', index: null },
+    });
+    await expect(repository.resolveAsset('GCF_000210855.2', 'predicted-promoters.gff3')).resolves.toMatchObject({
+      upstreamUrl: 'https://example.test/experimentally_supported_genomes/promoter_predictions/GCF_000210855.2.promoter.gff3',
+      kind: 'predicted-promoters', contentType: 'text/plain; charset=utf-8',
+    });
+    await expect(repository.resolveAsset('GCF_000210855.2', 'annotations.gff3')).resolves.toMatchObject({
+      upstreamUrl: 'https://example.test/experimentally_supported_genomes/cds_function_annotations/GCF_000210855.2.eggnog.gff3',
+      kind: 'annotation',
+    });
+  });
+
+  it('keeps the collection usable when an optional prediction or annotation path is absent', async () => {
+    const metadata = {
+      schemaVersion: 4,
+      studies: [{
+        studyId: '2012_22251276_GCF_000210855.2', accession: 'GCF_000210855.2', pmid: '22251276', year: 2012,
+        recordCount: 1, bedPath: 'experimental_tss_by_study/2012_22251276_GCF_000210855.2.bed', bedSha256: sha,
+      }],
+    };
+    const genomes = [
+      'gcf\torganism_name\tgenome_size_bp\tcontig_count\tpredicted_promoter_count\tgenome_path\tpromoter_path\tannotation_path',
+      'GCF_000210855.2\tTest bacterium\t10\t1\t12\tgenome_sequences/GCF_000210855.2.fna\t\t',
+    ].join('\n');
+    const repository = new JsonExperimentalTssRepository(catalogFromExperimentalGenomeCollection(
+      metadata,
+      genomes,
+      'https://example.test/experimentally_supported_genomes',
+    ));
+    await expect(repository.getGenome('GCF_000210855.2')).resolves.toMatchObject({
+      annotationStatus: 'missing', assets: { predictedPromoters: null, ncbiAnnotations: null },
+    });
+    await expect(repository.resolveAsset('GCF_000210855.2', 'predicted-promoters.gff3')).resolves.toBeNull();
   });
 
   it('keeps unindexed subset references usable without inventing FAI or GZI assets', async () => {
@@ -106,7 +185,7 @@ describe('experimental TSS repository', () => {
     expect(() => new JsonExperimentalTssRepository(unsafe)).toThrow(/safe release path/);
   });
 
-  it('reads only the experimental D1 pointer, preserves two studies, and resolves missing annotation assets safely', async () => {
+  it('reads only the experimental D1 pointer and exposes collection assets', async () => {
     const queries: string[] = [];
     class Statement {
       bindings: Array<string | number | null> = [];
@@ -148,8 +227,11 @@ describe('experimental TSS repository', () => {
       reference_storage_json: JSON.stringify({ layout: 'individual-v1', files: {
         fasta: 'objects/GCF_000210855.2/reference.fa.gz', fai: 'objects/GCF_000210855.2/reference.fa.gz.fai', gzi: 'objects/GCF_000210855.2/reference.fa.gz.gzi',
       } }),
-      annotation_status: null, annotation_data_path: null, annotation_index_path: null,
-      annotation_data_sha256: null, annotation_index_sha256: null,
+      predicted_promoter_count: 25_933,
+      promoter_data_path: 'promoter_predictions/GCF_000210855.2.promoter.gff3', promoter_index_path: null,
+      promoter_data_sha256: sha, promoter_index_sha256: null,
+      annotation_status: 'ready', annotation_data_path: 'cds_function_annotations/GCF_000210855.2.eggnog.gff3', annotation_index_path: null,
+      annotation_data_sha256: sha, annotation_index_sha256: null,
     }];
     const database = {
       prepare(query: string) { return new Statement(query); },
@@ -168,11 +250,19 @@ describe('experimental TSS repository', () => {
     const genome = await repository.getGenome('GCF_000210855.2');
     expect(genome).toMatchObject({
       referenceAccession: 'GCA_000210855.2',
-      annotationStatus: 'missing',
-      assets: { ncbiAnnotations: null, ncbiAnnotationsIndex: null },
+      predictedPromoterCount: 25_933,
+      annotationStatus: 'available',
+      assets: { predictedPromoters: 'predicted-promoters.gff3', ncbiAnnotations: 'annotations.gff3', ncbiAnnotationsIndex: null },
     });
     expect(genome?.studies).toHaveLength(2);
-    await expect(repository.resolveAsset('GCF_000210855.2', 'ncbi-annotations.gff3.gz')).resolves.toBeNull();
+    await expect(repository.resolveAsset('GCF_000210855.2', 'predicted-promoters.gff3')).resolves.toMatchObject({
+      upstreamUrl: 'https://example.test/releases/experimental-1/promoter_predictions/GCF_000210855.2.promoter.gff3',
+      kind: 'predicted-promoters',
+    });
+    await expect(repository.resolveAsset('GCF_000210855.2', 'annotations.gff3')).resolves.toMatchObject({
+      upstreamUrl: 'https://example.test/releases/experimental-1/cds_function_annotations/GCF_000210855.2.eggnog.gff3',
+      kind: 'annotation',
+    });
     await expect(repository.resolveAsset('GCF_000210855.2', 'studies/2012_22538806_GCF_000210855.2/raw.bed')).resolves.toMatchObject({
       upstreamUrl: 'https://example.test/releases/experimental-1/objects/GCF_000210855.2/studies/second/raw.bed',
       kind: 'raw-bed',

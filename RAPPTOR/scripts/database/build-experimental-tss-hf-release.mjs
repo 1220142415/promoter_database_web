@@ -66,7 +66,7 @@ WITH source_genomes AS (
 INSERT INTO genomes (
   release_id, accession, organism_name, strain, domain, phylum, class_name,
   order_name, family, genus, genome_source, assembly_level, genome_size_bp,
-  gc_content, contig_count, default_locus, primary_sequence, reference_storage_json,
+  gc_content, contig_count, predicted_promoter_count, default_locus, primary_sequence, reference_storage_json,
   ncbi_organism_name, ncbi_tax_id, assembly_name, genbank_assembly_accession,
   refseq_assembly_accession, taxonomy_raw, species, taxonomy_source,
   assembly_source_url, reference_namespace, reference_accession,
@@ -81,6 +81,7 @@ SELECT
   COALESCE(prediction.genome_size_bp, CAST(json_extract(registry.provenance_json, '$.genomeSizeBp') AS INTEGER)),
   COALESCE(prediction.gc_content, CAST(json_extract(registry.provenance_json, '$.gcPercent') AS REAL)),
   COALESCE(prediction.contig_count, CAST(json_extract(registry.provenance_json, '$.contigCount') AS INTEGER)),
+  COALESCE(prediction.predicted_promoter_count, 0),
   prediction.default_locus, prediction.primary_sequence,
   COALESCE(prediction.reference_storage_json, '{}'),
   COALESCE(prediction.ncbi_organism_name, registry.organism_name),
@@ -110,6 +111,39 @@ INSERT INTO release_genomes (release_id, accession, genome_id)
 SELECT ${release}, MIN(source_accession), genome_id
 FROM experimental_study_genomes
 GROUP BY genome_id;
+
+-- Experimental genomes without an active prediction identity stay searchable;
+-- their prediction feature is explicitly missing until a later release backfills it.
+INSERT INTO feature_definitions (
+  release_id, definition_id, feature_type, evidence_type, count_unit,
+  source_id, source_version, configuration_json, generated_at
+) VALUES (
+  ${release}, 'promoter:rapptor:experimental-hf', 'promoter', 'prediction', 'peak',
+  'rapptor', ${sqlText(value.revision)}, json_object('assetStatus', 'missing'), ${generatedAt}
+);
+
+INSERT INTO feature_sets (
+  release_id, accession, definition_id, feature_type, evidence_type, count_unit,
+  feature_count, status, is_default, source_id, source_version,
+  provenance_json, data_path, index_path, storage_json
+)
+SELECT
+  ${release}, g.accession, 'promoter:rapptor:experimental-hf', 'promoter', 'prediction', 'peak',
+  NULL, 'missing', 1, 'rapptor', ${sqlText(value.revision)},
+  json_object('reason', 'prediction_not_in_active_release', 'assetStatus', 'missing'),
+  NULL, NULL, '{}'
+FROM genomes g
+WHERE g.release_id = ${release}
+  AND NOT EXISTS (
+    SELECT 1
+    FROM release_genomes current_experimental
+    JOIN release_genomes active_prediction
+      ON active_prediction.genome_id = current_experimental.genome_id
+    JOIN portal_state prediction_state ON prediction_state.singleton = 1
+    WHERE current_experimental.release_id = ${release}
+      AND current_experimental.accession = g.accession
+      AND active_prediction.release_id = prediction_state.active_release_id
+  );
 
 INSERT INTO feature_definitions (
   release_id, definition_id, feature_type, evidence_type, count_unit,
@@ -194,6 +228,12 @@ JOIN release_genomes prediction
   ON prediction.release_id = prediction_state.active_release_id
  AND prediction.genome_id = experimental.genome_id
 WHERE experimental.release_id = ${release};
+SELECT COUNT(*) AS missing_prediction_features
+FROM feature_sets
+WHERE release_id = ${release}
+  AND feature_type = 'promoter'
+  AND evidence_type = 'prediction'
+  AND status = 'missing';
 `;
 }
 

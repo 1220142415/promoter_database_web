@@ -1,4 +1,4 @@
-export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi' | 'scores-plus' | 'scores-minus';
+export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi' | 'annotation' | 'scores-plus' | 'scores-minus';
 
 export type TrackDownloadFormat = 'fasta' | 'gff3' | 'bigwig';
 
@@ -52,6 +52,12 @@ const KIND_SETTINGS: Record<TrackDownloadKind, {
     wholeExtension: '.gff3.gz',
     track: 'ncbi',
   },
+  annotation: {
+    prefix: 'Prodigal-eggNOG-annotations',
+    format: 'gff3',
+    regionExtension: '.gff3',
+    wholeExtension: '.gff3',
+  },
   'scores-plus': {
     prefix: 'RAPPTOR-raw-scores-plus',
     format: 'bigwig',
@@ -76,7 +82,7 @@ export function isTrackDownloadMetadata(value: unknown): value is TrackDownloadM
   if (!value || typeof value !== 'object') return false;
   const metadata = value as Partial<TrackDownloadMetadata>;
   return (
-    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus')
+    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi' || metadata.kind === 'annotation' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus')
     && typeof metadata.accession === 'string'
     && typeof metadata.label === 'string'
     && typeof metadata.regionExportBase === 'string'

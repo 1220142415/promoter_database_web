@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import DataObjectRoundedIcon from '@mui/icons-material/DataObjectRounded';
 import MenuBookRoundedIcon from '@mui/icons-material/MenuBookRounded';
 import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
 import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
@@ -49,7 +48,6 @@ export default async function GenomesPage({
       <section className="portal-shell experimental-metrics" aria-label="Genome evidence statistics">
         <div><PublicRoundedIcon aria-hidden="true" /><span>Prediction genomes</span><strong>{initialResult.stats.predictionGenomes.toLocaleString()}</strong></div>
         {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{initialResult.stats.experimentalGenomes.toLocaleString()}</strong></div> : null}
-        {showExperimental ? <div><DataObjectRoundedIcon aria-hidden="true" /><span>Both evidence types</span><strong>{initialResult.stats.bothGenomes.toLocaleString()}</strong></div> : null}
         {showExperimental ? <div><MenuBookRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{initialResult.stats.totalExperimentalObservations.toLocaleString()}</strong></div> : null}
       </section>
       <section className="portal-shell catalog-section">

@@ -9,14 +9,14 @@ import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 const links = [
   { href: '/', label: 'Overview' },
   { href: '/genomes', label: 'Genomes' },
+  { href: '/cyanobacteria', label: 'Cyanobacteria' },
 ];
 
-export default function PortalHeader({ showPrediction = false, showUsage = false }: { showPrediction?: boolean; showUsage?: boolean }) {
+export default function PortalHeader({ showUsage = false }: { showPrediction?: boolean; showUsage?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const visibleLinks = [
     ...links,
-    ...(showPrediction ? [{ href: '/predict', label: 'Run RAPPTOR' }] : []),
     ...(showUsage ? [{ href: '/usage', label: 'Usage' }] : []),
   ];
 

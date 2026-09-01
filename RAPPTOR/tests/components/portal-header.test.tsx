@@ -32,7 +32,7 @@ describe('portal header', () => {
     expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage');
     expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Cyanobacteria' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cyanobacteria' })).toHaveAttribute('href', '/cyanobacteria');
 
     await user.click(open);
     expect(screen.getByRole('button', { name: 'Close navigation' })).toHaveAttribute('aria-expanded', 'true');
@@ -49,8 +49,8 @@ describe('portal header', () => {
     expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
   });
 
-  it('shows prediction only after its public switch is enabled', () => {
+  it('keeps the prediction page available only through its direct link', () => {
     render(<PortalHeader showPrediction />);
-    expect(screen.getByRole('link', { name: 'Run RAPPTOR' })).toHaveAttribute('href', '/predict');
+    expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
   });
 });

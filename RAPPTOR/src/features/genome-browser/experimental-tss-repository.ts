@@ -16,6 +16,7 @@ import type {
 const ACCESSION_PATTERN = /^GCF_\d{9}\.\d+$/;
 const STUDY_PATTERN = /^\d{4}_\d+_GCF_\d{9}\.\d+$/;
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const DEFAULT_COLLECTION_BASE_URL = 'https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main/experimentally_supported_genomes';
 
 type JsonObject = Record<string, unknown>;
 type CatalogGenome = JsonObject & { accession: string; studies: string[] };
@@ -131,6 +132,9 @@ function normalizeStudy(study: JsonObject, genome: JsonObject): ExperimentalTssS
     organismName: stringValue(study.organismName ?? genome.organismName ?? genome.organism_name) || accession,
     pmid,
     year,
+    tssMethodCategory: stringValue(study.tssMethodCategory ?? study.tss_method_category),
+    tssMethodLabel: stringValue(study.tssMethodLabel ?? study.tss_method_label),
+    tssMethodRaw: stringValue(study.tssMethodRaw ?? study.tss_method_raw),
     recordCount,
     sourceFile: stringValue(study.sourceFile ?? study.source_file ?? provenance.sourceFile ?? provenance.source_file),
     sourceSha256: stringValue(study.sourceSha256 ?? study.source_sha256 ?? provenance.sourceSha256 ?? provenance.source_sha256),
@@ -187,8 +191,93 @@ function parseCatalog(value: unknown): NormalizedCatalog {
   };
 }
 
+function parseTsv(value: string) {
+  const lines = value.replace(/^\uFEFF/u, '').split(/\r?\n/u).filter((line) => line.length > 0);
+  const headers = lines.shift()?.split('\t') || [];
+  if (!headers.length || new Set(headers).size !== headers.length) {
+    throw new ExperimentalTssCatalogUnavailableError('The experimental genome metadata TSV is invalid.');
+  }
+  return lines.map((line) => {
+    const columns = line.split('\t');
+    if (columns.length !== headers.length) {
+      throw new ExperimentalTssCatalogUnavailableError('The experimental genome metadata TSV is invalid.');
+    }
+    return Object.fromEntries(headers.map((header, index) => [header, columns[index]]));
+  });
+}
+
+export function catalogFromExperimentalGenomeCollection(studyMetadata: unknown, genomeMetadataTsv: string, assetBase: string) {
+  const metadata = objectValue(studyMetadata);
+  if (integerValue(metadata.schemaVersion) !== 4 || !Array.isArray(metadata.studies)) {
+    throw new ExperimentalTssCatalogUnavailableError('The experimental genome collection metadata has an unsupported schema.');
+  }
+  const sourceStudies = metadata.studies.map(objectValue);
+  const studyIdsByAccession = new Map<string, string[]>();
+  const genomeMetadataByAccession = new Map<string, JsonObject>();
+  const studies = sourceStudies.map((study) => {
+    const studyId = stringValue(study.studyId);
+    const accession = stringValue(study.accession);
+    const bedPath = safeAssetPath(study.bedPath, `${studyId || 'study'} BED path`);
+    if (!studyId || !STUDY_PATTERN.test(studyId) || !accession || !ACCESSION_PATTERN.test(accession)) {
+      throw new ExperimentalTssCatalogUnavailableError('An experimental collection study is invalid.');
+    }
+    studyIdsByAccession.set(accession, [...(studyIdsByAccession.get(accession) || []), studyId]);
+    genomeMetadataByAccession.set(accession, objectValue(study.genome));
+    return {
+      ...study,
+      gcf: accession,
+      assets: { rawBed: bedPath, data: bedPath, index: null },
+      checksums: { rawBed: study.bedSha256, data: study.bedSha256 },
+    };
+  });
+  const genomes = parseTsv(genomeMetadataTsv).map((row) => {
+    const accession = stringValue(row.gcf);
+    if (!accession || !ACCESSION_PATTERN.test(accession) || !studyIdsByAccession.has(accession)) {
+      throw new ExperimentalTssCatalogUnavailableError('An experimental collection genome is invalid.');
+    }
+    const metadataGenome = genomeMetadataByAccession.get(accession) || {};
+    const promoterPath = stringValue(row.promoter_path);
+    const annotationPath = stringValue(row.annotation_path);
+    return {
+      accession,
+      organismName: stringValue(row.organism_name) || stringValue(metadataGenome.organismName) || accession,
+      strain: stringValue(row.strain) || stringValue(metadataGenome.strain),
+      assemblyName: stringValue(row.assembly_name) || stringValue(metadataGenome.assemblyName),
+      genbankAssemblyAccession: stringValue(metadataGenome.genbankAssemblyAccession),
+      referenceAccession: accession,
+      genomeSizeBp: integerValue(row.genome_size_bp),
+      contigCount: integerValue(row.contig_count),
+      predictedPromoterCount: integerValue(row.predicted_promoter_count) || 0,
+      referenceStorage: { layout: 'individual-v1', files: { fasta: safeAssetPath(row.genome_path, `${accession} FASTA path`) } },
+      predictedPromoters: { data: promoterPath ? safeAssetPath(promoterPath, `${accession} promoter path`) : null, index: null },
+      annotation: { status: annotationPath ? 'available' : 'missing', data: annotationPath ? safeAssetPath(annotationPath, `${accession} annotation path`) : null, index: null },
+      studies: studyIdsByAccession.get(accession) || [],
+    };
+  });
+  if (genomes.length !== studyIdsByAccession.size) {
+    throw new ExperimentalTssCatalogUnavailableError('The experimental collection genome and study metadata do not match.');
+  }
+  const generatedAt = stringValue(metadata.generatedAt);
+  return {
+    schemaVersion: 1,
+    releaseKind: 'experimental_tss',
+    releaseId: `experimentally-supported-genomes-${generatedAt || 'main'}`,
+    generatedAt,
+    description: 'Experimentally supported genomes with RAPPtor predictions and Prodigal / eggNOG annotations.',
+    assetBase,
+    summary: {
+      studies: studies.length,
+      genomes: genomes.length,
+      publications: new Set(sourceStudies.map((study) => stringValue(study.pmid))).size,
+      observations: sourceStudies.reduce((total, study) => total + (integerValue(study.recordCount) || 0), 0),
+    },
+    studies,
+    genomes,
+  };
+}
+
 function configuredAssetBase(catalogBase: string | null) {
-  return stringValue(process.env.EXPERIMENTAL_TSS_STORAGE_BASE_URL) || catalogBase;
+  return catalogBase || stringValue(process.env.EXPERIMENTAL_TSS_STORAGE_BASE_URL);
 }
 
 function upstreamUrl(base: string | null, path: string) {
@@ -222,6 +311,7 @@ function normalizeAnnotationStatus(value: unknown): ExperimentalAnnotationStatus
 
 function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): ExperimentalTssGenome {
   const annotation = objectValue(genome.annotation);
+  const predictedPromoters = objectValue(genome.predictedPromoters ?? genome.predicted_promoters);
   const reference = objectValue(genome.referenceStorage ?? genome.reference_storage);
   const referenceFiles = objectValue(reference.files);
   const referenceChecksums = checksumMap(reference.checksums);
@@ -241,6 +331,7 @@ function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): Experim
     primarySequence,
     genomeSizeBp: integerValue(genome.genomeSizeBp ?? genome.genome_size_bp),
     contigCount: integerValue(genome.contigCount ?? genome.contig_count),
+    predictedPromoterCount: integerValue(genome.predictedPromoterCount ?? genome.predicted_promoter_count) || 0,
     annotationStatus,
     referenceAccession: stringValue(genome.referenceAccession ?? genome.reference_accession),
     referenceSha256: referenceChecksums.fasta || null,
@@ -249,7 +340,13 @@ function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): Experim
       fasta: referenceFiles.fai && referenceFiles.gzi ? 'reference.fa.gz' : 'reference.fa',
       fastaFai: referenceFiles.fai ? 'reference.fa.gz.fai' : null,
       fastaGzi: referenceFiles.gzi ? 'reference.fa.gz.gzi' : null,
-      ncbiAnnotations: annotationStatus === 'available' && annotation.data ? 'ncbi-annotations.gff3.gz' : null,
+      predictedPromoters: predictedPromoters.data
+        ? predictedPromoters.index ? 'predicted-promoters.gff3.gz' : 'predicted-promoters.gff3'
+        : null,
+      predictedPromotersIndex: predictedPromoters.index ? 'predicted-promoters.gff3.gz.tbi' : null,
+      ncbiAnnotations: annotationStatus === 'available' && annotation.data
+        ? annotation.index ? 'ncbi-annotations.gff3.gz' : 'annotations.gff3'
+        : null,
       ncbiAnnotationsIndex: annotationStatus === 'available' && annotation.index ? 'ncbi-annotations.gff3.gz.tbi' : null,
     },
     studies,
@@ -278,6 +375,8 @@ function findCatalogAsset(catalog: NormalizedCatalog, accession: string, logical
   const reference = objectValue(genome.referenceStorage ?? genome.reference_storage);
   const files = objectValue(reference.files);
   const referenceChecksums = checksumMap(reference.checksums);
+  const predictedPromoters = objectValue(genome.predictedPromoters ?? genome.predicted_promoters);
+  const predictedPromoterChecksums = checksumMap(predictedPromoters.checksums);
   const annotation = objectValue(genome.annotation);
   const annotationChecksums = checksumMap(annotation.checksums);
   const fixed: Record<string, { path: unknown; sha256?: string; kind: ExperimentalResolvedAsset['kind']; contentType: string; filename: string }> = {
@@ -285,12 +384,17 @@ function findCatalogAsset(catalog: NormalizedCatalog, accession: string, logical
     'reference.fa.gz': { path: files.fasta, sha256: referenceChecksums.fasta, kind: 'reference', contentType: 'application/gzip', filename: `${accession}.reference.fa.gz` },
     'reference.fa.gz.fai': { path: files.fai, sha256: referenceChecksums.fai, kind: 'reference', contentType: 'text/plain; charset=utf-8', filename: `${accession}.reference.fa.gz.fai` },
     'reference.fa.gz.gzi': { path: files.gzi, sha256: referenceChecksums.gzi, kind: 'reference', contentType: 'application/octet-stream', filename: `${accession}.reference.fa.gz.gzi` },
+    'predicted-promoters.gff3': { path: predictedPromoters.data, sha256: predictedPromoterChecksums.data, kind: 'predicted-promoters', contentType: 'text/plain; charset=utf-8', filename: `${accession}.predicted-promoters.gff3` },
+    'predicted-promoters.gff3.gz': { path: predictedPromoters.data, sha256: predictedPromoterChecksums.data, kind: 'predicted-promoters', contentType: 'application/gzip', filename: `${accession}.predicted-promoters.gff3.gz` },
+    'predicted-promoters.gff3.gz.tbi': { path: predictedPromoters.index, sha256: predictedPromoterChecksums.index, kind: 'predicted-promoters', contentType: 'application/octet-stream', filename: `${accession}.predicted-promoters.gff3.gz.tbi` },
+    'annotations.gff3': { path: annotation.data, sha256: annotationChecksums.data, kind: 'annotation', contentType: 'text/plain; charset=utf-8', filename: `${accession}.annotations.gff3` },
     'ncbi-annotations.gff3.gz': { path: annotation.data, sha256: annotationChecksums.data, kind: 'annotation', contentType: 'application/gzip', filename: `${accession}.ncbi-annotations.gff3.gz` },
     'ncbi-annotations.gff3.gz.tbi': { path: annotation.index, sha256: annotationChecksums.index, kind: 'annotation', contentType: 'application/octet-stream', filename: `${accession}.ncbi-annotations.gff3.gz.tbi` },
   };
   const known = fixed[logicalAsset];
   if (known) {
-    if (!known.path || (logicalAsset.startsWith('ncbi-') && normalizeAnnotationStatus(annotation.status) !== 'available')) return null;
+    if (!known.path || ((logicalAsset === 'annotations.gff3' || logicalAsset.startsWith('ncbi-'))
+      && normalizeAnnotationStatus(annotation.status) !== 'available')) return null;
     const path = safeAssetPath(known.path, `${accession} asset`);
     return {
       ...known,
@@ -390,9 +494,13 @@ async function d1Catalog(database: D1Database): Promise<NormalizedCatalog> {
     ].join(' ')).bind(releaseId),
     database.prepare([
       'SELECT g.*, a.status AS annotation_status, a.data_path AS annotation_data_path, a.index_path AS annotation_index_path,',
-      'a.data_sha256 AS annotation_data_sha256, a.index_sha256 AS annotation_index_sha256',
+      'a.data_sha256 AS annotation_data_sha256, a.index_sha256 AS annotation_index_sha256,',
+      'p.feature_count AS predicted_promoter_count, p.data_path AS promoter_data_path, p.index_path AS promoter_index_path,',
+      'p.data_sha256 AS promoter_data_sha256, p.index_sha256 AS promoter_index_sha256',
       'FROM genomes g LEFT JOIN feature_sets a ON a.release_id = g.release_id AND a.accession = g.accession',
       "AND a.feature_type = 'gene_annotation' AND a.is_default = 1",
+      'LEFT JOIN feature_sets p ON p.release_id = g.release_id AND p.accession = g.accession',
+      "AND p.feature_type = 'promoter' AND p.evidence_type = 'prediction' AND p.is_default = 1",
       'WHERE g.release_id = ? ORDER BY g.accession',
     ].join(' ')).bind(releaseId),
   ]);
@@ -416,13 +524,15 @@ async function d1Catalog(database: D1Database): Promise<NormalizedCatalog> {
   const studiesByGenome = new Map<string, string[]>();
   for (const study of studies) studiesByGenome.set(study.gcf, [...(studiesByGenome.get(study.gcf) || []), study.studyId]);
   const genomes = (genomeResult.results || []).map((row) => {
-    const annotationStatus = normalizeAnnotationStatus(row.annotation_status);
+    const annotationStatus = row.annotation_status === 'ready' ? 'available' : normalizeAnnotationStatus(row.annotation_status);
     return {
       accession: String(row.accession), organismName: row.organism_name, strain: row.strain,
       assemblyName: row.assembly_name, genbankAssemblyAccession: row.genbank_assembly_accession,
       defaultLocus: row.default_locus, primarySequence: row.primary_sequence,
       genomeSizeBp: row.genome_size_bp, contigCount: row.contig_count,
       referenceStorage: parseJsonObject(row.reference_storage_json), referenceAccession: row.reference_accession,
+      predictedPromoterCount: row.predicted_promoter_count,
+      predictedPromoters: { data: row.promoter_data_path, index: row.promoter_index_path, checksums: { data: row.promoter_data_sha256, index: row.promoter_index_sha256 } },
       annotation: { status: annotationStatus, data: row.annotation_data_path, index: row.annotation_index_path, checksums: { data: row.annotation_data_sha256, index: row.annotation_index_sha256 } },
       studies: studiesByGenome.get(String(row.accession)) || [],
     } as CatalogGenome;
@@ -462,6 +572,7 @@ const emptyExperimentalTssRepository = new JsonExperimentalTssRepository({
 
 let localRepository: JsonExperimentalTssRepository | null = null;
 let localPath: string | null = null;
+let collectionRepository: { base: string; value: Promise<JsonExperimentalTssRepository> } | null = null;
 
 function configuredLocalRepository() {
   const configuredPath = stringValue(process.env.EXPERIMENTAL_TSS_CATALOG_PATH);
@@ -476,6 +587,40 @@ function configuredLocalRepository() {
     if (cause instanceof ExperimentalTssCatalogUnavailableError) throw cause;
     throw new ExperimentalTssCatalogUnavailableError(`Experimental TSS catalog could not be read: ${cause instanceof Error ? cause.message : 'unknown error'}`);
   }
+}
+
+function configuredCollectionBase() {
+  if (process.env.NODE_ENV === 'test') return null;
+  const configured = stringValue(process.env.EXPERIMENTAL_TSS_COLLECTION_BASE_URL);
+  return configured?.toLowerCase() === 'off' ? null : configured || DEFAULT_COLLECTION_BASE_URL;
+}
+
+async function configuredCollectionRepository() {
+  if (process.env.EXPERIMENTAL_TSS_CATALOG_PATH) return null;
+  const base = configuredCollectionBase();
+  if (!base) return null;
+  if (collectionRepository?.base === base) return collectionRepository.value;
+  const value = (async () => {
+    try {
+      const [studyResponse, genomeResponse] = await Promise.all([
+        fetch(upstreamUrl(base, 'metadata/studies.json'), { cache: 'force-cache' }),
+        fetch(upstreamUrl(base, 'metadata/genomes.tsv'), { cache: 'force-cache' }),
+      ]);
+      if (!studyResponse.ok || !genomeResponse.ok) throw new Error('metadata request failed');
+      const catalog = catalogFromExperimentalGenomeCollection(
+        await studyResponse.json(),
+        await genomeResponse.text(),
+        base,
+      );
+      return new JsonExperimentalTssRepository(catalog);
+    } catch (cause) {
+      collectionRepository = null;
+      if (cause instanceof ExperimentalTssCatalogUnavailableError) throw cause;
+      throw new ExperimentalTssCatalogUnavailableError(`Experimental genome collection could not be read: ${cause instanceof Error ? cause.message : 'unknown error'}`);
+    }
+  })();
+  collectionRepository = { base, value };
+  return value;
 }
 
 async function configuredD1() {
@@ -499,6 +644,8 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     if (local) return local.getActiveRelease();
     const database = await configuredD1();
     if (database) return new D1ExperimentalTssRepository(database).getActiveRelease();
+    const collection = await configuredCollectionRepository();
+    if (collection) return collection.getActiveRelease();
     return emptyExperimentalTssRepository.getActiveRelease();
   },
   async search(query) {
@@ -506,6 +653,8 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     if (local) return local.search(query);
     const database = await configuredD1();
     if (database) return new D1ExperimentalTssRepository(database).search(query);
+    const collection = await configuredCollectionRepository();
+    if (collection) return collection.search(query);
     return emptyExperimentalTssRepository.search(query);
   },
   async listGenomes() {
@@ -513,6 +662,8 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     if (local) return local.listGenomes();
     const database = await configuredD1();
     if (database) return new D1ExperimentalTssRepository(database).listGenomes();
+    const collection = await configuredCollectionRepository();
+    if (collection) return collection.listGenomes();
     return emptyExperimentalTssRepository.listGenomes();
   },
   async getGenome(accession) {
@@ -520,6 +671,8 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     if (local) return local.getGenome(accession);
     const database = await configuredD1();
     if (database) return new D1ExperimentalTssRepository(database).getGenome(accession);
+    const collection = await configuredCollectionRepository();
+    if (collection) return collection.getGenome(accession);
     return null;
   },
   async resolveAsset(accession, logicalAsset) {
@@ -527,6 +680,8 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     if (local) return local.resolveAsset(accession, logicalAsset);
     const database = await configuredD1();
     if (database) return new D1ExperimentalTssRepository(database).resolveAsset(accession, logicalAsset);
+    const collection = await configuredCollectionRepository();
+    if (collection) return collection.resolveAsset(accession, logicalAsset);
     return null;
   },
 };

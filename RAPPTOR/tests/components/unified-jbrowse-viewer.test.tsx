@@ -56,6 +56,8 @@ function experimental(): ExperimentalTssGenome {
       fasta: 'genomes/reference.fa.gz',
       fastaFai: 'genomes/reference.fa.gz.fai',
       fastaGzi: 'genomes/reference.fa.gz.gzi',
+      predictedPromoters: 'genomes/predicted-promoters.gff3',
+      predictedPromotersIndex: null,
       ncbiAnnotations: 'genomes/ncbi.gff3.gz',
       ncbiAnnotationsIndex: 'genomes/ncbi.gff3.gz.tbi',
     },
@@ -74,6 +76,29 @@ function prediction() {
     defaultLocus: 'NC_016810.1:1-10000',
     assetBase: '/api/remote-data',
     assets: genome.assets,
+  };
+}
+
+function experimentalBrowserAssembly() {
+  const genome = experimental();
+  return {
+    assemblyName: genome.assemblyName || genome.accession,
+    defaultLocus: genome.defaultLocus,
+    assetBase: genome.assetBase,
+    adapterMode: 'indexed' as const,
+    annotationTrackKind: 'annotation' as const,
+    assets: {
+      fasta: genome.assets.fasta,
+      fastaFai: genome.assets.fastaFai!,
+      fastaGzi: genome.assets.fastaGzi!,
+      predictedPromoters: genome.assets.predictedPromoters!,
+      predictedPromotersIndex: genome.assets.predictedPromotersIndex || '',
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
+      ncbiAnnotations: genome.assets.ncbiAnnotations,
+      ncbiAnnotationsIndex: genome.assets.ncbiAnnotationsIndex,
+    },
+    trackLabels: { annotation: 'Prodigal / eggNOG CDS annotations' },
   };
 }
 
@@ -155,18 +180,37 @@ describe('unified JBrowse viewer', () => {
     await waitFor(() => expect(tree.session.view.navToLocString).toHaveBeenCalledWith('NC_016810.1:1-10000', accession));
   });
 
-  it('supports an experimental-only assembly without inventing prediction tracks', () => {
-    render(<UnifiedJBrowseViewer experimental={experimental()} />);
+  it('reuses the existing assembly tracks and flag renderer for an experimental-only catalog genome', () => {
+    render(<UnifiedJBrowseViewer prediction={experimentalBrowserAssembly()} experimental={experimental()} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
-      tracks: Array<{ name: string }>;
+      tracks: Array<{ name: string; adapter: { type: string }; displays: Array<{ renderer: { type: string } }> }>;
       assembly: { sequence: { adapter: { type: string } } };
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
+      'RAPPTOR predicted promoters',
       'Experimental TSS · 2012 · PMID 22251276',
       'Experimental TSS · 2013 · PMID 22538806',
-      'NCBI genome annotation',
+      'Prodigal / eggNOG CDS annotations',
     ]);
     expect(config.assembly.sequence.adapter.type).toBe('BgzipFastaAdapter');
+    expect(config.tracks[0].adapter.type).toBe('Gff3Adapter');
+    expect(config.tracks[1].displays[0].renderer.type).toBe('RAPPTORExperimentalTssRenderer');
+  });
+
+  it('uses the shared IndexedFastaAdapter for prediction FASTA and FAI artifacts', () => {
+    const assembly = prediction();
+    assembly.assets.fasta = '/api/predictions/jobs/job-1/artifacts/input.fasta';
+    assembly.assets.fastaFai = '/api/predictions/jobs/job-1/artifacts/input.fasta.fai';
+    assembly.assets.fastaGzi = '';
+    render(<UnifiedJBrowseViewer prediction={assembly} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      assembly: { sequence: { adapter: { type: string; fastaLocation: { uri: string }; faiLocation: { uri: string } } } };
+    };
+    expect(config.assembly.sequence.adapter).toMatchObject({
+      type: 'IndexedFastaAdapter',
+      fastaLocation: { uri: '/api/predictions/jobs/job-1/artifacts/input.fasta' },
+      faiLocation: { uri: '/api/predictions/jobs/job-1/artifacts/input.fasta.fai' },
+    });
   });
 
   it('extracts volatile optional-track block failures without treating them as reference failures', () => {

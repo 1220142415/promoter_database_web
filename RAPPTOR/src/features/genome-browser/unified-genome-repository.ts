@@ -629,11 +629,14 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       } else break;
     }
     const hasNext = experimentalOffset < experimentalRows.length || Boolean(includePrediction && nextPrediction);
-    const taxonomy = Object.fromEntries(TAXONOMY_FIELDS.map(([rank, field]) => [
+    const taxonomy = Object.fromEntries(TAXONOMY_FIELDS.map(([rank, field], index) => [
       rank,
       uniqueSorted([
         ...metadata.facets.taxonomy[rank],
-        ...snapshot.rows.map((row) => row[field] as string | null),
+        ...snapshot.rows
+          .filter((row) => TAXONOMY_FIELDS.slice(0, index)
+            .every(([parentRank, parentField]) => !query.taxonomy[parentRank] || row[parentField] === query.taxonomy[parentRank]))
+          .map((row) => row[field] as string | null),
       ]),
     ])) as UnifiedGenomeSearchResponse['facets']['taxonomy'];
     return {

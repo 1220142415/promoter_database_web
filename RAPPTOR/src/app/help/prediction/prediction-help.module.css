@@ -125,6 +125,7 @@
 .troubleshooting > div { border-top: 1px solid var(--line-strong); padding-top: 16px; }
 .troubleshooting p { margin: 6px 0 0; }
 .finalLink { margin-top: 30px; }
+.finalLink[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; pointer-events: none; }
 
 @media (max-width: 840px) {
   .layout { grid-template-columns: 1fr; gap: 36px; padding-top: 36px; }

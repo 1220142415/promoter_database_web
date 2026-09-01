@@ -172,7 +172,7 @@ export default function PredictionHelpPage() {
               <div><strong>Catalog search fails</strong><p>Retry without clearing your sequence, switch to FASTA upload, or use the built-in paired example, which does not depend on the catalog.</p></div>
               <div><strong>A demo result is missing</strong><p>Prototype runs live in session storage. Return to the workspace and create a new demo run if the tab or stored session was cleared.</p></div>
             </div>
-            <Link href="/predict" className={`portal-text-link ${styles.finalLink}`}>Return to prediction workspace <ArrowForwardRoundedIcon fontSize="small" /></Link>
+            <span className={`portal-text-link ${styles.finalLink}`} aria-disabled="true">Return to prediction workspace</span>
           </section>
         </article>
       </div>

@@ -12,6 +12,8 @@ describe('prediction help', () => {
 
     expect(screen.getByRole('heading', { name: 'Use RAPPTOR prediction results with the right context' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open prediction workspace/ })).toHaveAttribute('href', '/predict');
+    expect(screen.queryByRole('link', { name: /Return to prediction workspace/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Return to prediction workspace')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('navigation', { name: 'Prediction help contents' })).toHaveTextContent('Quick start');
     expect(screen.getByRole('heading', { name: 'The input determines what RAPPTOR runs' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Results adapt without changing what a score means' })).toBeInTheDocument();

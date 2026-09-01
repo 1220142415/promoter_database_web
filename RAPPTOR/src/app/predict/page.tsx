@@ -1,14 +1,11 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
-import { predictionPublicEnabled } from '@/features/prediction/public';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = { title: 'Run RAPPTOR | RAPPTOR' };
 
 export default function PredictPage() {
-  if (!predictionPublicEnabled()) notFound();
   return (
     <main className="portal-page">
       <header className="portal-shell page-intro">

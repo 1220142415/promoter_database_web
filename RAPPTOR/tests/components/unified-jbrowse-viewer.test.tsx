@@ -167,7 +167,12 @@ describe('unified JBrowse viewer', () => {
       'RapptorTrackDownloadPlugin',
     ]);
     expect(config.tracks[1].metadata).toMatchObject({ rapptorEvidenceType: 'prediction' });
-    expect(config.tracks[2].metadata).toMatchObject({ rapptorEvidenceType: 'experimental_tss' });
+    expect(config.tracks[2].metadata).toMatchObject({
+      rapptorEvidenceType: 'experimental_tss',
+      rapptorExperimentalDownloads: [
+        { kind: 'raw-bed', label: 'Original BED observations' },
+      ],
+    });
   });
 
   it('uses the prediction reference location when experimental metadata has a fallback accession', async () => {

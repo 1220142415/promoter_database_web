@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { cache } from 'react';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
-import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
 import PortalOnDemandBrowserPanel from '@/features/genome-browser/components/portal-on-demand-browser-panel';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
@@ -59,6 +58,7 @@ function hasMetadataValue(value: ReactNode) {
 }
 
 function MetadataMetric({ label, value }: { label: string; value: ReactNode }) {
+  if (!hasMetadataValue(value)) return null;
   return <div className="genome-metric"><span>{label}</span><strong>{metadataValue(value)}</strong></div>;
 }
 
@@ -122,27 +122,11 @@ function experimentalAssembly(genome: ExperimentalTssGenome): JBrowseReleaseAsse
   };
 }
 
-function assetUrl(base: string, path: string, download = false) {
-  return `${base.replace(/\/$/, '')}/${path}${download ? '?download=1' : ''}`;
-}
-
-function ExperimentalStudies({
-  genome,
-  showReferenceDownload,
-}: {
-  genome: ExperimentalTssGenome;
-  showReferenceDownload: boolean;
-}) {
+function ExperimentalStudies({ genome }: { genome: ExperimentalTssGenome }) {
   return (
     <section className="experimental-download-section" aria-labelledby="experimental-evidence-heading">
       <div className="experimental-section-heading">
         <div><p className="portal-kicker">Published observations</p><h2 id="experimental-evidence-heading">Experimental TSS studies</h2></div>
-        <p>{genome.studies.length} independent study {genome.studies.length === 1 ? 'track' : 'tracks'} · {genome.studies.reduce((sum, study) => sum + study.recordCount, 0).toLocaleString()} raw observations.</p>
-      </div>
-      <div className="experimental-reference-downloads" aria-label="Experimental assembly downloads">
-        {showReferenceDownload ? <a href={assetUrl(genome.assetBase, genome.assets.fasta, true)} download><span><strong>Reference sequence</strong><small>{genome.assets.fastaFai && genome.assets.fastaGzi ? 'BGZF FASTA' : 'FASTA'}</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
-        {genome.assets.predictedPromoters ? <a href={assetUrl(genome.assetBase, genome.assets.predictedPromoters, true)} download><span><strong>Predicted promoters</strong><small>GFF3 with prediction scores</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
-        {genome.assets.ncbiAnnotations ? <a href={assetUrl(genome.assetBase, genome.assets.ncbiAnnotations, true)} download><span><strong>NCBI annotation</strong><small>Indexed GFF3</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
       </div>
       <div className="experimental-study-details">
         {genome.studies.map((study) => (
@@ -155,14 +139,10 @@ function ExperimentalStudies({
             <div className="experimental-study-links">
               <a href={`https://pubmed.ncbi.nlm.nih.gov/${study.pmid}/`} target="_blank" rel="noreferrer">PubMed record</a>
               {study.publication.doi ? <a href={`https://doi.org/${study.publication.doi.split('/').map(encodeURIComponent).join('/')}`} target="_blank" rel="noreferrer">DOI</a> : null}
-              <a href={assetUrl(genome.assetBase, study.assets.rawBed, true)} download>Original BED</a>
-              <a href={assetUrl(genome.assetBase, study.assets.data, true)} download>Normalized GFF3</a>
             </div>
             <dl>
               <div><dt>Study ID</dt><dd><code>{study.studyId}</code></dd></div>
               {study.sourceFile ? <div><dt>Source file</dt><dd><code>{study.sourceFile}</code></dd></div> : null}
-              {study.sourceSha256 ? <div><dt>Source SHA-256</dt><dd><code>{study.sourceSha256}</code></dd></div> : null}
-              {study.datasetRow !== null ? <div><dt>Manifest row</dt><dd>{study.datasetRow.toLocaleString()}</dd></div> : null}
             </dl>
           </article>
         ))}
@@ -335,7 +315,7 @@ export default async function GenomeDetailPage({
           </div>
         </section>
 
-        {experimental ? <ExperimentalStudies genome={experimental} showReferenceDownload={!prediction && Boolean(experimental.primarySequence)} /> : null}
+        {experimental ? <ExperimentalStudies genome={experimental} /> : null}
       </section>
     </main>
   );

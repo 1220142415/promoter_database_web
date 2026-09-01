@@ -196,6 +196,21 @@ describe('genome detail release contract', () => {
     expect(screen.queryByText('Not reported')).not.toBeInTheDocument();
   });
 
+  it('hides summary metrics whose values are not reported', async () => {
+    const incomplete = match('GCA_000411415.1', 'available');
+    incomplete.genome.gcContent = null;
+    incomplete.genome.completeness = null;
+    delete (incomplete.genome as Partial<typeof incomplete.genome>).annotationFeatureCount;
+    vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(incomplete);
+    render(await GenomeDetailPage({ params: Promise.resolve({ accession: incomplete.genome.accession }) }));
+
+    expect(screen.queryByText('GC content')).not.toBeInTheDocument();
+    expect(screen.queryByText('Completeness')).not.toBeInTheDocument();
+    expect(screen.queryByText('NCBI annotation features')).not.toBeInTheDocument();
+    expect(screen.queryByText('Not reported')).not.toBeInTheDocument();
+    expect(screen.getByText('Contigs')).toBeInTheDocument();
+  });
+
   it('omits the NCBI track for GCA_000421325.1', async () => {
     vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(match('GCA_000421325.1', 'missing'));
     render(await GenomeDetailPage({ params: Promise.resolve({ accession: 'GCA_000421325.1' }) }));

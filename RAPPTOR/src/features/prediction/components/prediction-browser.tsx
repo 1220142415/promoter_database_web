@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { createViewState } from '@jbrowse/react-linear-genome-view';
-import RapptorJBrowseLinearView from '@/features/genome-browser/components/rapptor-jbrowse-linear-view';
-import RapptorMirroredScorePlugin from '@/features/genome-browser/plugins/mirrored-score-plugin';
+import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
+import type { JBrowseAssemblyConfig } from '@/features/genome-browser/types';
 import styles from './prediction.module.css';
 
 export default function PredictionBrowser({ jobId, refName }: { jobId: string; refName: string }) {
@@ -14,85 +13,30 @@ export default function PredictionBrowser({ jobId, refName }: { jobId: string; r
     if (annotation) URL.revokeObjectURL(annotation.url);
   }, [annotation]);
 
-  const viewState = useMemo(() => {
+  const assembly = useMemo<JBrowseAssemblyConfig>(() => {
     const assemblyName = `prediction-${jobId}`;
-    const sequenceTrackId = `${assemblyName}-reference`;
-    const annotationTrackId = `${assemblyName}-user-annotation`;
-    const trackId = `${assemblyName}-scores`;
-    return createViewState({
-      assembly: {
-        name: assemblyName,
-        sequence: {
-          type: 'ReferenceSequenceTrack',
-          trackId: sequenceTrackId,
-          name: 'Reference sequence',
-          adapter: {
-            type: 'IndexedFastaAdapter',
-            fastaLocation: { uri: `${base}/input.fasta` },
-            faiLocation: { uri: `${base}/input.fasta.fai` },
-          },
-        },
+    return {
+      assemblyName,
+      defaultLocus: `${refName}:1-10000`,
+      assetBase: '',
+      adapterMode: 'indexed',
+      annotationTrackKind: 'annotation',
+      assets: {
+        fasta: `${base}/input.fasta`,
+        fastaFai: `${base}/input.fasta.fai`,
+        fastaGzi: '',
+        predictedPromoters: '',
+        predictedPromotersIndex: '',
+        promoterScoresPlus: `${base}/scores.plus.bw`,
+        promoterScoresMinus: `${base}/scores.minus.bw`,
+        ncbiAnnotations: annotation?.url || null,
+        ncbiAnnotationsIndex: null,
       },
-      tracks: [...(annotation ? [{
-        trackId: annotationTrackId,
-        name: `Uploaded annotation · ${annotation.name}`,
-        assemblyNames: [assemblyName],
-        type: 'FeatureTrack',
-        adapter: { type: 'Gff3Adapter', gffLocation: { uri: annotation.url } },
-        displays: [{ displayId: `${annotationTrackId}-display`, type: 'LinearBasicDisplay' }],
-      }] : []), {
-        trackId,
-        name: 'RAPPTOR raw scores (+ / - strands)',
-        metadata: { rapptorMirroredScore: true },
-        assemblyNames: [assemblyName],
-        type: 'MultiQuantitativeTrack',
-        adapter: {
-          type: 'MultiWiggleAdapter',
-          subadapters: [
-            { type: 'BigWigAdapter', source: 'plus', name: '+ strand', bigWigLocation: { uri: `${base}/scores.plus.bw` } },
-            { type: 'BigWigAdapter', source: 'minus', name: '- strand', bigWigLocation: { uri: `${base}/scores.minus.bw` } },
-          ],
-        },
-        displays: [{
-          displayId: `${trackId}-display`,
-          type: 'MultiLinearWiggleDisplay',
-          defaultRendering: 'xyplot',
-          autoscale: 'local',
-          minScore: 0,
-          maxScore: 1,
-          renderers: {
-            MultiXYPlotRenderer: { summaryScoreMode: 'max' },
-            MultiLineRenderer: { summaryScoreMode: 'max' },
-          },
-        }],
-      }],
-      plugins: [RapptorMirroredScorePlugin],
-      location: `${refName}:1-10000`,
-      defaultSession: {
-        name: `${assemblyName} result`,
-        view: {
-          id: `${assemblyName}-linear-view`,
-          type: 'LinearGenomeView',
-          tracks: [{
-            type: 'ReferenceSequenceTrack',
-            configuration: sequenceTrackId,
-            displays: [{
-              type: 'LinearReferenceSequenceDisplay',
-              configuration: `${sequenceTrackId}-LinearReferenceSequenceDisplay`,
-              heightPreConfig: 90,
-            }],
-          }, ...(annotation ? [{
-            type: 'FeatureTrack',
-            configuration: annotationTrackId,
-            displays: [{ type: 'LinearBasicDisplay', configuration: `${annotationTrackId}-display`, heightPreConfig: 150 }],
-          }] : []), {
-            type: 'MultiQuantitativeTrack',
-            configuration: trackId,
-            displays: [{ type: 'MultiLinearWiggleDisplay', configuration: `${trackId}-display` }],
-          }],
-        },
+      trackLabels: {
+        scores: 'RAPPTOR raw scores (+ / - strands)',
+        annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
-    });
+    };
   }, [annotation, base, jobId, refName]);
 
   return <>
@@ -108,6 +52,6 @@ export default function PredictionBrowser({ jobId, refName }: { jobId: string; r
         {annotation && <button type="button" onClick={() => setAnnotation(null)}>Remove</button>}
       </div>
     </div>
-    <div className="portal-browser"><RapptorJBrowseLinearView viewState={viewState} /></div>
+    <UnifiedBrowserPanel prediction={assembly} />
   </>;
 }

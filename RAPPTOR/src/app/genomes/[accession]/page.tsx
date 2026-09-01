@@ -99,6 +99,28 @@ function predictionAssembly(match: GenomeCatalogMatch | null): JBrowseReleaseAss
   };
 }
 
+function experimentalAssembly(genome: ExperimentalTssGenome): JBrowseReleaseAssembly {
+  return {
+    assemblyName: genome.assemblyName || genome.accession,
+    defaultLocus: genome.defaultLocus,
+    assetBase: genome.assetBase,
+    adapterMode: genome.assets.fastaFai && genome.assets.fastaGzi ? 'indexed' : 'unindexed',
+    annotationTrackKind: 'annotation',
+    assets: {
+      fasta: genome.assets.fasta,
+      fastaFai: genome.assets.fastaFai || '',
+      fastaGzi: genome.assets.fastaGzi || '',
+      predictedPromoters: genome.assets.predictedPromoters || '',
+      predictedPromotersIndex: genome.assets.predictedPromotersIndex || '',
+      promoterScoresPlus: null,
+      promoterScoresMinus: null,
+      ncbiAnnotations: genome.assets.ncbiAnnotations,
+      ncbiAnnotationsIndex: genome.assets.ncbiAnnotationsIndex,
+    },
+    trackLabels: { annotation: 'Prodigal / eggNOG CDS annotations' },
+  };
+}
+
 function assetUrl(base: string, path: string, download = false) {
   return `${base.replace(/\/$/, '')}/${path}${download ? '?download=1' : ''}`;
 }
@@ -190,7 +212,7 @@ export default async function GenomeDetailPage({
   const details = prediction?.details;
   const organismName = genome?.organismName || experimental!.organismName;
   const strain = genome?.strain || experimental?.strain;
-  const browserPrediction = predictionAssembly(prediction);
+  const browserPrediction = predictionAssembly(prediction) || (experimental ? experimentalAssembly(experimental) : null);
   const browserExperimental = experimental
     && (prediction || experimental.primarySequence)
     && (!prediction || match.overlayAllowed === true)
@@ -243,8 +265,9 @@ export default async function GenomeDetailPage({
                 ? <>
                   <GenomeFileStatus states={{
                     reference: 'available',
-                    promoters: browserPrediction ? 'available' : prediction ? 'preparing' : 'unavailable',
-                    annotation: (browserPrediction?.assets.ncbiAnnotations || browserExperimental?.assets.ncbiAnnotations) ? 'available' : 'unavailable',
+                    promoters: browserPrediction?.assets.predictedPromoters ? 'available' : prediction ? 'preparing' : 'unavailable',
+                    experimentalTss: experimental?.studies.length ? 'available' : undefined,
+                    annotation: browserPrediction?.assets.ncbiAnnotations ? 'available' : 'unavailable',
                   }} />
                   <UnifiedBrowserPanel prediction={browserPrediction} experimental={browserExperimental} />
                 </>

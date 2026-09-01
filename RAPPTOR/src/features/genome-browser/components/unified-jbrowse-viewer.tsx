@@ -257,10 +257,11 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       });
     }
 
-    if (prediction) {
+    if (prediction?.assets.predictedPromoters) {
       const trackId = `${assemblyName}-predicted-promoters`;
       const dataUrl = resolveAsset(prediction.assetBase, prediction.assets.predictedPromoters);
       const promoterTrackLabel = prediction.trackLabels?.promoters || 'RAPPTOR predicted promoters';
+      const promoterUnindexed = predictionUnindexed || !prediction.assets.predictedPromotersIndex;
       staticRegistry.promoters = trackId;
       tracks.push({
         trackId,
@@ -272,7 +273,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         },
         assemblyNames: [assemblyName],
         type: 'FeatureTrack',
-        adapter: predictionUnindexed
+        adapter: promoterUnindexed
           ? { type: 'Gff3Adapter', gffLocation: { uri: dataUrl } }
           : {
               type: 'Gff3TabixAdapter',
@@ -380,60 +381,27 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       });
     }
 
-    const predictionAnnotation = prediction?.assets.ncbiAnnotations
-      && (predictionUnindexed || prediction.assets.ncbiAnnotationsIndex)
-      ? {
-          base: prediction.assetBase,
-          data: prediction.assets.ncbiAnnotations,
-          index: prediction.assets.ncbiAnnotationsIndex,
-          unindexed: predictionUnindexed,
-          accession: prediction.assemblyName,
-        }
-      : null;
-    const experimentalAnnotation = !predictionAnnotation
-      && experimental?.annotationStatus === 'available'
-      && experimental.assets.ncbiAnnotations
-      && experimental.assets.ncbiAnnotationsIndex
-      ? {
-          base: experimental.assetBase,
-          data: experimental.assets.ncbiAnnotations,
-          index: experimental.assets.ncbiAnnotationsIndex,
-          unindexed: false,
-          accession: experimental.accession,
-        }
-      : null;
-    const annotation = predictionAnnotation || experimentalAnnotation;
-    if (annotation) {
+    if (prediction?.assets.ncbiAnnotations) {
+      const annotationLabel = prediction.trackLabels?.annotation || 'NCBI genome annotation';
       const trackId = `${assemblyName}-ncbi-annotations`;
-      const dataUrl = resolveAsset(annotation.base, annotation.data);
+      const dataUrl = resolveAsset(prediction.assetBase, prediction.assets.ncbiAnnotations);
+      const annotationUnindexed = predictionUnindexed || !prediction.assets.ncbiAnnotationsIndex;
       staticRegistry.annotation = trackId;
       tracks.push({
         trackId,
-        name: 'NCBI genome annotation',
+        name: annotationLabel,
         metadata: {
-          ...(predictionAnnotation
-            ? predictionDownload('ncbi', 'NCBI genome annotation', dataUrl)
-            : {
-                rapptorDownload: {
-                  kind: 'ncbi',
-                  accession: annotation.accession,
-                  label: 'NCBI genome annotation',
-                  regionExportBase: '',
-                  wholeAssetUrl: dataUrl,
-                  downloadMode: 'remote',
-                  visibleRegionDownload: false,
-                },
-              }),
+          ...predictionDownload(prediction.annotationTrackKind || 'ncbi', annotationLabel, dataUrl),
           rapptorStrandFeatureMode: 'annotation',
         },
         assemblyNames: [assemblyName],
         type: 'FeatureTrack',
-        adapter: annotation.unindexed
+        adapter: annotationUnindexed
           ? { type: 'Gff3Adapter', gffLocation: { uri: dataUrl } }
           : {
               type: 'Gff3TabixAdapter',
               gffGzLocation: { uri: dataUrl },
-              index: { indexType: 'TBI', location: { uri: resolveAsset(annotation.base, annotation.index!) } },
+              index: { indexType: 'TBI', location: { uri: resolveAsset(prediction.assetBase, prediction.assets.ncbiAnnotationsIndex!) } },
             },
         displays: [{
           displayId: `${trackId}-display`,
@@ -479,7 +447,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const referenceAssets = prediction?.assets || experimental!.assets;
     const referenceAccession = prediction?.assemblyName || experimental!.accession;
     const referenceUrl = resolveAsset(referenceBase, referenceAssets.fasta);
-    const referenceUnindexed = predictionUnindexed || !referenceAssets.fastaFai || !referenceAssets.fastaGzi;
+    const referenceUnindexed = predictionUnindexed || !referenceAssets.fastaFai;
     const stateTree = createViewState({
       assembly: {
         name: assemblyName,
@@ -502,11 +470,15 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           },
           adapter: referenceUnindexed
             ? { type: 'UnindexedFastaAdapter', fastaLocation: { uri: referenceUrl } }
-            : {
+            : referenceAssets.fastaGzi ? {
                 type: 'BgzipFastaAdapter',
                 fastaLocation: { uri: referenceUrl },
                 faiLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaFai!) },
                 gziLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaGzi!) },
+              } : {
+                type: 'IndexedFastaAdapter',
+                fastaLocation: { uri: referenceUrl },
+                faiLocation: { uri: resolveAsset(referenceBase, referenceAssets.fastaFai!) },
               },
         },
       },

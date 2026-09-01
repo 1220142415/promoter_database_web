@@ -34,7 +34,7 @@ describe('portal header', () => {
     expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage');
     expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Cyanobacteria' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cyanobacteria' })).toHaveAttribute('href', '/cyanobacteria');
 
     await user.click(open);
     expect(screen.getByRole('button', { name: 'Close navigation' })).toHaveAttribute('aria-expanded', 'true');

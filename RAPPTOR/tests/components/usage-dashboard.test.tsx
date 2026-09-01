@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import UsageWorldMap from '@/features/usage/components/usage-world-map';
@@ -98,13 +98,11 @@ describe('usage dashboard', () => {
     expect(screen.getByRole('heading', { name: 'Countries / regions' })).toBeInTheDocument();
   });
 
-  it('shows ranked popular genomes without exposing request counts', async () => {
+  it('keeps the incomplete popular-genomes panel hidden', async () => {
     await renderDashboard('7');
 
-    const panel = screen.getByRole('heading', { name: 'Popular genomes' }).closest('section');
-    expect(panel).not.toBeNull();
-    expect(within(panel as HTMLElement).getByRole('link', { name: 'GCA_000411415.1' })).toHaveAttribute('href', '/genomes/GCA_000411415.1');
-    expect(within(panel as HTMLElement).queryByText('50')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Popular genomes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'GCA_000411415.1' })).not.toBeInTheDocument();
   });
 
   it('plots daily visitors without page views', async () => {

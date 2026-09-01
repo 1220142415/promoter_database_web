@@ -15,6 +15,9 @@ export interface ExperimentalTssStudy {
   organismName: string;
   pmid: string;
   year: number;
+  tssMethodCategory?: string | null;
+  tssMethodLabel?: string | null;
+  tssMethodRaw?: string | null;
   recordCount: number;
   sourceFile: string | null;
   sourceSha256: string | null;
@@ -56,6 +59,7 @@ export interface ExperimentalTssGenome {
   primarySequence: string | null;
   genomeSizeBp: number | null;
   contigCount: number | null;
+  predictedPromoterCount?: number;
   annotationStatus: ExperimentalAnnotationStatus;
   referenceAccession?: string | null;
   referenceSha256?: string | null;
@@ -64,13 +68,15 @@ export interface ExperimentalTssGenome {
     fasta: string;
     fastaFai: string | null;
     fastaGzi: string | null;
+    predictedPromoters?: string | null;
+    predictedPromotersIndex?: string | null;
     ncbiAnnotations: string | null;
     ncbiAnnotationsIndex: string | null;
   };
   studies: ExperimentalTssStudy[];
 }
 
-export type ExperimentalAssetKind = 'reference' | 'annotation' | 'experimental-tss' | 'raw-bed';
+export type ExperimentalAssetKind = 'reference' | 'predicted-promoters' | 'annotation' | 'experimental-tss' | 'raw-bed';
 
 export type ExperimentalAssetTransform =
   | { kind: 'gunzip'; refName: string | null }

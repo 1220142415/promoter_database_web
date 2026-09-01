@@ -34,7 +34,7 @@ describe('unified genome catalog page', () => {
 
     expect(screen.getByText('Prediction genomes').parentElement).toHaveTextContent('100');
     expect(screen.getByText('Experimental genomes').parentElement).toHaveTextContent('30');
-    expect(screen.getByText('Both evidence types').parentElement).toHaveTextContent('20');
+    expect(screen.queryByText('Both evidence types')).not.toBeInTheDocument();
     expect(screen.getByText('Experimental observations').parentElement).toHaveTextContent('440,947');
     expect(screen.getByTestId('unified-explorer')).toHaveAttribute('data-evidence', 'experimental');
     expect(unifiedGenomeRepository.search).toHaveBeenCalledWith(expect.objectContaining({ evidence: 'experimental' }));

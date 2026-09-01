@@ -13,12 +13,17 @@ describe('experimental TSS Hugging Face release SQL', () => {
     expect(sql).toContain("'experimentally_supported_tss_by_study/' || output_file");
     expect(sql).toContain("ROW_NUMBER() OVER (PARTITION BY link.source_accession");
     expect(sql).toContain("'stable_genome_id_only'");
+    expect(sql).toContain('predicted_promoter_count');
+    expect(sql).toContain("'promoter:rapptor:experimental-hf'");
+    expect(sql).toContain("'prediction_not_in_active_release'");
+    expect(sql).toContain("NULL, 'missing', 1, 'rapptor'");
     expect(sql).not.toContain('organism_name =');
   });
 
   it('keeps staging, validation, and activation separate', () => {
     expect(buildExperimentalTssHfReleaseSql()).toContain("'staged', 'experimental_tss'");
     expect(buildExperimentalTssHfValidationSql()).toContain('matched_prediction_genomes');
+    expect(buildExperimentalTssHfValidationSql()).toContain('missing_prediction_features');
     expect(buildExperimentalTssHfActivationSql()).toContain("publication_status = 'ready'");
   });
 });

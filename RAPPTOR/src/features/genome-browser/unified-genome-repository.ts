@@ -327,7 +327,7 @@ function compositeRow(
     genomeSource: predictionRow?.genomeSource || (experimentalGenome ? 'NCBI RefSeq' : null),
     genomeSizeBp: predictionRow?.genomeSizeBp ?? experimentalGenome?.genomeSizeBp ?? null,
     contigCount: predictionRow?.contigCount ?? experimentalGenome?.contigCount ?? null,
-    predictedPromoterCount: predictionRow?.predictedPromoterCount || 0,
+    predictedPromoterCount: predictionRow?.predictedPromoterCount ?? experimentalGenome?.predictedPromoterCount ?? 0,
     experimentalObservationCount: studies.reduce((sum, study) => sum + study.recordCount, 0),
     experimentalStudyCount: studies.length,
     assemblyCompatibility: compatibility,

@@ -26,7 +26,6 @@ type DownloadableDisplay = {
 type TrackMetadata = {
   rapptorDownload?: unknown;
   rapptorDownloads?: unknown;
-  rapptorEvidenceType?: unknown;
   rapptorExperimentalDownloads?: unknown;
 };
 
@@ -59,13 +58,6 @@ function experimentalBedDownload(metadata: TrackMetadata) {
   });
 }
 
-function hideDisplayTypes(metadata: TrackMetadata) {
-  const download = metadata.rapptorDownload as { kind?: unknown } | undefined;
-  return metadata.rapptorEvidenceType === 'experimental_tss'
-    || download?.kind === 'promoters'
-    || download?.kind === 'ncbi';
-}
-
 function downloadBed(url: string) {
   const anchor = document.createElement('a');
   anchor.href = `${url}${url.includes('?') ? '&' : '?'}download=1`;
@@ -81,7 +73,7 @@ export default class RapptorTrackDownloadPlugin extends Plugin {
 
   install(pluginManager: PluginManager) {
     pluginManager.addToExtensionPoint<PluggableElementType>('Core-extendPluggableElement', (element) => {
-      if (element.name === 'FeatureTrack') {
+      if (element.name.endsWith('Track')) {
         const trackType = element as TrackType;
         trackType.stateModel = trackType.stateModel.extend((self) => {
           const { trackMenuItems: superTrackMenuItems } = self as unknown as DownloadableDisplay;
@@ -89,7 +81,7 @@ export default class RapptorTrackDownloadPlugin extends Plugin {
             views: {
               trackMenuItems() {
                 const metadata = getConf(self, 'metadata') as TrackMetadata;
-                const items = superTrackMenuItems().filter((item) => !hideDisplayTypes(metadata) || item.label !== 'Display types');
+                const items = superTrackMenuItems().filter((item) => item.label !== 'Display types');
                 const bedDownload = experimentalBedDownload(metadata);
                 return bedDownload
                   ? [...items, { label: 'Download original BED', icon: DownloadRoundedIcon, priority: 50, onClick: () => downloadBed(bedDownload.url) }]

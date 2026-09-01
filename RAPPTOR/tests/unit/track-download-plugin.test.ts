@@ -118,7 +118,7 @@ describe('RAPPTOR JBrowse track download plugin', () => {
     expect(extension?.(element)).toBe(element);
   });
 
-  it('simplifies evidence track menus and downloads the original experimental BED', () => {
+  it('hides display selection from every track menu and downloads the original experimental BED', () => {
     let extension: ((element: { name: string; stateModel: { extend: (callback: (self: unknown) => unknown) => unknown } }) => unknown) | undefined;
     const pluginManager = {
       addToExtensionPoint: vi.fn((_name: string, callback: typeof extension) => { extension = callback; }),
@@ -149,11 +149,7 @@ describe('RAPPTOR JBrowse track download plugin', () => {
     expect(click).toHaveBeenCalledOnce();
     click.mockRestore();
 
-    mocks.getConf.mockReturnValue({ rapptorDownload: { kind: 'promoters' } });
-    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track']);
-    mocks.getConf.mockReturnValue({ rapptorDownload: { kind: 'ncbi' } });
-    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track']);
     mocks.getConf.mockReturnValue({ rapptorDownload: { kind: 'annotation' } });
-    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track', 'Display types']);
+    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track']);
   });
 });

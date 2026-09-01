@@ -46,7 +46,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .portal-nav a:hover { color: var(--ink); }
 .portal-nav a.is-active { color: var(--teal-dark); }
 .portal-nav a.is-active::after { content: ""; position: absolute; height: 3px; left: 0; right: 0; bottom: 0; background: var(--teal); }
-.portal-menu-button { display: none; width: 40px; height: 40px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 6px; align-items: center; justify-content: center; }
+.portal-menu-button { display: none; width: 44px; height: 44px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 6px; align-items: center; justify-content: center; }
 
 .portal-kicker { margin: 0 0 10px; color: var(--teal-dark); font-size: 12px; line-height: 1.4; font-weight: 800; text-transform: uppercase; letter-spacing: 0; }
 .portal-hero { min-height: 520px; display: flex; align-items: center; background: #eaf0ed; border-bottom: 1px solid var(--line); overflow: hidden; }

@@ -9,6 +9,8 @@ import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 const links = [
   { href: '/', label: 'Overview' },
   { href: '/genomes', label: 'Genomes' },
+  { href: '/predict', label: 'Predict' },
+  { href: '/help/prediction', label: 'Help' },
 ];
 
 export default function PortalHeader({ showUsage = false }: { showUsage?: boolean }) {

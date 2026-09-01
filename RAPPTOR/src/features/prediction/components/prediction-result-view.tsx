@@ -225,7 +225,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
           <p>{error.message}</p>
           <div className={styles.stateActions}>
             {error.retryable ? <button className="portal-button portal-button-primary" type="button" onClick={() => setRetryKey((value) => value + 1)}>Retry</button> : null}
-            <Link className={styles.secondaryAction} href="/#predict">Return to prediction form</Link>
+            <Link className={styles.secondaryAction} href="/predict">Return to prediction form</Link>
           </div>
         </div>
       </main>
@@ -257,7 +257,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
         {result ? <div className={styles.resultContent}>
           <section className={styles.resultSummary} aria-label="Prediction summary" data-testid="prediction-summary">
             <div><span>Highest promoter probability</span><strong>{formatScore(result.highestProbability)}</strong><small>Best hit: {result.bestWindow.strand} strand</small></div>
-            <div><span>Model classification</span><strong className={result.call === 'model-positive-candidate' ? styles.positive : ''}>{result.call === 'model-positive-candidate' ? 'RAPPtor model-positive candidate' : 'Below model threshold'}</strong><small>Fixed threshold &gt; {result.probabilityThreshold.toFixed(1)}</small></div>
+            <div><span>Model classification</span><strong className={result.call === 'model-positive-candidate' ? styles.positive : ''}>{result.call === 'model-positive-candidate' ? 'RAPPtor model-positive candidate' : 'Below model threshold'}</strong><small>Score cutoff: &gt; {result.probabilityThreshold.toFixed(1)}</small></div>
             <div><span>Evaluated strands</span><strong>{result.input.strandMode === 'both' ? 'Both (+/−)' : 'Forward only'}</strong><small>{result.input.strandMode === 'both' ? 'Forward and reverse-complement' : '+ strand only'}</small></div>
             <div><span>Best promoter window</span><strong>{result.bestWindow.promoterStart.toLocaleString()}–{result.bestWindow.promoterEnd.toLocaleString()}</strong><small>Prediction anchor {predictionAnchorCoordinate(result.bestWindow.promoterStart, result.bestWindow.strand).toLocaleString()} · window base 80</small></div>
           </section>
@@ -288,7 +288,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
             <div><span>Genome context</span><strong>{result.genomeContext.label}</strong></div>
           </section>
 
-          <div className={styles.evidence}><div><strong>Evidence boundary</strong><p>A high RAPPTOR score identifies a computational model candidate. It does not establish transcription initiation, condition-specific activity, or experimental promoter validation.</p></div><Link href="/#predict">Start another prediction</Link></div>
+          <div className={styles.evidence}><div><strong>How to interpret this result</strong><p>RAPPTOR scores rank computational promoter candidates; they do not establish experimental transcription initiation or condition-specific activity. <Link href="/help/prediction#results">Read the interpretation guide.</Link></p></div><Link href="/predict">Start another prediction</Link></div>
         </div> : null}
       </div>
     </main>

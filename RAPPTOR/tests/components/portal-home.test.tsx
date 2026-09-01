@@ -14,8 +14,12 @@ describe('portal home', () => {
     render(<HomePage />);
 
     expect(screen.getByRole('heading', { name: 'RAPPTOR' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Predict a promoter candidate' })).toBeInTheDocument();
-    expect(screen.getByText('DEMO PREVIEW')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Choose the prediction workflow that fits your sequence' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Predict a promoter' })[0]).toHaveAttribute('href', '/predict');
+    expect(screen.getByRole('link', { name: /Open prediction workspace/ })).toHaveAttribute('href', '/predict');
+    expect(screen.getByRole('link', { name: 'Read the prediction guide' })).toHaveAttribute('href', '/help/prediction');
+    expect(document.querySelector('#predict')).toBeInTheDocument();
+    expect(screen.queryByText('DEMO PREVIEW')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('80,789');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('305,246,460');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations cataloged53,285');

@@ -10,7 +10,6 @@ const links = [
   { href: '/', label: 'Overview' },
   { href: '/genomes', label: 'Genomes' },
   { href: '/cyanobacteria', label: 'Cyanobacteria' },
-  { href: '/predict', label: 'Predict' },
   { href: '/help/prediction', label: 'Help' },
 ];
 

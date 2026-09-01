@@ -186,13 +186,16 @@ describe('strand feature SVG output', () => {
     expect(glyph?.querySelector('[data-role="promoter-flag"]')?.getAttribute('points')).toContain(String(220.5 - PROMOTER_FLAG_LENGTH));
   });
 
-  it('renders legacy promoter peaks as point-compatible bodies without an overlapping arrow or false anchor', () => {
+  it('renders one-base promoter peaks as exact prediction flags', () => {
     const peak = feature('peak', 'promoter_peak', -1, 50, 51);
     const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
     const glyph = container.querySelector('[data-feature-id="peak"]');
     expect(glyph).toHaveAttribute('data-formal-promoter', 'false');
-    expect(glyph?.querySelector('[data-role="promoter-body"]')).toHaveAttribute('width', '3');
-    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toBeNull();
+    expect(glyph).toHaveAttribute('data-promoter-peak', 'true');
+    expect(glyph?.querySelector('[data-role="promoter-body"]')).toBeNull();
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('x1', '50.5');
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('data-anchor', 'predicted-peak');
+    expect(glyph?.querySelector('[data-role="promoter-flag"]')).toHaveAttribute('fill', MINUS_STRAND_COLOR);
     expect(glyph?.querySelector('[data-role="promoter-arrow"]')).toBeNull();
   });
 

@@ -101,6 +101,12 @@ export function isFormalPromoter(feature: Feature) {
   return type === 'promoter' && end - start === 100;
 }
 
+function isPromoterPeak(feature: Feature) {
+  const type = String(feature.get('type') || '').toLowerCase();
+  const { start, end } = featureCoordinates(feature);
+  return type === 'promoter_peak' && end - start === 1;
+}
+
 function featureCoordinates(feature: Feature) {
   const start = Number(feature.get('start'));
   const end = Number(feature.get('end'));
@@ -275,7 +281,13 @@ function separateArrowFromBody(
   return { left, right, placement };
 }
 
-function promoterFlag(anchorX: number, top: number, direction: NormalizedStrand, color: string) {
+function promoterFlag(
+  anchorX: number,
+  top: number,
+  direction: NormalizedStrand,
+  color: string,
+  anchor: '80th-base' | 'predicted-peak',
+) {
   const poleTop = top + PROMOTER_FLAG_TOP_OFFSET;
   const poleBottom = poleTop + PROMOTER_FLAG_POLE_HEIGHT;
   const flagCenter = poleTop + PROMOTER_FLAG_HALF_HEIGHT;
@@ -283,7 +295,7 @@ function promoterFlag(anchorX: number, top: number, direction: NormalizedStrand,
   return <>
     <line
       data-role="promoter-flag-pole"
-      data-anchor="80th-base"
+      data-anchor={anchor}
       x1={anchorX}
       x2={anchorX}
       y1={poleTop}
@@ -313,15 +325,18 @@ function renderPromoterFeature(
   const direction = screenDirection(strand, region.reversed);
   const color = strandColor(strand);
   const formal = isFormalPromoter(feature);
-  const anchorPosition = formal ? promoterAnchorPosition(feature) : undefined;
+  const peak = isPromoterPeak(feature);
+  const flagged = formal || peak;
+  const anchorPosition = formal ? promoterAnchorPosition(feature)
+    : peak ? start + 0.5 : undefined;
   const anchorX = anchorPosition === undefined ? undefined : bpToPx(anchorPosition, region, bpPerPx);
-  const anchorVisible = formal
+  const anchorVisible = flagged
     && anchorX !== undefined
     && endpointInViewport(anchorX, interval.viewportWidth);
-  const showBody = !formal || shouldShowPromoterBody(interval.width);
-  if (formal && !anchorVisible && !showBody) return null;
+  const showBody = peak ? false : !formal || shouldShowPromoterBody(interval.width);
+  if (flagged && !anchorVisible && !showBody) return null;
 
-  const layoutBounds = formal && anchorVisible && anchorPosition !== undefined
+  const layoutBounds = flagged && anchorVisible && anchorPosition !== undefined
     ? promoterFlagLayoutBounds(start, end, anchorPosition, strand, bpPerPx)
     : { start, end };
   const top = layout.addRect(id, layoutBounds.start, layoutBounds.end, PROMOTER_GLYPH_HEIGHT, {
@@ -335,7 +350,7 @@ function renderPromoterFeature(
     || displayModel?.featureUnderMouse?.id?.() === id;
   const bodyY = formal ? top + PROMOTER_BODY_TOP_OFFSET : top + 7;
   const bodyHeight = formal ? PROMOTER_BODY_HEIGHT : 10;
-  const arrowGeometry = formal
+  const arrowGeometry = flagged
     ? { left: interval.left, right: interval.right, placement: undefined }
     : separateArrowFromBody(interval, direction, annotationArrowPlacement(feature, direction, interval));
   const bodyRect = {
@@ -345,14 +360,14 @@ function renderPromoterFeature(
     height: bodyHeight,
   };
   const flagTipX = anchorX === undefined ? undefined : anchorX + direction * PROMOTER_FLAG_LENGTH;
-  const visualLeft = formal && anchorVisible && flagTipX !== undefined
+  const visualLeft = flagged && anchorVisible && flagTipX !== undefined
     ? Math.min(showBody ? interval.left : anchorX!, anchorX!, flagTipX)
     : arrowGeometry.left;
-  const visualRight = formal && anchorVisible && flagTipX !== undefined
+  const visualRight = flagged && anchorVisible && flagTipX !== undefined
     ? Math.max(showBody ? interval.right : anchorX!, anchorX!, flagTipX)
     : arrowGeometry.right;
-  const visualTop = formal && anchorVisible ? top + PROMOTER_FLAG_TOP_OFFSET : bodyY;
-  const visualBottom = formal && anchorVisible
+  const visualTop = flagged && anchorVisible ? top + PROMOTER_FLAG_TOP_OFFSET : bodyY;
+  const visualBottom = flagged && anchorVisible
     ? Math.max(top + PROMOTER_FLAG_TOP_OFFSET + PROMOTER_FLAG_POLE_HEIGHT, showBody ? bodyY + bodyHeight : 0)
     : bodyY + bodyHeight;
 
@@ -362,13 +377,14 @@ function renderPromoterFeature(
       data-feature-id={id}
       data-feature-type={String(feature.get('type') || 'promoter').toLowerCase()}
       data-formal-promoter={formal ? 'true' : 'false'}
+      data-promoter-peak={peak ? 'true' : 'false'}
       data-strand={strandLabel(strand)}
       data-screen-direction={direction}
     >
       <title>{formal ? 'Predicted promoter (100 bp); anchor at 80th base' : 'Predicted promoter peak'}</title>
       {showBody ? <rect data-role="promoter-body" {...bodyRect} fill={color} fillOpacity={1} /> : null}
-      {formal && anchorVisible ? promoterFlag(anchorX!, top, direction, color) : null}
-      {!formal && arrowGeometry.placement
+      {flagged && anchorVisible ? promoterFlag(anchorX!, top, direction, color, formal ? '80th-base' : 'predicted-peak') : null}
+      {!flagged && arrowGeometry.placement
         ? attachedArrow(arrowGeometry.placement.tip, bodyY, bodyHeight, direction, 'promoter-arrow')
         : null}
       {hovered ? <rect data-role="promoter-hover" x={visualLeft} y={visualTop} width={visualRight - visualLeft} height={visualBottom - visualTop} fill="#000000" fillOpacity="0.12" /> : null}

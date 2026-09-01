@@ -20,7 +20,8 @@ describe('portal home', () => {
     expect(screen.getByRole('link', { name: 'Read the prediction guide' })).toHaveAttribute('href', '/help/prediction');
     expect(document.querySelector('#predict')).toBeInTheDocument();
     expect(screen.queryByText('DEMO PREVIEW')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Catalog genomes80,850GTDB + collected assemblies');
+    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Catalog genomes80,850');
+    expect(screen.getByLabelText('Release statistics')).not.toHaveTextContent('GTDB + collected assemblies');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('306,900,844');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations cataloged53,285');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Experimental genomes90');

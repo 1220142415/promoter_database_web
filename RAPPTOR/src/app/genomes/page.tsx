@@ -50,7 +50,7 @@ export default async function GenomesPage({
           : 'Search bacterial assemblies and inspect RAPPTOR promoter predictions with contextual NCBI annotations.'}</p>
       </section>
       <section className="portal-shell experimental-metrics" aria-label="Genome evidence statistics">
-        <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{initialResult.stats.totalGenomes.toLocaleString()}</strong><small>GTDB + collected assemblies</small></div>
+        <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{initialResult.stats.totalGenomes.toLocaleString()}</strong></div>
         <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{initialResult.stats.totalPredictedPromoters.toLocaleString()}</strong></div>
         <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
         {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{initialResult.stats.experimentalGenomes.toLocaleString()}</strong></div> : null}

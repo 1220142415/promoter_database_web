@@ -49,7 +49,7 @@ export default function HomePage() {
 
       <section className="portal-metrics" aria-label="Release statistics">
         <div className="portal-shell metrics-grid">
-          <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{totalCatalogGenomes.toLocaleString()}</strong><small>GTDB + collected assemblies</small></div>
+          <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{totalCatalogGenomes.toLocaleString()}</strong></div>
           <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{totalCatalogPredictedPromoters.toLocaleString()}</strong></div>
           <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
           {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div> : null}

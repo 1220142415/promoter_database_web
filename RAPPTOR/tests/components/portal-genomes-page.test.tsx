@@ -32,7 +32,8 @@ describe('unified genome catalog page', () => {
     vi.mocked(unifiedGenomeRepository.search).mockResolvedValue(result);
     render(await GenomesPage({ searchParams: Promise.resolve({ evidence: 'experimental' }) }));
 
-    expect(screen.getByText('Catalog genomes').parentElement).toHaveTextContent('110GTDB + collected assemblies');
+    expect(screen.getByText('Catalog genomes').parentElement).toHaveTextContent('110');
+    expect(screen.getByLabelText('Genome evidence statistics')).not.toHaveTextContent('GTDB + collected assemblies');
     expect(screen.getByText('Predicted promoters').parentElement).toHaveTextContent('1,000');
     expect(screen.getByText('NCBI annotations cataloged').parentElement).toHaveTextContent('53,285');
     expect(screen.getByText('Experimental genomes').parentElement).toHaveTextContent('30');

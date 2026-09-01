@@ -5,10 +5,6 @@
 }
 
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(310px, .75fr);
-  gap: 70px;
-  align-items: end;
   padding-block: 66px 42px;
 }
 
@@ -27,19 +23,6 @@
   line-height: 1.7;
 }
 
-.prototypeNotice {
-  display: grid;
-  gap: 7px;
-  border: 1px solid #c2d9d4;
-  border-left: 4px solid var(--teal);
-  border-radius: 8px;
-  padding: 18px 20px;
-  background: rgba(255, 255, 255, .86);
-}
-
-.prototypeNotice strong { color: var(--teal-dark); font-size: 14px; }
-.prototypeNotice span { color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
-
 .workspace {
   overflow: hidden;
   border: 1px solid var(--line-strong);
@@ -53,9 +36,11 @@
 .formHeading > div { display: grid; gap: 4px; }
 .formHeading > div > span { color: var(--teal-dark); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .formHeading h2 { margin: 0; font: 600 27px/1.2 Georgia, "Times New Roman", serif; }
-.exampleActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.examplePicker { width: min(220px, 100%); }
+.examplePicker > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .055em; text-transform: uppercase; }
+.examplePicker select { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 9px 34px 9px 12px; background: white; color: var(--teal-dark); font-size: 12px; font-weight: 750; cursor: pointer; }
+.examplePicker select:hover { border-color: var(--teal); background-color: var(--teal-soft); }
 
-.exampleButton,
 .inlineActions button,
 .searchRow button,
 .catalogError button,
@@ -71,7 +56,6 @@
   cursor: pointer;
 }
 
-.exampleButton:hover,
 .inlineActions button:hover,
 .searchRow button:hover,
 .catalogError button:hover,
@@ -176,7 +160,6 @@
 .submitBar button:disabled { border-color: #53635f; background: #364640; color: #9dacaa; cursor: not-allowed; }
 
 @media (max-width: 900px) {
-  .hero { grid-template-columns: 1fr; gap: 26px; }
   .parameterGrid { grid-template-columns: 1fr; }
   .modelFacts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .modelFacts > div { border-bottom: 1px solid var(--line); }
@@ -189,8 +172,7 @@
   .hero h1 { font-size: 40px; }
   .form { padding: 17px 13px; }
   .formHeading, .submitBar { align-items: stretch; flex-direction: column; }
-  .exampleActions { display: grid; grid-template-columns: 1fr; }
-  .exampleButton, .submitBar button { width: 100%; }
+  .examplePicker, .submitBar button { width: 100%; }
   .stepCard { padding: 18px 13px; }
   .sourceTabs { width: 100%; }
   .sourceTabs button { flex: 1; min-height: 44px; }

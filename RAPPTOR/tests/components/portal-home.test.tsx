@@ -14,9 +14,9 @@ describe('portal home', () => {
     render(<HomePage />);
 
     expect(screen.getByRole('heading', { name: 'RAPPTOR' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Choose the prediction workflow that fits your sequence' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Predict promoters from your sequence' })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Predict a promoter' })[0]).toHaveAttribute('href', '/predict');
-    expect(screen.getByRole('link', { name: /Open prediction workspace/ })).toHaveAttribute('href', '/predict');
+    expect(screen.getByRole('link', { name: /Open prediction tool/ })).toHaveAttribute('href', '/predict');
     expect(screen.getByRole('link', { name: 'Read the prediction guide' })).toHaveAttribute('href', '/help/prediction');
     expect(document.querySelector('#predict')).toBeInTheDocument();
     expect(screen.queryByText('DEMO PREVIEW')).not.toBeInTheDocument();

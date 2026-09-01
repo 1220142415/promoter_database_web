@@ -22,9 +22,9 @@ test('100 bp example is inferred as Focused without submitting or storing raw se
 
   await page.goto('/predict');
   await expect(page.getByRole('heading', { name: 'Prepare one input. RAPPTOR infers the workflow.' })).toBeVisible();
-  await expect(page.getByText('No model was run').first()).toBeVisible();
+  await expect(page.getByText('No model was run')).toHaveCount(1);
   await expect(page.getByRole('tab', { name: /Candidate region|Whole genome/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Use 100 bp example' }).click();
+  await page.getByRole('combobox', { name: 'Example input' }).selectOption('focused');
 
   const sequenceInput = page.getByLabel('Raw DNA or FASTA');
   await expect(sequenceInput).toHaveValue(/focused_candidate_100bp/);
@@ -66,7 +66,7 @@ test('multi-contig example is inferred as Scan with public controls only', async
   const predictionRequests = capturePredictionApiRequests(page);
 
   await page.goto('/predict');
-  await page.getByRole('button', { name: 'Use contig example' }).click();
+  await page.getByRole('combobox', { name: 'Example input' }).selectOption('contig');
   await expect(page.getByText('Genome scan').first()).toBeVisible();
   await expect(page.getByText(/1 short contig skipped/)).toBeVisible();
   await page.getByLabel('Strands').selectOption('forward');
@@ -114,7 +114,7 @@ test.describe('catalog failure and mobile fallback', () => {
     }));
 
     await page.goto('/predict');
-    await page.getByRole('button', { name: 'Use 100 bp example' }).click();
+    await page.getByRole('combobox', { name: 'Example input' }).selectOption('focused');
     const sequenceInput = page.getByLabel('Raw DNA or FASTA');
     const originalSequence = await sequenceInput.inputValue();
     await page.getByRole('button', { name: 'Change' }).click();

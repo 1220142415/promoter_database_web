@@ -65,13 +65,13 @@ export default function HomePage() {
         <div className="portal-shell split-section">
           <div className="section-heading">
             <p className="portal-kicker">Interactive prediction</p>
-            <h2 id="prediction-entry-heading">Choose the prediction workflow that fits your sequence</h2>
-            <p>Use a focused candidate region or scan a complete genome or set of contigs in a dedicated workspace.</p>
+            <h2 id="prediction-entry-heading">Predict promoters from your sequence</h2>
+            <p>Enter a 100 bp sequence, a longer sequence, or genome contigs. RAPPTOR selects the appropriate analysis automatically.</p>
           </div>
           <div className="section-heading">
             <p>Set the strand, score cutoff and number of results to display, then inspect illustrative output before a live RAPPtor service is connected.</p>
             <div className="portal-actions">
-              <Link href="/predict" className="portal-button portal-button-primary">Open prediction workspace <ArrowForwardRoundedIcon fontSize="small" /></Link>
+              <Link href="/predict" className="portal-button portal-button-primary">Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></Link>
               <Link href="/help/prediction" className="portal-button portal-button-secondary">Read the prediction guide</Link>
             </div>
           </div>

@@ -202,7 +202,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     document.getElementById(`prototype-context-${next}-tab`)?.focus();
   }
 
-  function useFocusedExample() {
+  function loadFocusedExample() {
     setPrimaryKind('inline');
     setInlineInput(PROTOTYPE_CANDIDATE_EXAMPLE);
     setContextKind('catalog');
@@ -210,10 +210,16 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     setFormError(null);
   }
 
-  function useContigExample() {
+  function loadContigExample() {
     setPrimaryKind('inline');
     setInlineInput(PROTOTYPE_CONTIG_EXAMPLE);
     setFormError(null);
+  }
+
+  function loadExample(event: ChangeEvent<HTMLSelectElement>) {
+    if (event.target.value === 'focused') loadFocusedExample();
+    if (event.target.value === 'contig') loadContigExample();
+    event.target.value = '';
   }
 
   async function handlePrimaryFile(event: ChangeEvent<HTMLInputElement>) {
@@ -320,14 +326,20 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
         <div><p className="portal-kicker">Prediction prototype</p><h1 id="prototype-heading">Prepare one input. RAPPTOR infers the workflow.</h1><p>A single 100 bp record is scored as a focused candidate. Longer sequences, multiple contigs, and catalog genomes use the scan workflow.</p></div>
-        <div className={styles.prototypeNotice} role="status"><strong>No model was run</strong><span>This browser-only prototype creates deterministic illustrative results and sends no sequence to RAPPtor.</span></div>
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction workbench">
         <form onSubmit={submitPrototype} className={styles.form}>
           <div className={styles.formHeading}>
             <div><span>Automatic workflow</span><h2>Sequence or genome input</h2></div>
-            <div className={styles.exampleActions}><button type="button" className={styles.exampleButton} onClick={useFocusedExample}>Use 100 bp example</button><button type="button" className={styles.exampleButton} onClick={useContigExample}>Use contig example</button></div>
+            <label className={styles.examplePicker}>
+              <span>Example input</span>
+              <select defaultValue="" onChange={loadExample}>
+                <option value="" disabled>Choose an example…</option>
+                <option value="focused">Focused 100 bp</option>
+                <option value="contig">Multi-contig scan</option>
+              </select>
+            </label>
           </div>
 
           <fieldset className={styles.stepCard}>

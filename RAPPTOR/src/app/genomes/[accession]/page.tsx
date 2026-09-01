@@ -15,6 +15,7 @@ import type { GenomeCatalogMatch } from '@/features/genomes/types';
 import type { JBrowseReleaseAssembly } from '@/types/release';
 
 const SHARE_PARAMETERS = ['view', 'ref', 'center', 'zoom', 'rev', 'tracks'] as const;
+const EXPERIMENTAL_COLLECTION_URL = 'https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/tree/main/experimentally_supported_genomes';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 type MetadataFact = { label: string; value: ReactNode; mono?: boolean };
@@ -140,6 +141,7 @@ function ExperimentalStudies({
       </div>
       <div className="experimental-reference-downloads" aria-label="Experimental assembly downloads">
         {showReferenceDownload ? <a href={assetUrl(genome.assetBase, genome.assets.fasta, true)} download><span><strong>Reference sequence</strong><small>{genome.assets.fastaFai && genome.assets.fastaGzi ? 'BGZF FASTA' : 'FASTA'}</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
+        {genome.assets.predictedPromoters ? <a href={assetUrl(genome.assetBase, genome.assets.predictedPromoters, true)} download><span><strong>Predicted promoters</strong><small>GFF3 with prediction scores</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
         {genome.assets.ncbiAnnotations ? <a href={assetUrl(genome.assetBase, genome.assets.ncbiAnnotations, true)} download><span><strong>NCBI annotation</strong><small>Indexed GFF3</small></span><DownloadRoundedIcon aria-hidden="true" /></a> : null}
       </div>
       <div className="experimental-study-details">
@@ -212,6 +214,10 @@ export default async function GenomeDetailPage({
   const details = prediction?.details;
   const organismName = genome?.organismName || experimental!.organismName;
   const strain = genome?.strain || experimental?.strain;
+  const hasPredictions = match.predictionAvailable;
+  const predictedPromoterCount = genome?.predictedPromoterCount ?? experimental?.predictedPromoterCount ?? null;
+  const genomeSizeBp = genome?.genomeSizeBp ?? experimental?.genomeSizeBp ?? null;
+  const evidenceReleaseIds = [...new Set([prediction?.releaseId, experimental?.releaseId].filter((value): value is string => Boolean(value)))];
   const browserPrediction = predictionAssembly(prediction) || (experimental ? experimentalAssembly(experimental) : null);
   const browserExperimental = experimental
     && (prediction || experimental.primarySequence)
@@ -219,8 +225,8 @@ export default async function GenomeDetailPage({
     ? experimental
     : null;
   const experimentalObservations = experimental?.studies.reduce((sum, study) => sum + study.recordCount, 0) || 0;
-  const promoterDensityPerMb = genome?.genomeSizeBp && genome.genomeSizeBp > 0
-    ? genome.predictedPromoterCount * 1_000_000 / genome.genomeSizeBp
+  const promoterDensityPerMb = hasPredictions && predictedPromoterCount !== null && genomeSizeBp && genomeSizeBp > 0
+    ? predictedPromoterCount * 1_000_000 / genomeSizeBp
     : null;
 
   return (
@@ -236,19 +242,19 @@ export default async function GenomeDetailPage({
                   <h1>{organismName}</h1>
                   {strain ? <p className="detail-strain">Strain {strain}</p> : null}
                   <p className="detail-strain">
-                    {prediction ? <span className="evidence-available">RAPPTOR predictions</span> : null}
-                    {showExperimental && prediction && experimental ? ' · ' : null}
+                    {hasPredictions ? <span className="evidence-available">RAPPTOR predictions</span> : null}
+                    {showExperimental && hasPredictions && experimental ? ' · ' : null}
                     {showExperimental && experimental ? <span className="evidence-available">Experimental TSS</span> : null}
                   </p>
                 </div>
-                <div className="release-stamp"><span>{showExperimental ? 'Evidence releases' : 'Prediction release'}</span><strong>{prediction ? match.releases.predictionReleaseId : 'No prediction'}{showExperimental ? ` · ${experimental ? match.releases.experimentalReleaseId : 'No experimental'}` : ''}</strong></div>
+                <div className="release-stamp"><span>{showExperimental ? 'Evidence releases' : 'Prediction release'}</span><strong>{evidenceReleaseIds.join(' · ') || 'Not available'}</strong></div>
               </div>
             </header>
 
             {experimental ? (
               <div className="experimental-boundary-note" role="note">
-                <strong>{prediction ? 'Predictions and experimental observations' : 'Experimental TSS only'}</strong>
-                <p>{prediction
+                <strong>{hasPredictions ? 'Predictions and experimental observations' : 'Experimental TSS only'}</strong>
+                <p>{hasPredictions
                   ? 'RAPPTOR promoter predictions and published 1 bp TSS observations are shown together as distinct evidence tracks; observations are not counted as model validation.'
                   : 'This assembly is not included in the active prediction release. Each flag is an original published 1 bp TSS observation.'}</p>
               </div>
@@ -282,7 +288,7 @@ export default async function GenomeDetailPage({
             <MetadataMetric label="GC content" value={formatNumber(genome?.gcContent, '%')} />
             <MetadataMetric label="Contigs" value={formatNumber(genome?.contigCount ?? experimental?.contigCount)} />
             <MetadataMetric label="Completeness" value={formatNumber(genome?.completeness, '%')} />
-            <MetadataMetric label="Predicted promoters" value={prediction ? formatNumber(genome?.predictedPromoterCount) : 'Not in active release'} />
+            <MetadataMetric label="Predicted promoters" value={hasPredictions ? formatNumber(predictedPromoterCount) : 'Not available'} />
             <MetadataMetric label="NCBI annotation features" value={formatNumber(genome?.annotationFeatureCount)} />
             <MetadataMetric label="Promoter density" value={promoterDensityPerMb === null ? null : `${promoterDensityPerMb.toLocaleString(undefined, { maximumFractionDigits: 1 })} / Mb`} />
             {showExperimental ? <MetadataMetric label="Experimental studies" value={experimental ? experimental.studies.length : 0} /> : null}
@@ -310,13 +316,15 @@ export default async function GenomeDetailPage({
               { label: 'Genus', value: genome?.genus },
               { label: 'Species', value: details?.species },
             ]} />
-            <MetadataGroup title="Prediction release" facts={[
-              { label: 'Prediction model', value: details?.promoter.sourceId },
+            <MetadataGroup title="Prediction data" facts={[
+              { label: 'Prediction model', value: details?.promoter.sourceId || (hasPredictions ? 'RAPPTOR' : null) },
               { label: 'Prediction generated at', value: formatDate(details?.promoter.generatedAt) },
               { label: 'Taxonomy source', value: details?.taxonomySource },
-              { label: 'RAPPTOR prediction release', value: prediction?.releaseId, mono: true },
-              { label: 'Prediction availability', value: prediction ? 'Available' : 'Not included in the active prediction release' },
-              { label: 'Dataset', value: details?.release.hfRepository ? <a href={`https://huggingface.co/datasets/${details.release.hfRepository}`} target="_blank" rel="noreferrer">Open Hugging Face dataset</a> : null },
+              { label: 'RAPPTOR prediction release', value: prediction?.releaseId || (hasPredictions ? experimental?.releaseId : null), mono: true },
+              { label: 'Prediction availability', value: prediction ? 'Available in active prediction release' : hasPredictions ? 'Available in experimental genome collection' : 'Not available' },
+              { label: 'Dataset', value: details?.release.hfRepository
+                ? <a href={`https://huggingface.co/datasets/${details.release.hfRepository}`} target="_blank" rel="noreferrer">Open Hugging Face dataset</a>
+                : hasPredictions ? <a href={EXPERIMENTAL_COLLECTION_URL} target="_blank" rel="noreferrer">Open Hugging Face dataset</a> : null },
             ]} />
             <MetadataGroup title="Experimental release" facts={[
               { label: 'Experimental release', value: experimental?.releaseId, mono: true },

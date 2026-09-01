@@ -331,6 +331,26 @@ describe('unified genome repository', () => {
     expect(searchCalls).toBeLessThanOrEqual(2);
   });
 
+  it('counts prediction GFF files stored with the experimental collection as prediction evidence', async () => {
+    const genome = experimentalGenome('GCF_000014625.1', 2_317);
+    genome.predictedPromoterCount = 46_015;
+    genome.assets.predictedPromoters = 'predicted-promoters.gff3';
+    const repository = new CompositeUnifiedGenomeRepository(predictionRepository([]), experimentalRepository([genome]));
+
+    const result = await repository.search(query({ evidence: 'predictions' }));
+    expect(result.items[0]).toMatchObject({
+      canonicalAccession: 'GCF_000014625.1', predictionAccession: null,
+      predictionAvailable: true, evidenceState: 'both', predictedPromoterCount: 46_015,
+    });
+    expect(result.stats).toMatchObject({
+      totalGenomes: 1, predictionGenomes: 1, experimentalGenomes: 1, bothGenomes: 1,
+      totalPredictedPromoters: 46_015,
+    });
+    await expect(repository.getByAccession(genome.accession)).resolves.toMatchObject({
+      prediction: null, predictionAvailable: true, evidenceState: 'both',
+    });
+  });
+
   it('links metadata-only experimental assemblies to an exact prediction accession', async () => {
     const prediction = predictionRepository([makeCatalogRow(makeGenome({
       accession: 'GCF_000000002.1', predictedPromoterCount: 42,

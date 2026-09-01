@@ -32,6 +32,7 @@ function response(items = genomes.slice(0, 25), total = genomes.length): Unified
       canonicalAccession: item.accession,
       aliases: [item.accession],
       predictionAccession: item.accession,
+      predictionAvailable: true,
       experimentalAccession: null,
       evidenceState: 'prediction_only',
       experimentalObservationCount: 0,
@@ -99,6 +100,7 @@ describe('portal genome explorer', () => {
     result.items[0] = {
       ...result.items[0],
       predictionAccession: null,
+      predictionAvailable: false,
       experimentalAccession: 'GCF_000000001.1',
       evidenceState: 'experimental_only',
       annotationStatus: 'missing',
@@ -109,6 +111,23 @@ describe('portal genome explorer', () => {
     const row = screen.getByText('Not cataloged').closest('tr');
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).queryByText('Missing')).not.toBeInTheDocument();
+  });
+
+  it('shows predictions stored with an experimental genome collection', () => {
+    installFetch();
+    const result = response(genomes.slice(0, 1), 1);
+    result.items[0] = {
+      ...result.items[0],
+      predictionAccession: null,
+      predictionAvailable: true,
+      predictedPromoterCount: 46_015,
+      experimentalAccession: 'GCF_000014625.1',
+      evidenceState: 'both',
+    };
+
+    render(<GenomeExplorer initialResult={result} />);
+    expect(screen.getByText('46,015 predictions')).toHaveClass('evidence-available');
+    expect(screen.queryByText('No prediction release')).not.toBeInTheDocument();
   });
 
   it('uses a cursor stack for next and previous pages', async () => {

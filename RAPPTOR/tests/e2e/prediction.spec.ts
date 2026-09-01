@@ -44,7 +44,7 @@ test('100 bp example is inferred as Focused without submitting or storing raw se
   await expect(page.getByText('Anchor +80')).toBeVisible();
   await expect(page.getByText('Anchor −21')).toBeVisible();
   await expect(page.locator('main')).not.toContainText(/raw score curve|top windows|called peak|top results/i);
-  await expect(page.getByRole('link', { name: 'Read the interpretation guide' })).toHaveAttribute('href', '/help/prediction#results');
+  await expect(page.getByRole('link', { name: 'Read the interpretation guide' })).toHaveCount(0);
 
   const stored = await storedPrototypeRuns(page);
   expect(stored).toHaveLength(1);
@@ -123,7 +123,7 @@ test.describe('catalog failure and mobile fallback', () => {
 
     await expect(page.getByRole('alert').filter({ hasText: 'Your other inputs are still here' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry search' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Open Help' })).toHaveAttribute('href', '/help/prediction#troubleshooting');
+    await expect(page.getByRole('link', { name: 'Open Help' })).toHaveCount(0);
     await expect(sequenceInput).toHaveValue(originalSequence);
 
     await page.getByRole('button', { name: 'Upload FASTA instead' }).click();

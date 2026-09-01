@@ -17,7 +17,7 @@ describe('portal home', () => {
     expect(screen.getByRole('heading', { name: 'Predict promoters from your sequence' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Predict a promoter' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open prediction tool/ })).toBeDisabled();
-    expect(screen.getByRole('link', { name: 'Read the prediction guide' })).toHaveAttribute('href', '/help/prediction');
+    expect(screen.queryByRole('link', { name: 'Read the prediction guide' })).not.toBeInTheDocument();
     expect(document.querySelector('#predict')).toBeInTheDocument();
     expect(screen.queryByText('DEMO PREVIEW')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Catalog genomes80,850');

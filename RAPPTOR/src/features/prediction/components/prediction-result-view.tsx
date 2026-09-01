@@ -288,7 +288,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
             <div><span>Genome context</span><strong>{result.genomeContext.label}</strong></div>
           </section>
 
-          <div className={styles.evidence}><div><strong>How to interpret this result</strong><p>RAPPTOR scores rank computational promoter candidates; they do not establish experimental transcription initiation or condition-specific activity. <Link href="/help/prediction#results">Read the interpretation guide.</Link></p></div><Link href="/predict">Start another prediction</Link></div>
+          <div className={styles.evidence}><div><strong>How to interpret this result</strong><p>RAPPTOR scores rank computational promoter candidates; they do not establish experimental transcription initiation or condition-specific activity.</p></div><Link href="/predict">Start another prediction</Link></div>
         </div> : null}
       </div>
     </main>

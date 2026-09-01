@@ -92,7 +92,7 @@ describe('prototype prediction workbench', () => {
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     expect(await screen.findByRole('button', { name: 'Retry search' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload FASTA instead' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Help' })).toHaveAttribute('href', '/help/prediction#troubleshooting');
+    expect(screen.queryByRole('link', { name: 'Open Help' })).not.toBeInTheDocument();
   });
 
   it('disables submission when the deployment is not configured for direct prediction', async () => {

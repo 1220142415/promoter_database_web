@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChangeEvent, FormEvent, KeyboardEvent, useMemo, useRef, useState } from 'react';
 import type { GenomeCatalogRow, GenomeSearchResponse } from '@/features/genomes/types';
@@ -126,7 +125,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead }: {
       {error ? (
         <div className={styles.catalogError} role="alert">
           <p>{error}</p>
-          <div><button type="button" onClick={() => void search()}>Retry search</button><button type="button" onClick={onUploadInstead}>Upload FASTA instead</button><Link href="/help/prediction#troubleshooting">Open Help</Link></div>
+          <div><button type="button" onClick={() => void search()}>Retry search</button><button type="button" onClick={onUploadInstead}>Upload FASTA instead</button></div>
         </div>
       ) : null}
       {results.length ? (
@@ -445,7 +444,6 @@ export default function PrototypePredictionWorkbench({
               </div>
               {inferredMode === 'genome-scan' ? <p className={styles.managedPeakNote}>Peak calling uses backend-managed settings in a future live service; they are not user parameters.</p> : null}
               <dl className={styles.modelFacts}><div><dt>Workflow</dt><dd>{inferredLabel(inferredMode)}</dd></div><div><dt>Window</dt><dd>100 nt</dd></div><div><dt>Anchor</dt><dd>80 / 20</dd></div><div><dt>CGR</dt><dd>128 × 128</dd></div><div><dt>Stride</dt><dd>1 nt</dd></div><div><dt>Model</dt><dd>{modelVersion}</dd></div></dl>
-              <Link className={styles.contextHelp} href="/help/prediction#workflows">How was this workflow selected?</Link>
             </fieldset>
           ) : null}
 

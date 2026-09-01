@@ -260,7 +260,6 @@ function MissingRun() {
         <p>Prototype runs live only in this tab&apos;s session storage. They disappear when the session is cleared, and a copied result URL does not contain the input. No model was run.</p>
         <div className={styles.missingActions}>
           <Link className="portal-button portal-button-primary" href="/predict">Create another prototype run</Link>
-          <Link className="portal-button portal-button-secondary" href="/help/prediction#results">Read prediction help</Link>
         </div>
       </div>
     </main>
@@ -351,7 +350,6 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
         <aside className={styles.interpret} aria-labelledby="interpret-heading">
           <h2 id="interpret-heading">How to interpret this result</h2>
           <p>{run.mode === 'candidate' ? 'Each raw score belongs to the same focused 100 bp input read in one orientation. The cutoff only labels the score state; no ranking or post-processing is applied.' : 'A higher raw score means an illustrative scan window ranks higher within the fixture. A called peak is a post-processed candidate anchor, not a separate model score.'} The result does not establish accuracy, experimental support, or a transcription start site.</p>
-          <Link href="/help/prediction#results">Read the interpretation guide</Link>
         </aside>
       </div>
     </main>

@@ -69,7 +69,6 @@ export default function HomePage() {
             <p>Set the strand, score cutoff and number of results to display, then inspect illustrative output before a live RAPPtor service is connected.</p>
             <div className="portal-actions">
               <button type="button" className="portal-button portal-button-primary" disabled>Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></button>
-              <Link href="/help/prediction" className="portal-button portal-button-secondary">Read the prediction guide</Link>
             </div>
           </div>
         </div>

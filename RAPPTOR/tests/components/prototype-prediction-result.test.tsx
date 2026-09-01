@@ -58,7 +58,7 @@ describe('prototype prediction result', () => {
     expect(screen.getByText(/cutoff only labels the score state/i)).toBeInTheDocument();
     expect(screen.queryByText(/raw score curve|top windows|called peak|top results/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Read the interpretation guide' })).toHaveAttribute('href', '/help/prediction#results');
+    expect(screen.queryByRole('link', { name: 'Read the interpretation guide' })).not.toBeInTheDocument();
     expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
   });
 

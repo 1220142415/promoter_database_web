@@ -29,6 +29,8 @@ describe('portal header', () => {
     const open = screen.getByRole('button', { name: 'Open navigation' });
     expect(open).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('link', { name: 'Genomes' })).toHaveClass('is-active');
+    expect(screen.getByRole('link', { name: 'Predict' })).toHaveAttribute('href', '/predict');
+    expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help/prediction');
     expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage');
     expect(screen.queryByRole('link', { name: 'Data & downloads' })).not.toBeInTheDocument();
@@ -49,8 +51,9 @@ describe('portal header', () => {
     expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
   });
 
-  it('shows prediction only after its public switch is enabled', () => {
+  it('keeps a single prediction link when the live service is enabled', () => {
     render(<PortalHeader showPrediction />);
-    expect(screen.getByRole('link', { name: 'Run RAPPTOR' })).toHaveAttribute('href', '/predict');
+    expect(screen.getAllByRole('link', { name: 'Predict' })).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
   });
 });

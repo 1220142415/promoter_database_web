@@ -2,7 +2,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
 import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/prediction/history';
 
@@ -21,8 +21,22 @@ const saved: PredictionHistoryEntry = {
   bases: 320,
 };
 
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    removeItem: (key: string) => { values.delete(key); },
+    setItem: (key: string, value: string) => { values.set(key, value); },
+  };
+}
+
 describe('prediction workspace layout', () => {
   beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    vi.stubGlobal('sessionStorage', memoryStorage());
     localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify([saved]));
     sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(saved));
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => ({
@@ -41,6 +55,8 @@ describe('prediction workspace layout', () => {
           },
     })));
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('keeps New first in the right rail and shows one selected job in the main workspace', async () => {
     const user = userEvent.setup();

@@ -1,14 +1,20 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
 import { predictionPublicEnabled } from '@/features/prediction/public';
+import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = { title: 'Run RAPPTOR | RAPPTOR' };
+export const metadata: Metadata = {
+  title: 'Promoter prediction | RAPPTOR',
+  description: 'Prepare and interpret RAPPtor promoter prediction workflows, with an illustrative local prototype when the queued service is not public.',
+};
 
 export default function PredictPage() {
-  if (!predictionPublicEnabled()) notFound();
+  if (!predictionPublicEnabled()) {
+    return <PrototypePredictionWorkbench modelVersion={process.env.RAPPTOR_PREDICTION_MODEL_VERSION || undefined} />;
+  }
+
   return (
     <main className="portal-page">
       <header className="portal-shell page-intro">

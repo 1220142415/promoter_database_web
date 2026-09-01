@@ -149,6 +149,7 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     request["fasta"] = validated.to_fasta()
     request["cgr_source"] = "complete_genome_assembly_fasta"
     request["stride"] = stride
+    request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
     request["output_formats"] = list(payload.output_formats or ["bigwig", "parquet"])
     return request, validated.total_bases
 
@@ -175,9 +176,23 @@ def current_model():
             "default_stride": SETTINGS.default_scan_stride,
             "min_stride": SETTINGS.min_scan_stride,
             "max_stride": SETTINGS.max_scan_stride,
-            "cutoff": None,
+            "score_cutoff": {
+                "default": None,
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "operator": ">",
+                "applies_to": ["gff3", "json"],
+                "unfiltered_formats": ["bigwig", "parquet"],
+            },
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
             "default_output_formats": ["bigwig", "parquet"],
+            "reverse_complementary": {"default": True},
+            "batch_size": {
+                "default": SETTINGS.default_batch_size,
+                "minimum": 1,
+                "maximum": SETTINGS.max_batch_size,
+            },
+            "unsupported_filters": ["top_k", "peak_distance"],
         },
         "complete_genome_field": {
             "predict": "genome_context",

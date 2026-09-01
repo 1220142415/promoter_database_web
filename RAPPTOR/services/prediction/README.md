@@ -32,11 +32,25 @@ then records that the caller asserted complete-genome input.
 
 ## Genome-scan outputs
 
-Public `genome_scan` uses `stride=1` and writes every window score; no score
-cutoff or `top_k` truncation is applied. The request may select one or more
-formats from `bigwig`, `parquet`, `gff3`, and `json`. BigWig and Parquet are the
-default because they stream well and support downstream browsing/analysis;
-GFF3 and JSON are available for interoperability but can be very large.
+`genome_scan` accepts a configured-range `stride` and an optional
+`score_cutoff` in `[0, 1]`. The cutoff uses the strict rule
+`score > score_cutoff` and applies only to sparse GFF3/JSON records. BigWig and
+Parquet always retain every scanned window, so changing a display/export cutoff
+never destroys the underlying probability track. `top_k` remains unsupported.
+
+```json
+{
+  "mode": "genome_scan",
+  "complete_genome": true,
+  "fasta": ">contig\nACGT...",
+  "stride": 1,
+  "score_cutoff": 0.9,
+  "output_formats": ["bigwig", "parquet", "gff3"]
+}
+```
+
+`GET /v1/models/current` publishes the active stride limits, cutoff range and
+operator, affected formats, and default output formats for frontend clients.
 
 Completed jobs return an artifact manifest. Each artifact can be read from:
 

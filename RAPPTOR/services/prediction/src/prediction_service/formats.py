@@ -41,6 +41,7 @@ class ScanArtifactWriter:
         model_version: str,
         checkpoint_sha256: str,
         stride: int,
+        score_cutoff: float | None = None,
     ) -> None:
         self.job_dir = Path(job_dir)
         self.formats = tuple(dict.fromkeys(formats))
@@ -51,6 +52,7 @@ class ScanArtifactWriter:
             raise ArtifactFormatError(f"unsupported output format(s): {', '.join(sorted(unknown))}")
         self.records = tuple(records)
         self.stride = int(stride)
+        self.score_cutoff = float(score_cutoff) if score_cutoff is not None else None
         self._counter = 0
         self._closed = False
         self._handles: dict[str, object] = {}
@@ -74,7 +76,8 @@ class ScanArtifactWriter:
                     handle.write(f"##RAPPtor-model-version {model_version}\n")
                     handle.write(f"##RAPPtor-checkpoint-sha256 {checkpoint_sha256}\n")
                     handle.write(f"##RAPPtor-scan-stride {self.stride}\n")
-                    handle.write("##RAPPtor-score-cutoff none\n")
+                    cutoff = "none" if self.score_cutoff is None else f">{self.score_cutoff:g}"
+                    handle.write(f"##RAPPtor-score-cutoff {cutoff}\n")
                 elif fmt == "json":
                     self._open_text("scores.json")
                     self._handles["json"].write("[\n")
@@ -115,6 +118,7 @@ class ScanArtifactWriter:
                 b"rapptor_model_version": model_version.encode(),
                 b"rapptor_checkpoint_sha256": checkpoint_sha256.encode(),
                 b"rapptor_stride": str(self.stride).encode(),
+                b"rapptor_score_cutoff": b"none (unfiltered)",
             },
         )
         self._parquet_schema = schema
@@ -189,10 +193,12 @@ class ScanArtifactWriter:
                 )
                 self._parquet_writer.write_table(table)
             for index in range(count):
-                self._counter += 1
                 window_start = int(window_starts[index])
                 anchor = int(anchor_positions[index])
                 score = float(values[index])
+                if self.score_cutoff is not None and score <= self.score_cutoff:
+                    continue
+                self._counter += 1
                 if "gff3" in self.formats:
                     self._handles["gff3"].write(
                         f"{sequence_id}\tRAPPtor\tpromoter_candidate\t{anchor + 1}\t{anchor + 1}\t"
@@ -214,6 +220,10 @@ class ScanArtifactWriter:
                             separators=(",", ":"),
                         )
                     )
+
+    @property
+    def passing_score_count(self) -> int:
+        return self._counter
 
     def close(self, *, success: bool) -> list[dict]:
         if self._closed:

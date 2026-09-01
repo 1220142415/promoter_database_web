@@ -67,12 +67,22 @@ def test_job_submission_requires_complete_genome_assertion():
     assert submission.complete_genome is True
 
 
-def test_scan_rejects_removed_cutoff_and_top_k_fields():
+def test_scan_accepts_bounded_cutoff_and_rejects_top_k():
+    submission = JobSubmission(
+        mode="genome_scan",
+        complete_genome=True,
+        fasta=">contig\n" + "ACGT" * 30,
+        score_cutoff=0.5,
+    )
+    assert submission.score_cutoff == 0.5
+    with pytest.raises(ValueError):
+        JobSubmission(mode="genome_scan", complete_genome=True, fasta=">contig\n" + "A" * 100, score_cutoff=1.1)
     with pytest.raises(ValueError):
         JobSubmission(
-            mode="genome_scan",
+            mode="predict",
             complete_genome=True,
-            fasta=">contig\n" + "ACGT" * 30,
+            sequence="A" * 100,
+            genome_context="A" * 100,
             score_cutoff=0.5,
         )
     with pytest.raises(ValueError):

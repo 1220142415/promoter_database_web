@@ -166,6 +166,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
     reverse = bool(request.get("reverse_complementary", True))
     output_formats = tuple(request.get("output_formats") or ("bigwig", "parquet"))
+    score_cutoff = request.get("score_cutoff")
     artifact_writer = ScanArtifactWriter(
         job_dir,
         output_formats,
@@ -173,6 +174,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         model_version=SETTINGS.model_version,
         checkpoint_sha256=runtime.checkpoint_sha256,
         stride=stride,
+        score_cutoff=score_cutoff,
     )
     total_units = len(validated.records) * (2 if reverse else 1)
     completed_units = 0
@@ -206,6 +208,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                     strand=strand,
                     windows=total_windows,
                     scores_written=total_windows,
+                    passing_windows=artifact_writer.passing_score_count,
                 )
         artifacts = artifact_writer.close(success=True)
         artifacts.extend([
@@ -227,8 +230,11 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "reverse_complementary": reverse,
         "window_count": total_windows,
         "scores_written": total_windows,
+        "score_cutoff": score_cutoff,
+        "score_cutoff_operator": ">" if score_cutoff is not None else None,
+        "passing_window_count": artifact_writer.passing_score_count,
         "output_formats": list(output_formats),
-        "output_semantics": "all_window_scores_without_cutoff",
+        "output_semantics": "all raw scores; optional cutoff applies only to GFF3/JSON records",
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)

@@ -38,6 +38,28 @@ def test_fasta_index_matches_wrapped_fasta(tmp_path):
     assert path.read_text().splitlines() == ["one\t81\t5\t80\t81", "two\t4\t93\t4\t5"]
 
 
+def test_cutoff_filters_sparse_outputs_with_strict_operator(tmp_path):
+    writer = ScanArtifactWriter(
+        tmp_path,
+        ["gff3", "json"],
+        [("contig", 103)],
+        model_version="test",
+        checkpoint_sha256="sha",
+        stride=1,
+        score_cutoff=0.5,
+    )
+    writer.add_scores("contig", 103, "+", np.array([0.49, 0.5, 0.51], dtype=np.float32), upstream_len=80)
+    writer.close(success=True)
+
+    rows = json.loads((tmp_path / "scores.json").read_text(encoding="utf-8"))
+    assert len(rows) == 1
+    assert rows[0]["score"] == pytest.approx(0.51)
+    gff = (tmp_path / "scores.gff3").read_text(encoding="utf-8")
+    assert "##RAPPtor-score-cutoff >0.5" in gff
+    assert gff.count("\tRAPPtor\t") == 1
+    assert writer.passing_score_count == 1
+
+
 def test_all_scan_formats_are_readable(tmp_path):
     pyarrow = pytest.importorskip("pyarrow.parquet")
     pybigwig = pytest.importorskip("pyBigWig")
@@ -48,6 +70,7 @@ def test_all_scan_formats_are_readable(tmp_path):
         model_version="test",
         checkpoint_sha256="a" * 64,
         stride=1,
+        score_cutoff=0.25,
     )
     values = np.arange(6, dtype=np.float32) / 10
     writer.add_scores("contig", 105, "+", values, upstream_len=80)
@@ -63,6 +86,6 @@ def test_all_scan_formats_are_readable(tmp_path):
         plus.close()
         minus.close()
     assert pyarrow.read_table(tmp_path / "scores.parquet").num_rows == 12
-    assert len(json.loads((tmp_path / "scores.json").read_text(encoding="utf-8"))) == 12
-    assert (tmp_path / "scores.gff3").read_text(encoding="utf-8").count("\tRAPPtor\t") == 12
+    assert len(json.loads((tmp_path / "scores.json").read_text(encoding="utf-8"))) == 6
+    assert (tmp_path / "scores.gff3").read_text(encoding="utf-8").count("\tRAPPtor\t") == 6
     assert {artifact["format"] for artifact in artifacts} == {"bigwig", "parquet", "gff3", "json"}

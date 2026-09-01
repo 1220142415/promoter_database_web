@@ -23,9 +23,22 @@ class JobSubmission(BaseModel):
         default=None,
         description="Complete single-genome assembly FASTA; all records jointly form the CGR context.",
     )
-    stride: int | None = Field(default=None, ge=1)
-    batch_size: int | None = Field(default=None, ge=1)
-    reverse_complementary: bool = True
+    stride: int | None = Field(
+        default=None,
+        ge=1,
+        description="Bases between adjacent genome-scan windows; deployment limits are published by /v1/models/current.",
+    )
+    score_cutoff: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Optional strict score cutoff for sparse GFF3/JSON records. "
+            "BigWig and Parquet always retain every scanned window."
+        ),
+    )
+    batch_size: int | None = Field(default=None, ge=1, description="Inference tuning parameter bounded by the deployment.")
+    reverse_complementary: bool = Field(default=True, description="Also scan the reverse-complement strand.")
     output_formats: list[OutputFormat] | None = Field(
         default=None,
         description="Genome scan artifacts to generate. BigWig and Parquet are enabled by default.",
@@ -44,6 +57,8 @@ class JobSubmission(BaseModel):
                 raise ValueError("predict mode does not accept fasta")
             if self.output_formats:
                 raise ValueError("output_formats is only supported for genome_scan mode")
+            if self.score_cutoff is not None:
+                raise ValueError("score_cutoff is only supported for genome_scan mode")
         else:
             if self.fasta is None:
                 raise ValueError("genome_scan mode requires a complete single-genome assembly FASTA to calculate CGR")

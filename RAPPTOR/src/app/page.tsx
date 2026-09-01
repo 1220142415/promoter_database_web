@@ -37,7 +37,6 @@ export default function HomePage() {
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
               {showExperimental ? <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link> : null}
-              <Link href="/predict" className="portal-button portal-button-secondary">Predict a promoter</Link>
             </div>
           </div>
           <div className="sequence-figure" role="img" aria-label="Genome sequence and promoter track overview">
@@ -71,7 +70,7 @@ export default function HomePage() {
           <div className="section-heading">
             <p>Set the strand, score cutoff and number of results to display, then inspect illustrative output before a live RAPPtor service is connected.</p>
             <div className="portal-actions">
-              <Link href="/predict" className="portal-button portal-button-primary">Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></Link>
+              <button type="button" className="portal-button portal-button-primary" disabled>Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></button>
               <Link href="/help/prediction" className="portal-button portal-button-secondary">Read the prediction guide</Link>
             </div>
           </div>
@@ -96,13 +95,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      {showExperimental ? <section className="portal-section evidence-band" id="evidence">
-        <div className="portal-shell evidence-layout">
-          <div><p className="portal-kicker">Evidence boundaries</p><h2>Predictions and observations stay separate</h2></div>
-          <p>RAPPTOR keeps model-predicted promoter peaks, experimentally observed transcription start sites and contextual NCBI annotations as separate evidence layers.</p>
-        </div>
-      </section> : null}
 
       <section className="portal-section data-access-section" id="data">
         <div className="portal-shell">

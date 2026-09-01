@@ -56,7 +56,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .portal-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 .portal-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 6px; padding: 10px 17px; font-size: 14px; font-weight: 750; }
 .portal-button-primary { background: var(--teal-dark); color: white; }
-.portal-button-primary:hover { background: #004c48; }
+.portal-button-primary:hover:not(:disabled) { background: #004c48; }
+.portal-button:disabled { opacity: .55; cursor: not-allowed; }
 .portal-button-secondary { border-color: var(--line-strong); background: var(--paper); color: var(--ink); }
 .portal-button-secondary:hover, .portal-button-quiet:hover { border-color: var(--teal); color: var(--teal-dark); }
 .portal-button-quiet { border-color: var(--line-strong); background: transparent; }
@@ -87,7 +88,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 
 .portal-section { padding-block: 88px; }
 .split-section { display: grid; grid-template-columns: minmax(270px, .72fr) minmax(0, 1.28fr); gap: 100px; align-items: start; }
-.section-heading h2, .evidence-layout h2, .detail-section h2, .methods-content h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 34px; line-height: 1.18; font-weight: 600; }
+.section-heading h2, .detail-section h2, .methods-content h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 34px; line-height: 1.18; font-weight: 600; }
 .section-heading > p:last-child { margin: 18px 0 0; color: var(--ink-soft); line-height: 1.7; }
 .phyla-chart { display: grid; gap: 17px; }
 .phyla-row { display: grid; grid-template-columns: 180px minmax(120px, 1fr) 70px; align-items: center; gap: 18px; font-size: 13px; }
@@ -95,12 +96,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .phyla-row > div { height: 9px; background: #e5ebe8; }
 .phyla-row i { display: block; height: 100%; background: var(--teal); }
 .phyla-row strong { text-align: right; font-variant-numeric: tabular-nums; }
-.evidence-band { background: #182724; color: white; }
-.evidence-layout { display: grid; grid-template-columns: .8fr 1.2fr; gap: 72px; align-items: center; }
-.evidence-layout .portal-kicker { color: #70d8cf; }
-.evidence-layout p { margin: 0; color: #c5d1cd; line-height: 1.7; }
 .portal-text-link { display: inline-flex; align-items: center; gap: 6px; color: var(--teal-dark); font-size: 14px; font-weight: 750; white-space: nowrap; }
-.evidence-layout .portal-text-link { color: #f0ba70; }
 .portal-text-link:hover { text-decoration: underline; }
 
 .portal-page { min-height: calc(100vh - 64px); background: var(--wash); padding-bottom: 88px; }
@@ -355,7 +351,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .metrics-grid svg { width: 19px; margin-bottom: 8px; }
   .metrics-grid strong { font-size: 22px; }
   .portal-section { padding-block: 62px; }
-  .split-section, .evidence-layout { grid-template-columns: 1fr; gap: 34px; }
+  .split-section { grid-template-columns: 1fr; gap: 34px; }
   .phyla-row { grid-template-columns: minmax(92px, 130px) 1fr 52px; gap: 10px; }
   .page-intro { padding-block: 44px 28px; }
   .page-intro h1, .detail-heading h1, .genome-browser-header h1, .portal-state-page h1 { font-size: 38px; }

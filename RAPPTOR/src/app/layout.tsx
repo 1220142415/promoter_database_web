@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <footer className="portal-footer">
           <div className="portal-shell">
             <div><strong>RAPPTOR</strong><p>Bacterial promoter predictions and genome-resolved evidence.</p></div>
-            <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/cyanobacteria">Cyanobacteria</Link>{showExperimental ? <Link href="/experimental-tss">Experimental TSS</Link> : null}<Link href="/#data">Release files</Link>{showUsage && <Link href="/usage">Usage</Link>}</nav>
+            <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/cyanobacteria">Cyanobacteria</Link>{showExperimental ? <Link href="/experimental-tss">Experimental TSS</Link> : null}{showUsage && <Link href="/usage">Usage</Link>}</nav>
           </div>
         </footer>
       </body>

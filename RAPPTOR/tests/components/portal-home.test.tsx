@@ -15,8 +15,8 @@ describe('portal home', () => {
 
     expect(screen.getByRole('heading', { name: 'RAPPTOR' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Predict promoters from your sequence' })).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Predict a promoter' })[0]).toHaveAttribute('href', '/predict');
-    expect(screen.getByRole('link', { name: /Open prediction tool/ })).toHaveAttribute('href', '/predict');
+    expect(screen.queryByRole('link', { name: 'Predict a promoter' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open prediction tool/ })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Read the prediction guide' })).toHaveAttribute('href', '/help/prediction');
     expect(document.querySelector('#predict')).toBeInTheDocument();
     expect(screen.queryByText('DEMO PREVIEW')).not.toBeInTheDocument();
@@ -33,6 +33,7 @@ describe('portal home', () => {
     expect(document.body).not.toHaveTextContent('gtdb-r214-2026-08-13');
     expect(screen.getByRole('link', { name: /Experimental TSS/ })).toHaveAttribute('href', '/experimental-tss');
     expect(screen.queryByRole('link', { name: /Cyanobacteria/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Predictions and observations stay separate')).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

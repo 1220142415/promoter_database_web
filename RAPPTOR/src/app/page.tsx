@@ -16,15 +16,13 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date);
 }
 
-function taxonomyReleaseLabel(value: string | null) {
-  return value ? `GTDB taxonomy ${value.replace(/^GTDB\s+/i, '')}` : 'GTDB taxonomy not reported';
-}
-
 export default function HomePage() {
   const showExperimental = experimentalTssPublicEnabled();
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
   const releaseLabel = `RAPPTOR ${catalog.releaseDate || catalog.releaseId}`;
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
+  const totalCatalogGenomes = catalog.totalCatalogGenomes ?? catalog.totalGenomes;
+  const totalCatalogPredictedPromoters = catalog.totalCatalogPredictedPromoters ?? catalog.totalPredictedPromoters;
 
   return (
     <main>
@@ -44,19 +42,19 @@ export default function HomePage() {
             <div className="sequence-track sequence-reference"><span>REFERENCE</span><i /><i /><i /><i /></div>
             <div className="sequence-track sequence-promoters"><span>PREDICTED PROMOTERS</span><b style={{ left: '12%', width: '8%' }} /><b style={{ left: '31%', width: '13%' }} /><b style={{ left: '58%', width: '6%' }} /><b style={{ left: '77%', width: '15%' }} /></div>
             <div className="sequence-track sequence-annotation"><span>GENOME ANNOTATION</span><em style={{ left: '5%', width: '18%' }} /><em style={{ left: '29%', width: '22%' }} /><em style={{ left: '64%', width: '27%' }} /></div>
-            <div className="sequence-locus"><span>Genome-resolved</span><strong>{catalog.totalGenomes.toLocaleString()} assemblies</strong></div>
+            <div className="sequence-locus"><span>Genome-resolved</span><strong>{totalCatalogGenomes.toLocaleString()} assemblies</strong></div>
           </div>
         </div>
       </section>
 
       <section className="portal-metrics" aria-label="Release statistics">
         <div className="portal-shell metrics-grid">
-          <div><PublicRoundedIcon aria-hidden="true" /><span>Genomes</span><strong>{catalog.totalGenomes.toLocaleString()}</strong></div>
-          <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{catalog.totalPredictedPromoters.toLocaleString()}</strong></div>
+          <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{totalCatalogGenomes.toLocaleString()}</strong><small>GTDB + collected assemblies</small></div>
+          <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{totalCatalogPredictedPromoters.toLocaleString()}</strong></div>
           <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
           {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div> : null}
+          {showExperimental ? <div><DataObjectRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{catalog.totalExperimentalTss.toLocaleString()}</strong></div> : null}
           {showExperimental ? <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{(catalog.totalEvidencePublications || 0).toLocaleString()}</strong></div> : null}
-          <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>
 

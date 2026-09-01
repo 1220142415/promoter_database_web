@@ -65,6 +65,8 @@ export interface ActiveReleaseSummary {
   description: string | null;
   totalGenomes: number;
   totalPredictedPromoters: number;
+  totalCatalogGenomes?: number;
+  totalCatalogPredictedPromoters?: number;
   totalAnnotatedGenomes: number;
   totalDownloadedAnnotations: number;
   totalMissingAnnotations: number;

@@ -432,12 +432,14 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 
 .experimental-page { padding-bottom: 92px; }
 .experimental-intro > p:last-child { max-width: 800px; color: var(--ink-soft); line-height: 1.7; }
-.experimental-metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper); }
+.experimental-metrics { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper); }
 .experimental-metrics > div { min-height: 128px; display: grid; align-content: center; gap: 5px; padding: 20px 24px; border-right: 1px solid var(--line); }
-.experimental-metrics > div:last-child { border-right: 0; }
+.experimental-metrics > div:nth-child(3n) { border-right: 0; }
+.experimental-metrics > div:nth-child(n+4) { border-top: 1px solid var(--line); }
 .experimental-metrics svg { color: var(--teal); }
 .experimental-metrics span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .experimental-metrics strong { font: 600 30px Georgia, "Times New Roman", serif; }
+.experimental-metrics small { color: var(--muted); font-size: 10px; }
 .experimental-catalog-section, .experimental-genome-metadata, .experimental-download-section { padding-top: 58px; }
 .experimental-section-heading { display: grid; grid-template-columns: minmax(0, .8fr) minmax(320px, 1.2fr); gap: 70px; align-items: end; margin-bottom: 26px; }
 .experimental-section-heading h2 { margin: 0; font: 600 30px Georgia, "Times New Roman", serif; }
@@ -494,7 +496,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 
 @media (max-width: 1000px) {
   .experimental-metrics { grid-template-columns: repeat(2, 1fr); }
-  .experimental-metrics > div:nth-child(2) { border-right: 0; }
+  .experimental-metrics > div:nth-child(3n) { border-right: 1px solid var(--line); }
+  .experimental-metrics > div:nth-child(2n) { border-right: 0; }
   .experimental-metrics > div:nth-child(n+3) { border-top: 1px solid var(--line); }
   .experimental-genome-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .experimental-genome-facts > div { border-bottom: 1px solid var(--line); }

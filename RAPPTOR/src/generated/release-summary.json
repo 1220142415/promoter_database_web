@@ -6,6 +6,8 @@
   "description": "GTDB R214 genome metadata and feature summaries; asset paths pending",
   "totalGenomes": 80789,
   "totalPredictedPromoters": 305246460,
+  "totalCatalogGenomes": 80850,
+  "totalCatalogPredictedPromoters": 306900844,
   "totalAnnotatedGenomes": 53285,
   "totalDownloadedAnnotations": 53285,
   "totalMissingAnnotations": 27504,

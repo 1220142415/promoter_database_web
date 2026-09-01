@@ -264,7 +264,6 @@ export default function PortalGenomeExplorer({
             <option value="all">All genomes</option>
             <option value="predictions">Predictions available</option>
             <option value="experimental">Experimental TSS available</option>
-            <option value="both">Prediction and experimental</option>
           </select>
         </label> : null}
         <button type="button" className="catalog-reset" onClick={clearFilters} title="Clear filters" aria-label="Clear filters"><RestartAltRoundedIcon /></button>

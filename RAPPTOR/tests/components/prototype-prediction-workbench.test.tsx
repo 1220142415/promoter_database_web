@@ -175,14 +175,18 @@ describe('prototype prediction workbench', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('queues the unified scan input with its separate CGR sequence, cutoff, strands and selected step', async () => {
+  it('reuses a matching catalog scan source for CGR without duplicating bases or request data', async () => {
     let jobRequest: Record<string, unknown> | null = null;
+    let ticketRequest: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('/api/remote-data/')) {
         return new Response(`>chromosome\n${'ACGT'.repeat(40)}\n`, { headers: { 'Content-Type': 'text/plain' } });
       }
-      if (url === '/api/prediction-tickets') return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      if (url === '/api/prediction-tickets') {
+        ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      }
       if (url === '/api/predictions/jobs') {
         jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return Response.json({ job_id: 'b'.repeat(32), access_token: 'job-token' }, { status: 202 });
@@ -205,12 +209,48 @@ describe('prototype prediction workbench', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'b'.repeat(32)}`));
     expect(jobRequest).toMatchObject({
       mode: 'genome_scan',
-      genome_context: expect.any(String),
       stride: 10,
       score_cutoff: 0.8,
       reverse_complementary: false,
       output_formats: ['bigwig', 'gff3'],
     });
+    expect(jobRequest).not.toHaveProperty('genome_context');
+    expect(ticketRequest).toMatchObject({ bases: 160 });
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
+  });
+
+  it('keeps a distinct uploaded CGR genome when it differs from the scan source', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    let ticketRequest: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/prediction-tickets') {
+        ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      }
+      if (url === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'c'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    const { container } = render(<PrototypePredictionWorkbench localTest />);
+    const scanText = `>scan\n${'ACGT'.repeat(40)}\n`;
+    const contextText = `>context\n${'TGCA'.repeat(40)}\n`;
+    const scanFile = new File([scanText], 'scan.fna', { type: 'text/plain' });
+    const contextFile = new File([contextText], 'context.fna', { type: 'text/plain' });
+    Object.defineProperty(scanFile, 'text', { value: async () => scanText });
+    Object.defineProperty(contextFile, 'text', { value: async () => contextText });
+
+    await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0], scanFile);
+    await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[1], contextFile);
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'c'.repeat(32)}`));
+    expect(jobRequest).toMatchObject({ mode: 'genome_scan', genome_context: 'TGCA'.repeat(40) });
+    expect(ticketRequest).toMatchObject({ bases: 320 });
   });
 });

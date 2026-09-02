@@ -181,6 +181,9 @@ async function catalogGenomeInput(context: PrototypeGenomeContext): Promise<Reso
   const accession = encodeURIComponent(context.accession);
   let response = await fetch(`/api/remote-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
   if (!response.ok) response = await fetch(`/api/experimental-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
+  if (!response.ok && context.accession === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession) {
+    response = await fetch(`/api/prediction-reference/${accession}`, { cache: 'no-store' });
+  }
   if (!response.ok || !response.body) throw new Error('The selected catalog genome FASTA is not available. Choose another genome or upload FASTA.');
   let text: string;
   try {
@@ -434,14 +437,20 @@ export default function PrototypePredictionWorkbench({
         historyMode = 'predict';
       } else {
         const genome = await primaryScanSequence();
-        const context = await resolveGenomeContextSequence();
+        const sameCatalogGenome = primaryKind === 'catalog'
+          && contextKind === 'catalog'
+          && inputCatalog?.kind === 'catalog'
+          && contextCatalog?.kind === 'catalog'
+          && inputCatalog?.accession === contextCatalog?.accession;
+        const context = sameCatalogGenome ? genome : await resolveGenomeContextSequence();
+        const scanSourceProvidesCgr = genome.sequence === context.sequence;
         request = {
           mode: 'genome_scan', complete_genome: true, fasta: genome.fasta,
-          genome_context: context.sequence,
+          ...(scanSourceProvidesCgr ? {} : { genome_context: context.sequence }),
           stride: strideBases, score_cutoff: cutoff, reverse_complementary: strandMode === 'both',
           output_formats: ['bigwig', 'gff3'],
         };
-        bases = genome.totalLength + context.totalLength;
+        bases = genome.totalLength + (scanSourceProvidesCgr ? 0 : context.totalLength);
         referenceName = genome.referenceName;
         label = genome.label;
         historyMode = 'genome_scan';

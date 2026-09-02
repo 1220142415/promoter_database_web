@@ -160,6 +160,7 @@ describe('genome detail release contract', () => {
     expect(screen.getByLabelText('Genome key metrics')).toBeInTheDocument();
     expect(screen.getByText('Assembly overview').closest('details')).toHaveAttribute('open');
     expect(screen.getByText('Taxonomy').closest('details')).not.toHaveAttribute('open');
+    expect(container.querySelector('.detail-title-row .release-stamp')).not.toBeInTheDocument();
     expect(screen.getByText('1,600 / Mb')).toBeInTheDocument();
     expect(screen.getByText('RAPPTOR')).toBeInTheDocument();
     expect(screen.queryByText('RAPPTOR 1.0')).not.toBeInTheDocument();

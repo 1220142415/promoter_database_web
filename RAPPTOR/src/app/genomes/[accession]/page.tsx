@@ -197,7 +197,6 @@ export default async function GenomeDetailPage({
   const hasPredictions = match.predictionAvailable;
   const predictedPromoterCount = genome?.predictedPromoterCount ?? experimental?.predictedPromoterCount ?? null;
   const genomeSizeBp = genome?.genomeSizeBp ?? experimental?.genomeSizeBp ?? null;
-  const evidenceReleaseIds = [...new Set([prediction?.releaseId, experimental?.releaseId].filter((value): value is string => Boolean(value)))];
   const browserPrediction = predictionAssembly(prediction) || (experimental ? experimentalAssembly(experimental) : null);
   const browserExperimental = experimental
     && (prediction || experimental.primarySequence)
@@ -227,7 +226,6 @@ export default async function GenomeDetailPage({
                     {showExperimental && experimental ? <span className="evidence-available">Experimental TSS</span> : null}
                   </p>
                 </div>
-                <div className="release-stamp"><span>{showExperimental ? 'Evidence releases' : 'Prediction release'}</span><strong>{evidenceReleaseIds.join(' · ') || 'Not available'}</strong></div>
               </div>
             </header>
 

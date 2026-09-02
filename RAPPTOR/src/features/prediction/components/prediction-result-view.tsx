@@ -7,7 +7,9 @@ import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import ScienceRoundedIcon from '@mui/icons-material/ScienceRounded';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
 import type { JBrowseAssemblyConfig } from '@/features/genome-browser/types';
+import PredictionProgressPanel from './prediction-progress-panel';
 import { predictionApi, PredictionClientError } from '../client';
+import { normalizePredictionProgress } from '../progress';
 import {
   PREDICTION_ANCHOR_BASE,
   PREDICTION_DOWNSTREAM_BASES,
@@ -207,15 +209,31 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
     };
   }, [jobId, retryKey]);
 
-  const stateIndex = useMemo(() => ({ queued: 0, running: 1, succeeded: 2, failed: 2 }[job?.state || 'queued']), [job?.state]);
   const demo = Boolean(job?.demo || result?.demo || jobId.startsWith('demo_'));
   const browserAssembly = useMemo(() => predictionBrowserAssembly(result?.browserAssets, demo), [demo, result?.browserAssets]);
+  const jobProgress = useMemo(() => normalizePredictionProgress({
+    state: job?.state || 'queued',
+    stage: job?.state === 'succeeded' ? 'complete' : job?.state === 'failed' ? 'failed' : job?.state || 'queued',
+    percent: job?.progress ?? null,
+    message: job?.message || 'Loading prediction job status…',
+    simulated: demo,
+  }), [demo, job]);
 
   useEffect(() => {
     if (!browserAssembly) setResultView('plot');
   }, [browserAssembly]);
 
   if (error) {
+    if (job?.state === 'failed') {
+      return (
+        <main className={`portal-page ${styles.resultPage}`}>
+          <div className="portal-shell">
+            <header className={`page-intro ${styles.resultIntro}`}><div><p className="portal-kicker">Prediction job</p><h1>Prediction could not be completed</h1></div></header>
+            <PredictionProgressPanel mode="focused" snapshot={{ ...jobProgress, state: 'failed', stage: 'failed', message: error.message }} onRetry={error.retryable ? () => setRetryKey((value) => value + 1) : undefined} />
+          </div>
+        </main>
+      );
+    }
     return (
       <main className={`portal-page ${styles.resultPage}`}>
         <div className="portal-shell portal-state-page">
@@ -246,13 +264,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
 
         {demo ? <div className={styles.demoBanner} role="note"><ScienceRoundedIcon aria-hidden="true" /><div><strong>Demo preview — no model was executed</strong><span>Every score on this page is a deterministic interface fixture. It must not be interpreted as biological output.</span></div></div> : null}
 
-        <section className={styles.jobPanel} aria-label="Prediction job status">
-          <div className={styles.jobSteps}>
-            {['Queued', 'Running', 'Result ready'].map((label, index) => <div key={label} className={index <= stateIndex ? styles.activeStep : ''}><i>{index < stateIndex ? '✓' : index + 1}</i><span>{label}</span></div>)}
-          </div>
-          <div className={styles.progress}><i style={{ width: `${job?.progress || 3}%` }} /></div>
-          <p role="status">{job?.message || 'Loading prediction job…'}</p>
-        </section>
+        <PredictionProgressPanel mode="focused" snapshot={jobProgress} />
 
         {result ? <div className={styles.resultContent}>
           <section className={styles.resultSummary} aria-label="Prediction summary" data-testid="prediction-summary">

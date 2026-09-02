@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChangeEvent, FormEvent, KeyboardEvent, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
+import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded';
 import type { GenomeCatalogRow, GenomeSearchResponse } from '@/features/genomes/types';
 import { sha256File, sha256Text } from '@/features/prediction/client';
 import {
   DEFAULT_PROTOTYPE_MODEL_SPEC,
   PROTOTYPE_CANDIDATE_EXAMPLE,
   PROTOTYPE_CANDIDATE_GENOME_EXAMPLE,
-  PROTOTYPE_CONTIG_EXAMPLE,
-  PROTOTYPE_TOP_K_OPTIONS,
+  PROTOTYPE_PREDICTION_SCHEMA_VERSION,
+  PROTOTYPE_STRIDE_BASES,
+  PROTOTYPE_STRIDE_OPTIONS,
   createPrototypeRunId,
   formatPrototypeBytes,
   illustrativeCatalogContigs,
@@ -26,8 +28,9 @@ import {
   type PrototypePredictionMode,
   type PrototypePredictionRun,
   type PrototypeStrandMode,
-  type PrototypeTopK,
+  type PrototypeStrideBases,
 } from '.';
+import { registerPrototypeTransientInput } from './transient-input';
 import styles from './prototype-workbench.module.css';
 
 type PrimarySourceKind = 'inline' | 'upload' | 'catalog';
@@ -86,6 +89,12 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead }: {
       const response = await fetch(`/api/genomes?q=${encodeURIComponent(query.trim())}&limit=25`, { headers: { accept: 'application/json' } });
       if (!response.ok) throw new Error('Catalog request failed.');
       const payload = await response.json() as GenomeSearchResponse;
+      const exactMatch = payload.items.find((item) => item.accession.toUpperCase() === query.trim().toUpperCase());
+      if (exactMatch) {
+        onSelect(catalogContext(exactMatch));
+        setResults([]);
+        return;
+      }
       setResults(payload.items.slice(0, 8));
       if (!payload.items.length) setError('No matching assemblies were found. Try an accession, organism, or strain.');
     } catch {
@@ -109,7 +118,15 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead }: {
     <div className={styles.catalogPanel}>
       <label className={styles.fieldLabel} htmlFor={`${idPrefix}-search`}>Accession, organism, or strain</label>
       <div className={styles.searchRow}>
-        <input id={`${idPrefix}-search`} role="combobox" aria-autocomplete="list" aria-expanded={results.length > 0} aria-controls={`${idPrefix}-results`} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search(); } }} placeholder="GCF_000005845.2 or Escherichia coli" />
+        <input id={`${idPrefix}-search`} role="combobox" aria-autocomplete="list" aria-expanded={results.length > 0} aria-controls={`${idPrefix}-results`} value={query} onChange={(event) => {
+          const nextQuery = event.target.value;
+          setQuery(nextQuery);
+          if (nextQuery.trim().toUpperCase() === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession) {
+            onSelect(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
+            setResults([]);
+            setError(null);
+          }
+        }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search(); } }} placeholder="GCF_000005845.2 or Escherichia coli" />
         <button type="button" onClick={() => void search()} disabled={loading}>{loading ? 'Searching…' : 'Search catalog'}</button>
       </div>
       {error ? (
@@ -130,13 +147,16 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead }: {
 }
 
 function inferredLabel(mode: PrototypePredictionMode) {
-  return mode === 'candidate' ? 'Focused candidate' : 'Genome scan';
+  return mode === 'candidate' ? 'Focused 100 bp window' : 'Sequence / contig scan';
 }
 
 export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PROTOTYPE_MODEL_SPEC.version }: { modelVersion?: string }) {
   const router = useRouter();
   const primaryFileRef = useRef<HTMLInputElement>(null);
   const contextFileRef = useRef<HTMLInputElement>(null);
+  const primaryStepRef = useRef<HTMLFieldSetElement>(null);
+  const contextStepRef = useRef<HTMLFieldSetElement>(null);
+  const parameterStepRef = useRef<HTMLFieldSetElement>(null);
   const [primaryKind, setPrimaryKind] = useState<PrimarySourceKind>('inline');
   const [inlineInput, setInlineInput] = useState('');
   const [uploadedInput, setUploadedInput] = useState<UploadedInputState>(EMPTY_UPLOAD);
@@ -146,7 +166,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
   const [contextUpload, setContextUpload] = useState<ContextUploadState>(EMPTY_CONTEXT_UPLOAD);
   const [strandMode, setStrandMode] = useState<PrototypeStrandMode>('both');
   const [cutoff, setCutoff] = useState(0.9);
-  const [topK, setTopK] = useState<PrototypeTopK>(10);
+  const [strideBases, setStrideBases] = useState<PrototypeStrideBases>(PROTOTYPE_STRIDE_BASES);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -164,68 +184,45 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
   const inputError = primaryKind === 'inline' ? inlineState.error : primaryKind === 'upload' ? uploadedInput.error : null;
   const inferredMode: PrototypePredictionMode | null = primaryKind === 'catalog' ? (inputCatalog ? 'genome-scan' : null) : parsedInput?.mode || null;
   const parametersReady = Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1;
-  const contextReady = inferredMode !== 'candidate' || (contextKind === 'catalog' ? Boolean(contextCatalog) : Boolean(contextUpload.file && !contextUpload.error && !contextUpload.loading));
+  const contextReady = Boolean(inferredMode) && (contextKind === 'catalog' ? Boolean(contextCatalog) : Boolean(contextUpload.file && !contextUpload.error && !contextUpload.loading));
   const inputReady = primaryKind === 'catalog'
     ? Boolean(inputCatalog)
     : primaryKind === 'upload'
       ? Boolean(parsedInput && !inputError && !uploadedInput.loading)
       : Boolean(parsedInput && !inputError);
-  const workbenchReady = inputReady && contextReady && parametersReady;
+  function clearGenomeContext() {
+    setContextKind('catalog');
+    setContextCatalog(null);
+    setContextUpload(EMPTY_CONTEXT_UPLOAD);
+  }
 
-  function choosePrimaryKind(next: PrimarySourceKind) {
-    setPrimaryKind(next);
+  function selectContextCatalog(context: PrototypeGenomeContext | null) {
+    setContextCatalog(context);
+    if (context) setContextKind('catalog');
     setFormError(null);
-  }
-
-  function primaryTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    const order: PrimarySourceKind[] = ['inline', 'upload', 'catalog'];
-    const current = order.indexOf(primaryKind);
-    let next: number | null = null;
-    if (event.key === 'ArrowRight') next = (current + 1) % order.length;
-    if (event.key === 'ArrowLeft') next = (current + order.length - 1) % order.length;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = order.length - 1;
-    if (next === null) return;
-    event.preventDefault();
-    choosePrimaryKind(order[next]);
-    document.getElementById(`prototype-input-${order[next]}-tab`)?.focus();
-  }
-
-  function contextTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    let next: ContextSourceKind | null = null;
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = contextKind === 'catalog' ? 'upload' : 'catalog';
-    if (event.key === 'Home') next = 'catalog';
-    if (event.key === 'End') next = 'upload';
-    if (!next) return;
-    event.preventDefault();
-    setContextKind(next);
-    document.getElementById(`prototype-context-${next}-tab`)?.focus();
   }
 
   function loadFocusedExample() {
     setPrimaryKind('inline');
     setInlineInput(PROTOTYPE_CANDIDATE_EXAMPLE);
-    setContextKind('catalog');
-    setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
+    clearGenomeContext();
     setFormError(null);
   }
 
-  function loadContigExample() {
-    setPrimaryKind('inline');
-    setInlineInput(PROTOTYPE_CONTIG_EXAMPLE);
+  function loadGenomeExample() {
+    setPrimaryKind('catalog');
+    setInputCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
+    clearGenomeContext();
     setFormError(null);
-  }
-
-  function loadExample(event: ChangeEvent<HTMLSelectElement>) {
-    if (event.target.value === 'focused') loadFocusedExample();
-    if (event.target.value === 'contig') loadContigExample();
-    event.target.value = '';
   }
 
   async function handlePrimaryFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    setPrimaryKind('upload');
+    clearGenomeContext();
+    setFormError(null);
     setUploadedInput({ file, parsed: null, loading: true, error: null });
     try {
       validatePrototypeGenomeFile(file);
@@ -240,6 +237,8 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    setContextKind('upload');
+    setFormError(null);
     setContextUpload({ file, totalLength: null, contigs: [], loading: true, error: null });
     try {
       validatePrototypeGenomeFile(file);
@@ -252,7 +251,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     }
   }
 
-  async function resolveCandidateContext(): Promise<PrototypeGenomeContext> {
+  async function resolveGenomeContext(): Promise<PrototypeGenomeContext> {
     if (contextKind === 'catalog') {
       if (!contextCatalog) throw new Error('Select the matching genome context.');
       return contextCatalog;
@@ -265,7 +264,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     };
   }
 
-  async function primaryGenomeContext(): Promise<PrototypeGenomeContext> {
+  async function primaryScanSource(): Promise<PrototypeGenomeContext> {
     if (primaryKind === 'catalog') {
       if (!inputCatalog) throw new Error('Select a catalog genome.');
       return inputCatalog;
@@ -288,29 +287,59 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
 
   async function submitPrototype(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!inferredMode) return;
+    const revealStep = (step: HTMLFieldSetElement | null) => {
+      step?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      step?.focus({ preventScroll: true });
+    };
+    if (!inputReady || !inferredMode) {
+      setFormError('Add a valid sequence or genome input in Step 1 before previewing a result.');
+      revealStep(primaryStepRef.current);
+      return;
+    }
+    if (!contextReady) {
+      setFormError('Genome context for CGR is required. Select a catalog genome or upload the matching genome FASTA in Step 2.');
+      revealStep(contextStepRef.current);
+      return;
+    }
+    if (!parametersReady) {
+      setFormError('Enter a score cutoff from 0 to 1 in Step 3.');
+      revealStep(parameterStepRef.current);
+      return;
+    }
     setSubmitting(true);
     setFormError(null);
     try {
       const runId = createPrototypeRunId();
-      const base = { schemaVersion: 2 as const, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion } };
+      const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases } };
       let run: PrototypePredictionRun;
       if (inferredMode === 'candidate') {
         if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('Focused candidate scoring requires exactly one 100 bp sequence.');
         const checksum = primaryKind === 'upload' && uploadedInput.file ? await sha256File(uploadedInput.file) : await sha256Text(parsedInput.normalizedForChecksum);
         run = {
-          ...base, mode: 'candidate', parameters: prototypeParameters('candidate', strandMode, cutoff),
+          ...base, mode: 'candidate', parameters: prototypeParameters('candidate', strandMode, cutoff, strideBases),
           input: {
             kind: 'candidate', displayName: 'candidate_sequence', format: parsedInput.format, length: 100, checksum,
             sourceKind: primaryKind, fileName: primaryKind === 'upload' ? uploadedInput.file?.name || null : null,
             fileSize: primaryKind === 'upload' ? uploadedInput.file?.size || null : null,
-            genomeContext: await resolveCandidateContext(),
+            genomeContext: await resolveGenomeContext(),
           },
         };
       } else {
-        run = { ...base, mode: 'genome-scan', parameters: prototypeParameters('genome-scan', strandMode, cutoff, topK), input: { kind: 'genome-scan', genomeContext: await primaryGenomeContext() } };
+        run = {
+          ...base,
+          mode: 'genome-scan',
+          parameters: prototypeParameters('genome-scan', strandMode, cutoff, strideBases),
+          input: {
+            kind: 'genome-scan',
+            scanSource: await primaryScanSource(),
+            genomeContext: await resolveGenomeContext(),
+          },
+        };
       }
       writePrototypePredictionRun(run);
+      if (run.mode === 'genome-scan' && primaryKind !== 'catalog' && parsedInput) {
+        registerPrototypeTransientInput(run.runId, parsedInput);
+      }
       router.push(`/predict/demo/${encodeURIComponent(runId)}`);
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : 'The prototype run could not be prepared.');
@@ -321,74 +350,104 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
   const parsedDescription = parsedInput
     ? `${parsedInput.records.length} record${parsedInput.records.length === 1 ? '' : 's'} · ${parsedInput.totalLength.toLocaleString()} bp${parsedInput.skippedContigs.length ? ` · ${parsedInput.skippedContigs.length} short contig${parsedInput.skippedContigs.length === 1 ? '' : 's'} skipped` : ''}`
     : null;
+  const activeInputLabel = primaryKind === 'inline' ? 'Pasted sequence' : primaryKind === 'upload' ? 'FASTA file' : 'Catalog genome';
+  const activeInputDescription = primaryKind === 'catalog'
+    ? `${inputCatalog?.displayName || 'Catalog genome'} · Catalog genomes use a sequence scan.`
+    : parsedDescription;
+  const activeContextLabel = contextKind === 'catalog' ? 'Catalog genome' : 'Matching genome FASTA';
+  const expectedExampleGenome = (primaryKind === 'inline' && inlineInput === PROTOTYPE_CANDIDATE_EXAMPLE)
+    || (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession)
+    ? PROTOTYPE_CANDIDATE_GENOME_EXAMPLE
+    : null;
+  const submitGuidance = !inputReady
+    ? { title: 'Prediction input required', detail: 'Complete Step 1 to detect the analysis and continue.' }
+    : !contextReady
+      ? { title: 'Genome context required', detail: 'Complete Step 2 by selecting a catalog genome or uploading the matching genome FASTA. The result preview will then become available.' }
+      : !parametersReady
+        ? { title: 'Check the score cutoff', detail: 'Enter a score cutoff from 0 to 1 to continue.' }
+        : { title: 'Ready to preview', detail: 'The next page shows a deterministic illustrative result; no prediction model will run.' };
+  const submitLabel = submitting ? 'Preparing…' : 'Preview illustrative result';
 
   return (
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
-        <div><p className="portal-kicker">Prediction prototype</p><h1 id="prototype-heading">Prepare one input. RAPPTOR infers the workflow.</h1><p>A single 100 bp record is scored as a focused candidate. Longer sequences, multiple contigs, and catalog genomes use the scan workflow.</p></div>
+        <div><p className="portal-kicker">Prediction prototype</p><h1 id="prototype-heading">Prepare one input. RAPPTOR detects the analysis.</h1><p>A single 100 bp record is scored as a focused window. Longer sequences, multiple contigs, and catalog genomes use a sequence scan.</p></div>
       </section>
 
-      <section className={`${styles.workspace} portal-shell`} aria-label="Prediction workbench">
+      <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
         <form onSubmit={submitPrototype} className={styles.form}>
           <div className={styles.formHeading}>
-            <div><span>Automatic workflow</span><h2>Sequence or genome input</h2></div>
-            <label className={styles.examplePicker}>
-              <span>Example input</span>
-              <select defaultValue="" onChange={loadExample}>
-                <option value="" disabled>Choose an example…</option>
-                <option value="focused">Focused 100 bp</option>
-                <option value="contig">Multi-contig scan</option>
-              </select>
-            </label>
+            <div><span>Automatic detection</span><h2>Sequence or genome input</h2></div>
           </div>
 
-          <fieldset className={styles.stepCard}>
-            <legend><span>1</span><div>Choose the input<small>Paste sequence, upload FASTA, or select a catalog genome</small></div></legend>
-            <div className={styles.sourceTabs} role="tablist" aria-label="Prediction input source">
-              {(['inline', 'upload', 'catalog'] as const).map((kind) => <button key={kind} id={`prototype-input-${kind}-tab`} type="button" role="tab" tabIndex={primaryKind === kind ? 0 : -1} aria-selected={primaryKind === kind} aria-controls="prototype-input-panel" onKeyDown={primaryTabKeyDown} onClick={() => choosePrimaryKind(kind)}>{kind === 'inline' ? 'Paste sequence' : kind === 'upload' ? 'Upload FASTA' : 'Genome catalog'}</button>)}
-            </div>
-
-            <div id="prototype-input-panel" role="tabpanel" aria-labelledby={`prototype-input-${primaryKind}-tab`}>
-              {primaryKind === 'inline' ? (
-                <><label className={styles.fieldLabel} htmlFor="prototype-sequence-input">Raw DNA or FASTA</label><textarea id="prototype-sequence-input" rows={10} spellCheck={false} value={inlineInput} aria-invalid={Boolean(inputError)} aria-describedby="prototype-input-status" onChange={(event) => { setInlineInput(event.target.value); setFormError(null); }} placeholder=">sequence&#10;ACGT..." /><p className={styles.localNote}>Paste up to 10,000 bases. The session stores a checksum, lengths, and generic record ids—not pasted DNA or FASTA headers.</p></>
-              ) : primaryKind === 'upload' ? (
-                <div className={styles.uploadPanel}><button type="button" className={styles.uploadButton} onClick={() => primaryFileRef.current?.click()}><strong>{uploadedInput.file?.name || 'Choose sequence, genome, or contigs FASTA'}</strong><span>{uploadedInput.loading ? 'Reading metadata…' : uploadedInput.file ? formatPrototypeBytes(uploadedInput.file.size) : '.fa, .fasta, or .fna, optionally .gz · maximum 50 MiB'}</span></button><input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} /><p className={styles.localNote}>The browser stores only filename, size, checksum, and generic contig lengths for this prototype run.</p></div>
-              ) : <CatalogPicker idPrefix="prototype-input-catalog" selected={inputCatalog} onSelect={setInputCatalog} onUploadInstead={() => setPrimaryKind('upload')} />}
+          <fieldset ref={primaryStepRef} className={styles.stepCard} tabIndex={-1}>
+            <legend><span>1</span><div>Add a sequence or genome<small>Paste raw DNA or FASTA, or choose a FASTA file</small></div></legend>
+            <div className={styles.pasteSource}>
+              <label className={styles.fieldLabel} htmlFor="prototype-sequence-input">Raw DNA or FASTA</label>
+              <textarea id="prototype-sequence-input" rows={7} spellCheck={false} value={inlineInput} aria-invalid={primaryKind === 'inline' && Boolean(inputError)} aria-describedby="prototype-input-status" onChange={(event) => { setInlineInput(event.target.value); setPrimaryKind('inline'); clearGenomeContext(); setFormError(null); }} placeholder=">sequence&#10;ACGT..." />
+              <p className={styles.localNote}>Paste up to 10,000 bases. The session stores a checksum, lengths, and generic record ids—not pasted DNA or FASTA headers.</p>
+              <div className={styles.exampleRow} aria-label="Examples">
+                <span>Try an example</span>
+                <div><button type="button" onClick={loadFocusedExample}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample}>Use E. coli K-12 genome example</button></div>
+              </div>
+              <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
+                <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />{uploadedInput.file ? 'Replace FASTA' : 'Upload FASTA'}</button>
+                <span className={styles.fileMeta}>{uploadedInput.loading ? 'Reading file metadata…' : uploadedInput.file ? `${uploadedInput.file.name} · ${formatPrototypeBytes(uploadedInput.file.size)}` : 'FASTA (.fa, .fasta, .fna, optionally .gz) · max 50 MiB'}</span>
+                <input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} />
+              </div>
+              {uploadedInput.error ? <p className={styles.fileError}>{uploadedInput.error}</p> : null}
             </div>
 
             <div id="prototype-input-status" className={`${styles.inferenceStatus} ${inputError ? styles.invalid : inferredMode ? styles.valid : ''}`} aria-live="polite">
-              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Detected workflow</span><strong>{inferredLabel(inferredMode)}</strong><small>{primaryKind === 'catalog' ? 'Catalog genomes use genome scan.' : parsedDescription}</small></> : <span>Provide input to detect Focused candidate or Genome scan.</span>}
+              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Detected analysis</span><strong>{inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Provide input to detect a focused 100 bp window or sequence scan.</span>}
             </div>
           </fieldset>
 
-          {inferredMode === 'candidate' ? (
-            <fieldset className={styles.stepCard}>
-              <legend><span>2</span><div>Matching genome context<small>Focused scoring conditions the 100 bp sequence on its source genome</small></div></legend>
-              <div className={styles.sourceTabs} role="tablist" aria-label="Matching genome context source">
-                {(['catalog', 'upload'] as const).map((kind) => <button key={kind} id={`prototype-context-${kind}-tab`} type="button" role="tab" tabIndex={contextKind === kind ? 0 : -1} aria-selected={contextKind === kind} aria-controls="prototype-context-panel" onKeyDown={contextTabKeyDown} onClick={() => setContextKind(kind)}>{kind === 'catalog' ? 'Genome catalog' : 'Upload genome FASTA'}</button>)}
+          {inferredMode ? (
+            <fieldset ref={contextStepRef} className={styles.stepCard} tabIndex={-1}>
+              <legend><span>2</span><div>Genome context for CGR<small>Required for every focused or scan result</small></div></legend>
+              <p className={styles.localNote}>Choose the complete genome that contains the submitted sequence. The prototype cannot verify the biological match.</p>
+              {expectedExampleGenome ? (
+                <div className={styles.expectedContextPrompt}>
+                  <div><span>Recommended CGR genome for this example</span><strong>{expectedExampleGenome.displayName}</strong><small>{expectedExampleGenome.accession}</small></div>
+                  <button type="button" onClick={() => selectContextCatalog(expectedExampleGenome)}>Use this genome for CGR</button>
+                </div>
+              ) : null}
+              <div className={styles.contextSources}>
+                <div className={styles.catalogSource}>
+                  <p className={styles.sourceHeading}>Find the CGR genome in the catalog</p>
+                  <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => contextFileRef.current?.click()} />
+                </div>
+                <div className={styles.contextUploadSource}>
+                  <p className={styles.sourceHeading}>Or upload the CGR genome FASTA</p>
+                  <div className={styles.fileAction}>
+                    <div><strong>{contextUpload.file?.name || 'Choose CGR genome FASTA'}</strong><span>{contextUpload.loading ? 'Reading metadata…' : contextUpload.file ? formatPrototypeBytes(contextUpload.file.size) : '.fa, .fasta, or .fna, optionally .gz · maximum 50 MiB'}</span></div>
+                    <button type="button" onClick={() => contextFileRef.current?.click()}>{contextUpload.file ? 'Replace FASTA file' : 'Choose FASTA file'}</button>
+                    <input ref={contextFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handleContextFile} />
+                  </div>
+                  <p className={contextUpload.error ? styles.fileError : styles.localNote}>{contextUpload.error || 'Raw genome FASTA remains browser-local; only metadata and checksum enter sessionStorage.'}</p>
+                </div>
               </div>
-              <div id="prototype-context-panel" role="tabpanel" aria-labelledby={`prototype-context-${contextKind}-tab`}>
-                {contextKind === 'catalog' ? <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={setContextCatalog} onUploadInstead={() => setContextKind('upload')} /> : <div className={styles.uploadPanel}><button type="button" className={styles.uploadButton} onClick={() => contextFileRef.current?.click()}><strong>{contextUpload.file?.name || 'Choose matching genome or contigs FASTA'}</strong><span>{contextUpload.loading ? 'Reading metadata…' : contextUpload.file ? formatPrototypeBytes(contextUpload.file.size) : '.fa, .fasta, or .fna, optionally .gz · maximum 50 MiB'}</span></button><input ref={contextFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handleContextFile} /><p className={contextUpload.error ? styles.fileError : styles.localNote}>{contextUpload.error || 'Raw genome FASTA remains browser-local; only metadata and checksum enter sessionStorage.'}</p></div>}
-              </div>
+              <p className={`${styles.contextStatus} ${contextReady ? styles.valid : ''}`} aria-live="polite">{contextReady ? `CGR context ready: ${activeContextLabel}.` : 'Select a catalog genome or upload a genome FASTA for CGR.'}</p>
             </fieldset>
           ) : null}
 
           {inferredMode ? (
-            <fieldset className={styles.stepCard}>
-              <legend><span>{inferredMode === 'candidate' ? '3' : '2'}</span><div>Parameters and summary<small>Controls appropriate for the detected workflow</small></div></legend>
-              <div className={`${styles.parameterGrid} ${inferredMode === 'candidate' ? styles.parameterGridFocused : ''}`}>
+            <fieldset ref={parameterStepRef} className={styles.stepCard} tabIndex={-1}>
+              <legend><span>3</span><div>Parameters<small>Controls for the detected analysis</small></div></legend>
+              <div className={styles.parameterGrid}>
                 <label><span>Strands</span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
                 <label><span>Score cutoff</span><input type="number" min="0" max="1" step="0.01" value={Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{parametersReady ? 'Changes filtering only; raw scores stay unchanged.' : 'Enter a value from 0 to 1.'}</small></label>
-                {inferredMode === 'genome-scan' ? <label><span>Top results</span><select value={topK} onChange={(event) => setTopK(Number(event.target.value) as PrototypeTopK)}>{PROTOTYPE_TOP_K_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select><small>Limits the ranked called peaks shown.</small></label> : null}
+                <label><span>Step</span><select aria-label="Step" aria-describedby="prototype-stride-help" value={strideBases} onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} nt</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? 'A 100 bp input contains one window.' : 'Bases between consecutive 100 nt windows.'}</small></label>
               </div>
-              {inferredMode === 'genome-scan' ? <p className={styles.managedPeakNote}>Peak calling uses backend-managed settings in a future live service; they are not user parameters.</p> : null}
-              <dl className={styles.modelFacts}><div><dt>Workflow</dt><dd>{inferredLabel(inferredMode)}</dd></div><div><dt>Window</dt><dd>100 nt</dd></div><div><dt>Anchor</dt><dd>80 / 20</dd></div><div><dt>CGR</dt><dd>128 × 128</dd></div><div><dt>Stride</dt><dd>1 nt</dd></div><div><dt>Model</dt><dd>{modelVersion}</dd></div></dl>
-              <Link className={styles.contextHelp} href="/help/prediction#workflows">How was this workflow selected?</Link>
             </fieldset>
           ) : null}
 
           {formError ? <div className={styles.formError} role="alert">{formError}</div> : null}
-          <div className={styles.submitBar}><div><strong>No model was run</strong><span>Only source metadata, parameters, lengths, filenames, and checksums are saved for this tab.</span></div><button type="submit" disabled={!workbenchReady || submitting}>{submitting ? 'Preparing…' : 'Preview illustrative result'}</button></div>
+          <div className={styles.submitBar}>
+            <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
+            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting}>{submitLabel}</button>
+          </div>
         </form>
       </section>
     </main>

@@ -8,6 +8,8 @@ import {
   upsertPredictionHistory,
   type PredictionHistoryEntry,
 } from '../history';
+import PredictionProgressPanel from './prediction-progress-panel';
+import { normalizePredictionProgress, type PredictionProgressSnapshot } from '../progress';
 import styles from './prediction.module.css';
 
 const PredictionBrowser = dynamic(() => import('./prediction-browser'), { ssr: false });
@@ -26,7 +28,7 @@ type JobSummary = {
 type JobState = {
   job_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'unknown';
-  progress?: { stage?: string; percent?: number; contig?: string; strand?: string };
+  progress?: { stage?: string; percent?: number; contig?: string; strand?: string; windows?: number };
   submitted_at?: string;
   artifacts_expires_at?: string | null;
   result?: { artifacts?: Artifact[] };
@@ -343,6 +345,21 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
   const activeJob = job?.status === 'queued' || job?.status === 'running';
   const selectedEntry = history.find((entry) => entry.jobId === job?.job_id);
   const artifactsExpireAt = formatExpiry(job?.artifacts_expires_at);
+  const jobProgress: PredictionProgressSnapshot | null = job ? normalizePredictionProgress({
+    state: job.status === 'unknown' ? 'running' : job.status,
+    stage: job.progress?.stage || job.status,
+    percent: job.progress?.percent ?? null,
+    message: job.error
+      ? job.error.message || job.error.type || 'Prediction failed.'
+      : job.status === 'queued'
+        ? 'Waiting for an available worker.'
+        : job.status === 'succeeded'
+          ? 'Prediction result is ready.'
+          : `Current stage: ${(job.progress?.stage || 'running').replaceAll('_', ' ')}.`,
+    contig: job.progress?.contig,
+    strand: job.progress?.strand === '+' || job.progress?.strand === '-' ? job.progress.strand : undefined,
+    windows: job.progress?.windows,
+  }) : null;
 
   return (
     <div className={styles.section}>
@@ -400,11 +417,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
                 <i data-status={job.status}>{job.status}</i>
               </div>
               {message && <div className={styles.formError} role="alert"><span>{message}</span></div>}
-              <div className={styles.jobPanel}>
-                <div className={styles.jobSteps}>{['Queued', 'Running', 'Result ready'].map((label, index) => <div key={label} className={index <= (job.status === 'queued' ? 0 : job.status === 'running' ? 1 : 2) ? styles.activeStep : ''}><i>{index < (job.status === 'queued' ? 0 : job.status === 'running' ? 1 : 2) ? '✓' : index + 1}</i><span>{label}</span></div>)}</div>
-                <div className={styles.progress}><i style={{ width: `${Number(job.progress?.percent || 0)}%` }} /></div>
-                <p>{job.progress?.stage || job.status}{job.error ? ` · ${job.error.message || job.error.type}` : ''}</p>
-              </div>
+              {jobProgress ? <PredictionProgressPanel mode={(selectedEntry?.mode || mode) === 'genome_scan' ? 'scan' : 'focused'} snapshot={jobProgress} /> : null}
 
               {summary && <section className={styles.jobSection}>
                 <div className={styles.panelHeading}><div><p className="portal-kicker">Prediction summary</p><h2>Run statistics</h2></div></div>

@@ -1,15 +1,18 @@
 import {
   LEGACY_PROTOTYPE_PREDICTION_SCHEMA_VERSION,
+  PREVIOUS_PROTOTYPE_PREDICTION_SCHEMA_VERSION,
   PROTOTYPE_ANCHOR_BASE,
   PROTOTYPE_CGR_SIZE,
   PROTOTYPE_PREDICTION_SCHEMA_VERSION,
   PROTOTYPE_STRIDE_BASES,
+  PROTOTYPE_STRIDE_OPTIONS,
   PROTOTYPE_WINDOW_BASES,
   type PrototypeGenomeContext,
   type PrototypePredictionRun,
 } from './types';
 
-const PROTOTYPE_RUN_STORAGE_PREFIX = 'rapptor:prediction-prototype:v2:';
+const PROTOTYPE_RUN_STORAGE_PREFIX = 'rapptor:prediction-prototype:v3:';
+const PREVIOUS_PROTOTYPE_RUN_STORAGE_PREFIX = 'rapptor:prediction-prototype:v2:';
 const LEGACY_PROTOTYPE_RUN_STORAGE_PREFIX = 'rapptor:prediction-prototype:v1:';
 const PROTOTYPE_RUN_ID_PATTERN = /^prototype_[a-z0-9-]{12,80}$/;
 
@@ -30,6 +33,11 @@ export function legacyPrototypeRunStorageKey(runId: string) {
   return `${LEGACY_PROTOTYPE_RUN_STORAGE_PREFIX}${runId}`;
 }
 
+export function previousPrototypeRunStorageKey(runId: string) {
+  if (!PROTOTYPE_RUN_ID_PATTERN.test(runId)) throw new Error('Prototype run id is invalid.');
+  return `${PREVIOUS_PROTOTYPE_RUN_STORAGE_PREFIX}${runId}`;
+}
+
 function cleanGenomeContext(context: PrototypeGenomeContext): PrototypeGenomeContext {
   const contigPrefix = context.kind === 'catalog' ? null : context.kind === 'inline' ? 'inline_contig' : 'uploaded_contig';
   const shared = {
@@ -47,9 +55,7 @@ function cleanGenomeContext(context: PrototypeGenomeContext): PrototypeGenomeCon
 
 /** Serializes an explicit metadata allowlist. Raw DNA, FASTA text, and File objects are never copied. */
 export function serializePrototypePredictionRun(run: PrototypePredictionRun) {
-  const parameters = run.mode === 'candidate'
-    ? { mode: run.mode, strandMode: run.parameters.strandMode, cutoff: run.parameters.cutoff }
-    : { mode: run.mode, strandMode: run.parameters.strandMode, cutoff: run.parameters.cutoff, topK: run.parameters.topK };
+  const parameters = { mode: run.mode, strandMode: run.parameters.strandMode, cutoff: run.parameters.cutoff, strideBases: run.parameters.strideBases };
   const base = {
     schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION,
     runId: run.runId,
@@ -61,7 +67,7 @@ export function serializePrototypePredictionRun(run: PrototypePredictionRun) {
       windowBases: run.modelSpec.windowBases,
       anchorBase: run.modelSpec.anchorBase,
       cgrSize: run.modelSpec.cgrSize,
-      strideBases: run.modelSpec.strideBases,
+      strideBases: run.parameters.strideBases,
     },
   };
   const input = run.mode === 'candidate'
@@ -76,7 +82,11 @@ export function serializePrototypePredictionRun(run: PrototypePredictionRun) {
         fileSize: run.input.fileSize,
         genomeContext: cleanGenomeContext(run.input.genomeContext),
       }
-    : { kind: 'genome-scan' as const, genomeContext: cleanGenomeContext(run.input.genomeContext) };
+    : {
+        kind: 'genome-scan' as const,
+        scanSource: cleanGenomeContext(run.input.scanSource),
+        genomeContext: cleanGenomeContext(run.input.genomeContext),
+      };
   return JSON.stringify({ ...base, input });
 }
 
@@ -86,12 +96,16 @@ export function writePrototypePredictionRun(run: PrototypePredictionRun, storage
 
 export function readPrototypePredictionRun(runId: string, storage: Storage = window.sessionStorage): PrototypePredictionRun | null {
   let raw: string | null = null;
-  let legacy = false;
+  let storedVersion: 1 | 2 | 3 = 3;
   try {
     raw = storage.getItem(prototypeRunStorageKey(runId));
     if (!raw) {
+      raw = storage.getItem(previousPrototypeRunStorageKey(runId));
+      storedVersion = raw ? 2 : 1;
+    }
+    if (!raw) {
       raw = storage.getItem(legacyPrototypeRunStorageKey(runId));
-      legacy = Boolean(raw);
+      storedVersion = 1;
     }
   } catch {
     return null;
@@ -99,7 +113,12 @@ export function readPrototypePredictionRun(runId: string, storage: Storage = win
   if (!raw) return null;
   try {
     const value: unknown = JSON.parse(raw);
-    const normalized = legacy ? migrateLegacyRun(value) : value;
+    const migrated = storedVersion === 1
+      ? migrateLegacyRun(value)
+      : storedVersion === 2
+        ? migratePreviousRun(value)
+        : value;
+    const normalized = normalizeStrideMetadata(migrated);
     return isPrototypePredictionRun(normalized)
       ? JSON.parse(serializePrototypePredictionRun(normalized)) as PrototypePredictionRun
       : null;
@@ -110,11 +129,48 @@ export function readPrototypePredictionRun(runId: string, storage: Storage = win
 
 export function removePrototypePredictionRun(runId: string, storage: Storage = window.sessionStorage) {
   storage.removeItem(prototypeRunStorageKey(runId));
+  storage.removeItem(previousPrototypeRunStorageKey(runId));
   storage.removeItem(legacyPrototypeRunStorageKey(runId));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeStrideMetadata(value: unknown): unknown {
+  if (!isRecord(value) || !isRecord(value.parameters) || !isRecord(value.modelSpec)) return value;
+  const strideBases = value.parameters.strideBases === undefined
+    ? PROTOTYPE_STRIDE_BASES
+    : value.parameters.strideBases;
+  return {
+    ...value,
+    parameters: { ...value.parameters, strideBases },
+    modelSpec: { ...value.modelSpec, strideBases },
+  };
+}
+
+function migratePreviousRun(value: unknown): unknown {
+  if (!isRecord(value) || value.schemaVersion !== PREVIOUS_PROTOTYPE_PREDICTION_SCHEMA_VERSION || !isRecord(value.parameters) || !isRecord(value.input)) return null;
+  if (value.mode === 'candidate') {
+    return {
+      ...value,
+      schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION,
+      parameters: { mode: 'candidate', strandMode: value.parameters.strandMode, cutoff: value.parameters.cutoff },
+    };
+  }
+  if (value.mode === 'genome-scan' && isGenomeContext(value.input.genomeContext)) {
+    return {
+      ...value,
+      schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION,
+      parameters: { mode: 'genome-scan', strandMode: value.parameters.strandMode, cutoff: value.parameters.cutoff },
+      input: {
+        kind: 'genome-scan',
+        scanSource: value.input.genomeContext,
+        genomeContext: value.input.genomeContext,
+      },
+    };
+  }
+  return null;
 }
 
 function migrateLegacyRun(value: unknown): unknown {
@@ -127,15 +183,10 @@ function migrateLegacyRun(value: unknown): unknown {
         ...value,
         schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION,
         mode: 'genome-scan',
-        parameters: {
-          mode: 'genome-scan',
-          strandMode: value.parameters.strandMode,
-          cutoff: value.parameters.cutoff,
-          topK: value.parameters.topK,
-        },
+        parameters: { mode: 'genome-scan', strandMode: value.parameters.strandMode, cutoff: value.parameters.cutoff },
         input: {
           kind: 'genome-scan',
-          genomeContext: {
+          scanSource: {
             kind: 'inline',
             displayName: 'Pasted sequence',
             fileName: null,
@@ -144,6 +195,17 @@ function migrateLegacyRun(value: unknown): unknown {
             totalLength: length,
             contigs: [{ sequenceId: 'inline_contig_1', length }],
           },
+          genomeContext: isGenomeContext(value.input.genomeContext)
+            ? value.input.genomeContext
+            : {
+                kind: 'inline',
+                displayName: 'Pasted sequence',
+                fileName: null,
+                fileSize: null,
+                checksum: value.input.checksum,
+                totalLength: length,
+                contigs: [{ sequenceId: 'inline_contig_1', length }],
+              },
         },
       };
     }
@@ -155,10 +217,16 @@ function migrateLegacyRun(value: unknown): unknown {
     };
   }
   if (value.mode === 'genome-scan') {
+    if (!isGenomeContext(value.input.genomeContext)) return null;
     return {
       ...value,
       schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION,
-      parameters: { mode: 'genome-scan', strandMode: value.parameters.strandMode, cutoff: value.parameters.cutoff, topK: value.parameters.topK },
+      parameters: { mode: 'genome-scan', strandMode: value.parameters.strandMode, cutoff: value.parameters.cutoff },
+      input: {
+        kind: 'genome-scan',
+        scanSource: value.input.genomeContext,
+        genomeContext: value.input.genomeContext,
+      },
     };
   }
   return null;
@@ -182,8 +250,10 @@ function hasValidParameters(value: Record<string, unknown>, mode: unknown) {
     && typeof value.cutoff === 'number'
     && Number.isFinite(value.cutoff)
     && value.cutoff >= 0
-    && value.cutoff <= 1;
-  return shared && (mode === 'candidate' || value.topK === 5 || value.topK === 10 || value.topK === 20);
+    && value.cutoff <= 1
+    && typeof value.strideBases === 'number'
+    && PROTOTYPE_STRIDE_OPTIONS.includes(value.strideBases as (typeof PROTOTYPE_STRIDE_OPTIONS)[number]);
+  return shared;
 }
 
 function hasValidModelSpec(value: Record<string, unknown>) {
@@ -191,13 +261,14 @@ function hasValidModelSpec(value: Record<string, unknown>) {
     && value.windowBases === PROTOTYPE_WINDOW_BASES
     && value.anchorBase === PROTOTYPE_ANCHOR_BASE
     && value.cgrSize === PROTOTYPE_CGR_SIZE
-    && value.strideBases === PROTOTYPE_STRIDE_BASES;
+    && typeof value.strideBases === 'number'
+    && PROTOTYPE_STRIDE_OPTIONS.includes(value.strideBases as (typeof PROTOTYPE_STRIDE_OPTIONS)[number]);
 }
 
 function isPrototypePredictionRun(value: unknown): value is PrototypePredictionRun {
   if (!isRecord(value) || value.schemaVersion !== PROTOTYPE_PREDICTION_SCHEMA_VERSION) return false;
   if (typeof value.runId !== 'string' || !PROTOTYPE_RUN_ID_PATTERN.test(value.runId) || typeof value.createdAt !== 'string') return false;
-  if (!isRecord(value.parameters) || !hasValidParameters(value.parameters, value.mode) || !isRecord(value.modelSpec) || !hasValidModelSpec(value.modelSpec) || !isRecord(value.input)) return false;
+  if (!isRecord(value.parameters) || !hasValidParameters(value.parameters, value.mode) || !isRecord(value.modelSpec) || !hasValidModelSpec(value.modelSpec) || value.modelSpec.strideBases !== value.parameters.strideBases || !isRecord(value.input)) return false;
   if (value.mode === 'candidate') {
     return value.input.kind === 'candidate'
       && typeof value.input.displayName === 'string'
@@ -209,5 +280,8 @@ function isPrototypePredictionRun(value: unknown): value is PrototypePredictionR
       && nullableSafeInteger(value.input.fileSize)
       && isGenomeContext(value.input.genomeContext);
   }
-  return value.mode === 'genome-scan' && value.input.kind === 'genome-scan' && isGenomeContext(value.input.genomeContext);
+  return value.mode === 'genome-scan'
+    && value.input.kind === 'genome-scan'
+    && isGenomeContext(value.input.scanSource)
+    && isGenomeContext(value.input.genomeContext);
 }

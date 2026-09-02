@@ -1,0 +1,49 @@
+.panel {
+  margin-bottom: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 19px 22px;
+  background: white;
+}
+
+.heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
+.heading > div { display: grid; gap: 4px; }
+.heading span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .055em; text-transform: uppercase; }
+.heading strong { color: var(--ink); font-size: 14px; }
+.heading .percent { color: var(--teal-dark); font: 700 22px/1 Georgia, serif; }
+
+.steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 19px 0 0; padding: 0; list-style: none; }
+.steps li { position: relative; min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 9px; font-weight: 750; }
+.steps li:not(:last-child)::after { content: ""; position: absolute; z-index: 0; left: 26px; right: 8px; top: 11px; height: 2px; background: var(--line); }
+.steps i { position: relative; z-index: 1; width: 23px; height: 23px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; background: white; font-size: 9px; font-style: normal; }
+.steps span { position: relative; z-index: 1; overflow-wrap: anywhere; background: white; padding-right: 7px; }
+.steps .complete, .steps .current { color: var(--teal-dark); }
+.steps .complete i { border-color: var(--teal); background: var(--teal-soft); }
+.steps .current i { border-color: var(--teal-dark); background: var(--teal-dark); color: white; box-shadow: 0 0 0 3px rgb(0 121 107 / 12%); }
+
+.panel progress { width: 100%; height: 8px; display: block; margin-top: 22px; overflow: hidden; border: 0; border-radius: 999px; background: #e4eae7; color: var(--teal); accent-color: var(--teal); }
+.panel progress::-webkit-progress-bar { border-radius: 999px; background: #e4eae7; }
+.panel progress::-webkit-progress-value { border-radius: 999px; background: var(--teal); transition: width .25s ease; }
+.panel progress::-moz-progress-bar { border-radius: 999px; background: var(--teal); }
+
+.status { min-height: 24px; display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--ink-soft); }
+.status svg { width: 19px; color: #9b3932; }
+.status > div { display: grid; gap: 3px; }
+.status strong { font-size: 10px; }
+.status span { color: var(--muted); font-size: 9px; }
+.simulatedNote { margin: 9px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.failed { border-color: #dfaaa1; background: #fffafa; }
+.failed .heading .percent { color: #913127; }
+.actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+.actions button, .actions a { min-height: 38px; display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 5px; background: white; padding: 7px 12px; color: var(--teal-dark); font-size: 10px; font-weight: 800; cursor: pointer; }
+
+@media (max-width: 760px) {
+  .panel { padding: 17px 14px; }
+  .steps { grid-template-columns: 1fr; gap: 7px; }
+  .steps li:not(:last-child)::after { left: 11px; right: auto; top: 22px; bottom: -8px; width: 2px; height: auto; }
+  .steps span { padding-right: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel progress::-webkit-progress-value { transition: none; }
+}

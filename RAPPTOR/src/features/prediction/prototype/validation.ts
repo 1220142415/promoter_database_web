@@ -1,17 +1,18 @@
 import {
+  PROTOTYPE_STRIDE_BASES,
+  PROTOTYPE_STRIDE_OPTIONS,
   type PrototypePredictionMode,
   type PrototypeCandidateParameters,
   type PrototypeGenomeScanParameters,
   type PrototypePredictionParameters,
   type PrototypeStrandMode,
-  type PrototypeTopK,
+  type PrototypeStrideBases,
 } from './types';
 
 export const PROTOTYPE_CANDIDATE_MIN_BASES = 100 as const;
 export const PROTOTYPE_INLINE_MAX_BASES = 10_000 as const;
 export const PROTOTYPE_GENOME_MAX_BYTES = 50 * 1024 * 1024;
 export const PROTOTYPE_GENOME_FILE_PATTERN = /\.(?:fa|fasta|fna)(?:\.gz)?$/i;
-export const PROTOTYPE_TOP_K_OPTIONS = [5, 10, 20] as const;
 
 export class PrototypeValidationError extends Error {
   constructor(message: string) {
@@ -20,14 +21,14 @@ export class PrototypeValidationError extends Error {
   }
 }
 
-export function prototypeParameters(mode: 'candidate', strandMode: PrototypeStrandMode, cutoff: number): PrototypeCandidateParameters;
-export function prototypeParameters(mode: 'genome-scan', strandMode: PrototypeStrandMode, cutoff: number, topK: number): PrototypeGenomeScanParameters;
-export function prototypeParameters(mode: PrototypePredictionMode, strandMode: PrototypeStrandMode, cutoff: number, topK?: number): PrototypePredictionParameters;
+export function prototypeParameters(mode: 'candidate', strandMode: PrototypeStrandMode, cutoff: number, strideBases?: number): PrototypeCandidateParameters;
+export function prototypeParameters(mode: 'genome-scan', strandMode: PrototypeStrandMode, cutoff: number, strideBases?: number): PrototypeGenomeScanParameters;
+export function prototypeParameters(mode: PrototypePredictionMode, strandMode: PrototypeStrandMode, cutoff: number, strideBases?: number): PrototypePredictionParameters;
 export function prototypeParameters(
   mode: PrototypePredictionMode,
   strandMode: PrototypeStrandMode,
   cutoff: number,
-  topK?: number,
+  strideBases: number = PROTOTYPE_STRIDE_BASES,
 ): PrototypePredictionParameters {
   if (strandMode !== 'both' && strandMode !== 'forward') {
     throw new PrototypeValidationError('Choose a supported strand option.');
@@ -35,14 +36,11 @@ export function prototypeParameters(
   if (!Number.isFinite(cutoff) || cutoff < 0 || cutoff > 1) {
     throw new PrototypeValidationError('Score cutoff must be between 0 and 1.');
   }
-  if (mode === 'genome-scan' && !PROTOTYPE_TOP_K_OPTIONS.includes(topK as PrototypeTopK)) {
-    throw new PrototypeValidationError('Top results must be 5, 10, or 20.');
+  if (!PROTOTYPE_STRIDE_OPTIONS.includes(strideBases as PrototypeStrideBases)) {
+    throw new PrototypeValidationError('Choose a supported scan stride.');
   }
-
-  const base = { strandMode, cutoff: Math.round(cutoff * 100) / 100 };
-  return mode === 'candidate'
-    ? { mode, ...base }
-    : { mode, ...base, topK: topK as PrototypeTopK };
+  const base = { strandMode, cutoff: Math.round(cutoff * 100) / 100, strideBases: strideBases as PrototypeStrideBases };
+  return { mode, ...base };
 }
 
 export function validatePrototypeCandidateLength(length: number) {

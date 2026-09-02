@@ -1,18 +1,21 @@
-export const PROTOTYPE_PREDICTION_SCHEMA_VERSION = 2 as const;
+export const PROTOTYPE_PREDICTION_SCHEMA_VERSION = 3 as const;
+export const PREVIOUS_PROTOTYPE_PREDICTION_SCHEMA_VERSION = 2 as const;
 export const LEGACY_PROTOTYPE_PREDICTION_SCHEMA_VERSION = 1 as const;
 export const PROTOTYPE_WINDOW_BASES = 100 as const;
 export const PROTOTYPE_ANCHOR_BASE = 80 as const;
 export const PROTOTYPE_CGR_SIZE = 128 as const;
-export const PROTOTYPE_STRIDE_BASES = 1 as const;
+export const PROTOTYPE_STRIDE_OPTIONS = [1, 5, 10, 20] as const;
+export type PrototypeStrideBases = typeof PROTOTYPE_STRIDE_OPTIONS[number];
+export const PROTOTYPE_STRIDE_BASES: PrototypeStrideBases = 1;
 
 export type PrototypePredictionMode = 'candidate' | 'genome-scan';
 export type PrototypeStrandMode = 'both' | 'forward';
-export type PrototypeTopK = 5 | 10 | 20;
 export type PrototypeStrand = '+' | '-';
 
 interface PrototypeBaseParameters {
   strandMode: PrototypeStrandMode;
   cutoff: number;
+  strideBases: PrototypeStrideBases;
 }
 
 export interface PrototypeCandidateParameters extends PrototypeBaseParameters {
@@ -21,7 +24,6 @@ export interface PrototypeCandidateParameters extends PrototypeBaseParameters {
 
 export interface PrototypeGenomeScanParameters extends PrototypeBaseParameters {
   mode: 'genome-scan';
-  topK: PrototypeTopK;
 }
 
 export type PrototypePredictionParameters =
@@ -77,6 +79,7 @@ export interface PrototypeCandidateInput {
 
 export interface PrototypeGenomeScanInput {
   kind: 'genome-scan';
+  scanSource: PrototypeGenomeContext;
   genomeContext: PrototypeGenomeContext;
 }
 
@@ -85,7 +88,7 @@ export interface PrototypeModelSpec {
   windowBases: typeof PROTOTYPE_WINDOW_BASES;
   anchorBase: typeof PROTOTYPE_ANCHOR_BASE;
   cgrSize: typeof PROTOTYPE_CGR_SIZE;
-  strideBases: typeof PROTOTYPE_STRIDE_BASES;
+  strideBases: PrototypeStrideBases;
 }
 
 interface PrototypeRunBase {
@@ -112,7 +115,7 @@ export type PrototypePredictionRun = PrototypeCandidateRun | PrototypeGenomeScan
 export interface PrototypeWindowParameters {
   strandMode: PrototypeStrandMode;
   cutoff: number;
-  topK: PrototypeTopK | null;
+  strideBases: PrototypeStrideBases;
 }
 
 export interface PrototypeScoreWindow {

@@ -32,19 +32,15 @@
 }
 
 .form { padding: 28px; }
-.formHeading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+.formHeading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .formHeading > div { display: grid; gap: 4px; }
 .formHeading > div > span { color: var(--teal-dark); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .formHeading h2 { margin: 0; font: 600 27px/1.2 Georgia, "Times New Roman", serif; }
-.examplePicker { width: min(220px, 100%); }
-.examplePicker > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .055em; text-transform: uppercase; }
-.examplePicker select { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 9px 34px 9px 12px; background: white; color: var(--teal-dark); font-size: 12px; font-weight: 750; cursor: pointer; }
-.examplePicker select:hover { border-color: var(--teal); background-color: var(--teal-soft); }
-
 .inlineActions button,
 .searchRow button,
 .catalogError button,
-.selection button {
+.selection button,
+.fileAction button {
   min-height: 44px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
@@ -59,7 +55,8 @@
 .inlineActions button:hover,
 .searchRow button:hover,
 .catalogError button:hover,
-.selection button:hover { border-color: var(--teal); background: var(--teal-soft); }
+.selection button:hover,
+.fileAction button:hover { border-color: var(--teal); background: var(--teal-soft); }
 
 .stepCard {
   min-width: 0;
@@ -86,7 +83,7 @@
   color: var(--ink);
 }
 
-.stepCard textarea { min-height: 190px; resize: vertical; padding: 13px 14px; font: 12px/1.55 "SFMono-Regular", Consolas, monospace; }
+.stepCard textarea { min-height: 136px; resize: vertical; padding: 12px 14px; font: 12px/1.55 "SFMono-Regular", Consolas, monospace; }
 .stepCard input, .stepCard select { min-height: 44px; padding: 9px 12px; }
 .stepCard input[aria-invalid="true"] { border-color: #b54b3d; }
 
@@ -101,14 +98,39 @@
 .inferenceStatus.invalid { border-color: #e1b7b0; background: #fff8f6; color: #8f3026; }
 
 .inlineActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 9px; }
-.inlineActions a, .contextHelp, .catalogError a { min-height: 44px; display: inline-flex; align-items: center; color: var(--teal-dark); font-size: 12px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
+.inlineActions a, .catalogError a { min-height: 44px; display: inline-flex; align-items: center; color: var(--teal-dark); font-size: 12px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
 .hiddenInput { position: absolute !important; width: 1px !important; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 
-.sourceTabs { display: flex; gap: 0; width: fit-content; margin: 4px 0 18px; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
-.sourceTabs button { min-height: 44px; border: 0; border-right: 1px solid var(--line-strong); padding: 8px 16px; background: white; color: var(--ink-soft); font-size: 12px; font-weight: 750; cursor: pointer; }
-.sourceTabs button:last-child { border-right: 0; }
-.sourceTabs button[aria-selected="true"] { background: var(--teal-dark); color: white; }
-.catalogPanel, .uploadPanel { min-height: 118px; }
+.pasteSource, .catalogSource, .contextUploadSource { min-width: 0; }
+.catalogSource { border-left: 1px solid var(--line); padding-left: 24px; }
+.sourceHeading { margin: 6px 0 4px; color: var(--teal-dark); font-size: 12px; font-weight: 800; }
+.expectedContextPrompt { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 12px 0 18px; border: 1px solid #b9d9d2; border-radius: 7px; padding: 13px 14px; background: var(--teal-soft); }
+.expectedContextPrompt > div { min-width: 0; display: grid; gap: 3px; }
+.expectedContextPrompt span { color: var(--teal-dark); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.expectedContextPrompt strong { font-size: 12px; }
+.expectedContextPrompt small { color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; }
+.expectedContextPrompt button { min-height: 42px; flex: 0 0 auto; border: 1px solid var(--teal); border-radius: 6px; padding: 8px 13px; background: white; color: var(--teal-dark); font-size: 11px; font-weight: 800; cursor: pointer; }
+.expectedContextPrompt button:hover { background: #e4f4f0; }
+.fileAction { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; border: 1px solid var(--line); border-radius: 7px; padding: 12px 13px; background: #f8faf9; }
+.fileAction > div { min-width: 0; display: grid; gap: 4px; }
+.fileAction strong { overflow-wrap: anywhere; color: var(--ink); font-size: 12px; }
+.fileAction span { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.fileAction button { flex: 0 0 auto; }
+.exampleRow { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; margin-top: 10px; }
+.exampleRow > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .055em; text-transform: uppercase; }
+.exampleRow > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.exampleRow button { min-height: 38px; border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px; background: #f8faf9; color: var(--teal-dark); font-size: 11px; font-weight: 700; cursor: pointer; }
+.exampleRow button:hover { border-color: var(--teal); background: var(--teal-soft); }
+.primaryFileAction { gap: 10px; margin-top: 10px; border: 0; padding: 0; background: transparent; }
+.primaryFileAction button { min-height: 38px; display: inline-flex; align-items: center; gap: 6px; border-color: #b9d9d2; background: var(--teal-soft); font-size: 11px; }
+.primaryFileAction button:hover { background: #e4f4f0; }
+.fileMeta { min-width: 0; overflow-wrap: anywhere; }
+.contextSources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.contextSources > .catalogSource { border-left: 0; padding-left: 0; }
+.contextUploadSource { border-left: 1px solid var(--line); padding-left: 24px; }
+.contextStatus { min-height: 44px; margin: 16px 0 0; border: 1px solid var(--line); border-radius: 7px; padding: 12px 14px; background: #f8faf9; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.contextStatus.valid { border-color: #b9d9d2; background: var(--teal-soft); color: #17653d; }
+.catalogPanel { min-height: 118px; }
 .searchRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
 .searchRow button { min-height: 44px; }
 
@@ -127,29 +149,18 @@
 .selection strong { font-size: 13px; }
 .selection span { color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; }
 
-.uploadButton { width: 100%; min-height: 96px; display: grid; place-content: center; gap: 7px; border: 1px dashed var(--teal); border-radius: 8px; padding: 18px; background: #f7fbfa; color: var(--ink); text-align: center; cursor: pointer; }
-.uploadButton:hover { background: var(--teal-soft); }
-.uploadButton strong { font-size: 13px; }
-.uploadButton span { color: var(--muted); font-size: 10px; }
 .localNote, .fileError { margin: 9px 0 0; font-size: 11px; line-height: 1.6; }
 .localNote { color: var(--muted); }
 
 .parameterGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.parameterGridFocused { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .parameterGrid label { min-width: 0; }
 .parameterGrid label > small { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .managedPeakNote { margin: 16px 0 0; border-left: 3px solid var(--gold); padding: 9px 12px; background: var(--gold-soft); color: #70400b; font-size: 11px; line-height: 1.55; }
-.modelFacts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 20px 0 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.modelFacts > div { min-width: 0; padding: 12px; border-right: 1px solid var(--line); }
-.modelFacts > div:last-child { border-right: 0; }
-.modelFacts dt { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
-.modelFacts dd { margin: 5px 0 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 700; }
 
 .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--line); overflow: hidden; }
 .summary > div { min-width: 0; display: grid; gap: 6px; padding: 13px; background: #f8faf9; }
 .summary span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .summary strong { overflow-wrap: anywhere; font-size: 11px; }
-.contextHelp { display: inline-flex; margin-top: 14px; }
 .formError { margin-bottom: 16px; border: 1px solid #dfaaa1; border-radius: 6px; padding: 13px 15px; background: #fff7f5; color: #913127; font-size: 12px; }
 
 .submitBar { display: flex; align-items: center; justify-content: space-between; gap: 25px; border-radius: 8px; padding: 18px 20px; background: #172824; color: white; }
@@ -158,11 +169,13 @@
 .submitBar span { color: #d0dad7; font-size: 10px; line-height: 1.5; }
 .submitBar button { min-height: 46px; flex: 0 0 auto; border: 1px solid #a9ded3; border-radius: 6px; padding: 10px 18px; background: #f8fffd; color: var(--teal-dark); font-size: 13px; font-weight: 850; cursor: pointer; }
 .submitBar button:disabled { border-color: #53635f; background: #364640; color: #9dacaa; cursor: not-allowed; }
+.stepCard:focus { outline: 3px solid rgba(0, 121, 107, 0.3); outline-offset: 3px; }
 
 @media (max-width: 900px) {
   .parameterGrid { grid-template-columns: 1fr; }
-  .modelFacts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .modelFacts > div { border-bottom: 1px solid var(--line); }
+  .contextSources { grid-template-columns: 1fr; }
+  .catalogSource, .contextUploadSource { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
+  .contextSources > .catalogSource { border-top: 0; padding-top: 0; }
   .summary { grid-template-columns: 1fr; }
 }
 
@@ -172,12 +185,13 @@
   .hero h1 { font-size: 40px; }
   .form { padding: 17px 13px; }
   .formHeading, .submitBar { align-items: stretch; flex-direction: column; }
-  .examplePicker, .submitBar button { width: 100%; }
+  .submitBar button { width: 100%; }
   .stepCard { padding: 18px 13px; }
-  .sourceTabs { width: 100%; }
-  .sourceTabs button { flex: 1; min-height: 44px; }
+  .fileAction { align-items: stretch; flex-direction: column; }
+  .primaryFileAction { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
+  .primaryFileAction .fileMeta { flex-basis: 100%; }
   .searchRow { grid-template-columns: 1fr; }
   .selection { align-items: stretch; flex-direction: column; }
-  .modelFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .modelFacts > div { border-right: 0; }
+  .expectedContextPrompt { align-items: stretch; flex-direction: column; }
+  .expectedContextPrompt button { width: 100%; }
 }

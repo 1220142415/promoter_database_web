@@ -8,63 +8,55 @@ import {
 } from '@/features/prediction/prototype';
 import {
   buildPrototypeDownload,
-  prototypeResultBed6,
+  prototypeResultBedGraph,
   prototypeResultGff3,
-  prototypeResultJson,
-  prototypeResultTsv,
 } from '@/features/prediction/prototype-result-downloads';
 
 const candidateRun: PrototypePredictionRun = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   runId: 'prototype_candidate-download-001',
   createdAt: '2026-09-01T00:00:00.000Z',
   mode: 'candidate',
-  parameters: { mode: 'candidate', strandMode: 'both', cutoff: .9 },
+  parameters: { mode: 'candidate', strandMode: 'both', cutoff: .9, strideBases: 1 },
   input: { kind: 'candidate', displayName: 'candidate', format: 'raw', length: 100, checksum: 'a'.repeat(64), sourceKind: 'inline', fileName: null, fileSize: null, genomeContext: PROTOTYPE_CANDIDATE_GENOME_EXAMPLE },
   modelSpec: DEFAULT_PROTOTYPE_MODEL_SPEC,
 };
 
 const genomeRun: PrototypePredictionRun = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   runId: 'prototype_genome-download-001',
   createdAt: '2026-09-01T00:00:00.000Z',
   mode: 'genome-scan',
-  parameters: { mode: 'genome-scan', strandMode: 'both', cutoff: .9, topK: 10 },
-  input: { kind: 'genome-scan', genomeContext: PROTOTYPE_GENOME_EXAMPLE },
+  parameters: { mode: 'genome-scan', strandMode: 'both', cutoff: .9, strideBases: 1 },
+  input: { kind: 'genome-scan', scanSource: PROTOTYPE_GENOME_EXAMPLE, genomeContext: PROTOTYPE_CANDIDATE_GENOME_EXAMPLE },
   modelSpec: DEFAULT_PROTOTYPE_MODEL_SPEC,
 };
 
 describe('prototype result downloads', () => {
-  it('labels fixture JSON and never exports raw inputs or hidden peak settings', () => {
+  it('offers only GFF3 and bedGraph files', () => {
     const fixture = createPrototypeFixture(genomeRun);
-    const json = prototypeResultJson(genomeRun, fixture);
-    expect(json).toContain('No model was run');
-    expect(json).toContain('"peakCalling": "backend-managed"');
-    expect(json).not.toMatch(/sigma|minDistance|sequence\s*:/i);
-    expect(buildPrototypeDownload(genomeRun, fixture, 'json').fileName).toBe('rapptor-prototype_genome-download-001.json');
+    expect(buildPrototypeDownload(genomeRun, fixture, 'gff3').fileName).toBe('rapptor-prototype_genome-download-001.gff3');
+    expect(buildPrototypeDownload(genomeRun, fixture, 'bedgraph').fileName).toBe('rapptor-prototype_genome-download-001.bedGraph');
   });
 
-  it('exports focused scores per strand without ranking or scan-only fields', () => {
+  it('exports focused strand windows in GFF3 and raw anchor scores in bedGraph', () => {
     const fixture = createPrototypeFixture(candidateRun);
-    const json = prototypeResultJson(candidateRun, fixture);
-    const tsv = prototypeResultTsv(candidateRun, fixture);
     expect(fixture.windows).toHaveLength(2);
-    expect(json).not.toMatch(/topK|topWindows|calledPeaks/);
-    expect(tsv).toContain('raw_score\tcutoff\tcutoff_state\tanchor_1based');
-    expect(tsv).not.toMatch(/rank|smoothed_score|called-peak/);
-    expect(tsv.trim().split('\n')).toHaveLength(3);
 
     const gffLines = prototypeResultGff3(candidateRun, fixture).trim().split('\n').filter((line) => !line.startsWith('#'));
     expect(gffLines).toHaveLength(2);
     expect(gffLines.every((line) => line.includes('\tfocused_window\t1\t100\t'))).toBe(true);
     expect(gffLines.every((line) => line.includes('cutoff_state='))).toBe(true);
+    expect(gffLines.map((line) => line.split('\t')[6])).toEqual(['+', '-']);
 
-    const bedLines = prototypeResultBed6(candidateRun, fixture).trim().split('\n').map((line) => line.split('\t'));
+    const bedLines = prototypeResultBedGraph(fixture).trim().split('\n').filter((line) => !line.startsWith('track ')).map((line) => line.split('\t'));
     expect(bedLines).toHaveLength(2);
-    expect(bedLines.every((columns) => columns[1] === '0' && columns[2] === '100')).toBe(true);
+    expect(bedLines.map((columns) => [columns[1], columns[2]])).toEqual([['79', '80'], ['20', '21']]);
+    expect(prototypeResultBedGraph(fixture)).toContain('raw scores (+)');
+    expect(prototypeResultBedGraph(fixture)).toContain('raw scores (-)');
   });
 
-  it('exports called peaks as 1 bp anchors in GFF3 and BED6', () => {
+  it('exports scan called peaks as 1 bp GFF3 features and raw scores as zero-based bedGraph intervals', () => {
     const fixture = createPrototypeFixture(genomeRun);
     expect(fixture.calledPeaks.length).toBeGreaterThan(0);
     const first = fixture.calledPeaks[0];
@@ -75,8 +67,9 @@ describe('prototype result downloads', () => {
     expect(gffColumns[5]).toBe(first.smoothedScore.toFixed(6));
     expect(gffColumns[8]).toContain(`window_start_1based=${first.windowStart}`);
 
-    const bedColumns = prototypeResultBed6(genomeRun, fixture).trim().split('\n')[0].split('\t');
+    const bedColumns = prototypeResultBedGraph(fixture).trim().split('\n').find((line) => !line.startsWith('track '))!.split('\t');
     expect(Number(bedColumns[2]) - Number(bedColumns[1])).toBe(1);
-    expect(bedColumns[4]).toBe(String(Math.round(first.smoothedScore * 1000)));
+    expect(Number(bedColumns[3])).toBeGreaterThanOrEqual(0);
+    expect(Number(bedColumns[3])).toBeLessThanOrEqual(1);
   });
 });

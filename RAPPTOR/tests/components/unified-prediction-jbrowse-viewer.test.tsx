@@ -208,6 +208,65 @@ describe('prediction-only unified JBrowse configuration', () => {
     });
   });
 
+  it('adds browser-local bedGraph raw scores and GFF3 called peaks for a prototype assembly', () => {
+    const source = assembly(false);
+    const prototype = {
+      ...source,
+      assetBase: '',
+      adapterMode: 'unindexed' as const,
+      allowShareView: false,
+      assets: {
+        ...source.assets,
+        fasta: 'blob:prototype-reference',
+        fastaFai: '',
+        fastaGzi: '',
+        predictedPromoters: '',
+        predictedPromotersIndex: '',
+        promoterScoresPlus: null,
+        promoterScoresMinus: null,
+        ncbiAnnotations: null,
+        ncbiAnnotationsIndex: null,
+      },
+      trackLabels: { reference: 'Illustrative reference sequence' },
+      prototypeTracks: {
+        rawScoresBedGraphPlus: 'blob:prototype-plus',
+        rawScoresBedGraphMinus: 'blob:prototype-minus',
+        calledPeaksGff3: 'blob:prototype-peaks',
+        rawScoresLabel: 'Illustrative raw scores (+ / - strands)',
+        calledPeaksLabel: 'Illustrative called peaks',
+      },
+    };
+
+    render(<UnifiedJBrowseViewer prediction={prototype} />);
+
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      assembly: { sequence: { name: string; adapter: Record<string, unknown> } };
+      tracks: ReadonlyArray<{ name: string; type: string; adapter: Record<string, unknown>; displays: ReadonlyArray<Record<string, unknown>>; metadata: Record<string, unknown> }>;
+    };
+    expect(config.assembly.sequence.name).toBe('Illustrative reference sequence');
+    expect(config.assembly.sequence.adapter).toMatchObject({ type: 'UnindexedFastaAdapter', fastaLocation: { uri: 'blob:prototype-reference' } });
+    expect(config.tracks).toHaveLength(3);
+    expect(config.tracks[0]).toMatchObject({
+      name: 'Illustrative raw scores (+ / - strands) · + strand',
+      type: 'QuantitativeTrack',
+      adapter: { type: 'BedGraphAdapter', bedGraphLocation: { uri: 'blob:prototype-plus' } },
+      displays: [{ type: 'LinearWiggleDisplay', defaultRendering: 'xyplot', minScore: 0, maxScore: 1 }],
+    });
+    expect(config.tracks[0].metadata).not.toHaveProperty('rapptorMirroredScore');
+    expect(config.tracks[1]).toMatchObject({
+      name: 'Illustrative raw scores (+ / - strands) · − strand',
+      type: 'QuantitativeTrack',
+      adapter: { type: 'BedGraphAdapter', bedGraphLocation: { uri: 'blob:prototype-minus' } },
+      displays: [{ type: 'LinearWiggleDisplay', defaultRendering: 'xyplot', minScore: 0, maxScore: 1 }],
+    });
+    expect(config.tracks[2]).toMatchObject({
+      name: 'Illustrative called peaks',
+      type: 'FeatureTrack',
+      adapter: { type: 'Gff3Adapter', gffLocation: { uri: 'blob:prototype-peaks' } },
+    });
+    expect(screen.queryByRole('button', { name: 'Share current view' })).not.toBeInTheDocument();
+  });
+
   it('uses whole-file adapters for a browser-prepared staged genome', () => {
     const unindexed = { ...assembly(true), adapterMode: 'unindexed' as const };
     unindexed.assets.ncbiAnnotationsIndex = null;

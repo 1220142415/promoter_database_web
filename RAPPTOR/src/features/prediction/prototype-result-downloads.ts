@@ -5,7 +5,7 @@ import type {
   PrototypeScoreWindow,
 } from './prototype';
 
-export type PrototypeDownloadFormat = 'json' | 'tsv' | 'bedgraph' | 'gff3' | 'bed';
+export type PrototypeDownloadFormat = 'bedgraph' | 'gff3';
 
 export interface PrototypeDownloadFile {
   body: string;
@@ -22,121 +22,24 @@ function resultFeatures(run: PrototypePredictionRun, fixture: PrototypePredictio
   return focusedWindowsForDownload(fixture);
 }
 
-function publicParameters(run: PrototypePredictionRun) {
-  return run.mode === 'genome-scan'
-    ? { strandMode: run.parameters.strandMode, cutoff: run.parameters.cutoff, topK: run.parameters.topK, peakCalling: 'backend-managed' }
-    : { strandMode: run.parameters.strandMode, cutoff: run.parameters.cutoff };
-}
-
-function publicWindow(window: PrototypeScoreWindow) {
-  return {
-    sequenceId: window.sequenceId,
-    anchor1Based: window.anchor,
-    windowStart1Based: window.windowStart,
-    windowEnd1Based: window.windowEnd,
-    strand: window.strand,
-    rawScore: window.score,
-  };
-}
-
-function publicPeak(peak: PrototypeCalledPeak) {
-  return {
-    ...publicWindow(peak),
-    smoothedScore: peak.smoothedScore,
-    feature: 'called-peak',
-  };
-}
-
-function publicFocusedWindow(window: PrototypeScoreWindow, cutoff: number) {
-  return {
-    ...publicWindow(window),
-    resultType: 'focused-window',
-    cutoff,
-    cutoffState: window.score > cutoff ? 'above-cutoff' : 'at-or-below-cutoff',
-  };
-}
-
-export function prototypeResultJson(run: PrototypePredictionRun, fixture: PrototypePredictionFixture) {
-  const genomeContext = run.input.genomeContext;
-  const payload = {
-    schemaVersion: 1,
-    prototype: true,
-    notice: 'No model was run. These values are deterministic interface fixtures.',
-    runId: run.runId,
-    mode: run.mode,
-    createdAt: run.createdAt,
-    modelVersion: run.modelSpec.version,
-    input: run.mode === 'candidate'
-      ? {
-          displayName: run.input.displayName,
-          format: run.input.format,
-          length: run.input.length,
-          checksum: run.input.checksum,
-          genomeContext: genomeContext.displayName,
-        }
-      : {
-          displayName: genomeContext.displayName,
-          fileName: genomeContext.fileName,
-          totalLength: genomeContext.totalLength,
-          checksum: genomeContext.checksum,
-        },
-    parameters: publicParameters(run),
-    rawScores: run.mode === 'candidate'
-      ? focusedWindowsForDownload(fixture).map((window) => publicFocusedWindow(window, run.parameters.cutoff))
-      : fixture.scoreSeries.map(publicWindow),
-    calledPeaks: run.mode === 'genome-scan' ? fixture.calledPeaks.map(publicPeak) : undefined,
-  };
-  return `${JSON.stringify(payload, null, 2)}\n`;
-}
-
 function focusedWindowsForDownload(fixture: PrototypePredictionFixture) {
   return [...fixture.windows].sort((left, right) => left.strand === right.strand ? 0 : left.strand === '+' ? -1 : 1);
 }
 
-export function prototypeResultTsv(run: PrototypePredictionRun, fixture: PrototypePredictionFixture) {
-  if (run.mode === 'candidate') {
-    return [
-      ['sequence_id', 'strand', 'raw_score', 'cutoff', 'cutoff_state', 'anchor_1based', 'window_start_1based', 'window_end_1based', 'result_type'].join('\t'),
-      ...focusedWindowsForDownload(fixture).map((window) => [
-        window.sequenceId,
-        window.strand,
-        score(window.score),
-        score(run.parameters.cutoff),
-        window.score > run.parameters.cutoff ? 'above-cutoff' : 'at-or-below-cutoff',
-        window.anchor,
-        window.windowStart,
-        window.windowEnd,
-        'focused-window',
-      ].join('\t')),
-    ].join('\n') + '\n';
-  }
-  const rows = fixture.calledPeaks.map((peak, index) => [
-    index + 1,
-    peak.sequenceId,
-    peak.anchor,
-    peak.windowStart,
-    peak.windowEnd,
-    peak.strand,
-    score(peak.rawScore),
-    score(peak.smoothedScore),
-    'called-peak',
-  ]);
-  return [
-    ['rank', 'sequence_id', 'anchor_1based', 'window_start_1based', 'window_end_1based', 'strand', 'raw_score', 'smoothed_score', 'result_type'].join('\t'),
-    ...rows.map((row) => row.join('\t')),
-  ].join('\n') + '\n';
-}
-
 export function prototypeResultBedGraph(fixture: PrototypePredictionFixture) {
-  return [
-    'track type=bedGraph name="RAPPTOR prototype raw scores" description="Illustrative fixture; no model was run"',
-    ...fixture.scoreSeries.map((window) => [
-      window.sequenceId,
-      Math.max(0, window.anchor - 1),
-      window.anchor,
-      score(window.score),
-    ].join('\t')),
-  ].join('\n') + '\n';
+  const strands = (['+', '-'] as const).filter((strand) => fixture.scoreSeries.some((window) => window.strand === strand));
+  return strands.flatMap((strand) => [
+    `track type=bedGraph name="RAPPTOR prototype raw scores (${strand})" description="Illustrative fixture; no model was run"`,
+    ...fixture.scoreSeries
+      .filter((window) => window.strand === strand)
+      .sort((left, right) => left.sequenceId.localeCompare(right.sequenceId) || left.anchor - right.anchor)
+      .map((window) => [
+        window.sequenceId,
+        Math.max(0, window.anchor - 1),
+        window.anchor,
+        score(window.score),
+      ].join('\t')),
+  ]).join('\n') + '\n';
 }
 
 function safeGffAttribute(value: string) {
@@ -168,18 +71,6 @@ export function prototypeResultGff3(run: PrototypePredictionRun, fixture: Protot
   ].join('\n') + '\n';
 }
 
-export function prototypeResultBed6(run: PrototypePredictionRun, fixture: PrototypePredictionFixture) {
-  return resultFeatures(run, fixture).map((feature, index) => {
-    const isPeak = 'smoothedScore' in feature;
-    const kind = isPeak ? 'called_peak' : 'focused_window';
-    const resultScore = isPeak ? feature.smoothedScore : feature.score;
-    const bedScore = Math.max(0, Math.min(1000, Math.round(resultScore * 1000)));
-    const start = isPeak ? feature.anchor - 1 : feature.windowStart - 1;
-    const end = isPeak ? feature.anchor : feature.windowEnd;
-    return [feature.sequenceId, start, end, `prototype_${kind}_${index + 1}`, bedScore, feature.strand].join('\t');
-  }).join('\n') + '\n';
-}
-
 function safeRunName(runId: string) {
   return runId.replace(/[^a-z0-9_-]+/gi, '-').slice(0, 90);
 }
@@ -187,16 +78,10 @@ function safeRunName(runId: string) {
 export function buildPrototypeDownload(run: PrototypePredictionRun, fixture: PrototypePredictionFixture, format: PrototypeDownloadFormat): PrototypeDownloadFile {
   const baseName = `rapptor-${safeRunName(run.runId)}`;
   switch (format) {
-    case 'json':
-      return { body: prototypeResultJson(run, fixture), fileName: `${baseName}.json`, mediaType: 'application/json;charset=utf-8' };
-    case 'tsv':
-      return { body: prototypeResultTsv(run, fixture), fileName: `${baseName}.tsv`, mediaType: 'text/tab-separated-values;charset=utf-8' };
     case 'bedgraph':
       return { body: prototypeResultBedGraph(fixture), fileName: `${baseName}.bedGraph`, mediaType: 'text/plain;charset=utf-8' };
     case 'gff3':
       return { body: prototypeResultGff3(run, fixture), fileName: `${baseName}.gff3`, mediaType: 'text/plain;charset=utf-8' };
-    case 'bed':
-      return { body: prototypeResultBed6(run, fixture), fileName: `${baseName}.bed`, mediaType: 'text/plain;charset=utf-8' };
   }
 }
 

@@ -36,7 +36,7 @@ export const PROTOTYPE_CONTIG_EXAMPLE = [
 export const PROTOTYPE_CANDIDATE_GENOME_EXAMPLE = {
   kind: 'catalog' as const,
   accession: 'GCF_000005845.2',
-  displayName: 'Escherichia coli str. K-12 substr. MG1655 (tutorial context)',
+  displayName: 'Escherichia coli str. K-12 substr. MG1655',
   fileName: 'GCF_000005845.2.reference.fna.gz',
   fileSize: null,
   checksum: '33f9e5082e35d141d2b1bb9fc20786b48f760981c14c508476212d2d75c85d01',
@@ -79,7 +79,7 @@ function windowParameters(parameters: PrototypePredictionParameters): PrototypeW
   return {
     strandMode: parameters.strandMode,
     cutoff: parameters.cutoff,
-    topK: parameters.mode === 'genome-scan' ? parameters.topK : null,
+    strideBases: parameters.strideBases,
   };
 }
 
@@ -93,8 +93,7 @@ function coordinates(windowStart: number, strand: PrototypeStrand) {
   };
 }
 
-function illustrativeScore(position: number, totalPositions: number, random: () => number, strand: PrototypeStrand) {
-  const normalized = totalPositions <= 1 ? 0 : position / (totalPositions - 1);
+function illustrativeScore(normalized: number, random: () => number, strand: PrototypeStrand) {
   const centers = strand === '+' ? [0.17, 0.51, 0.79] : [0.31, 0.66, 0.91];
   const amplitudes = strand === '+' ? [0.8, 0.99, 0.86] : [0.75, 0.94, 0.8];
   let score = 0.035 + random() * 0.11;
@@ -113,24 +112,25 @@ function windowsForSequence(
   maximumPoints: number | null,
 ) {
   const validStarts = Math.max(1, sequenceLength - PROTOTYPE_WINDOW_BASES + 1);
-  const step = maximumPoints && validStarts > maximumPoints
-    ? Math.max(1, Math.floor(validStarts / maximumPoints))
-    : 1;
+  const requestedStride = parameters.strideBases;
+  const step = maximumPoints && Math.ceil(validStarts / requestedStride) > maximumPoints
+    ? requestedStride * Math.ceil(validStarts / (requestedStride * maximumPoints))
+    : requestedStride;
   const starts: number[] = [];
   for (let start = 1; start <= validStarts; start += step) starts.push(start);
-  if (starts.at(-1) !== validStarts) starts.push(validStarts);
   const strands: PrototypeStrand[] = parameters.strandMode === 'both' ? ['+', '-'] : ['+'];
   const metadata = windowParameters(parameters);
   const output: PrototypeScoreWindow[] = [];
 
   for (const strand of strands) {
-    const random = pseudoRandom(hashSeed(`${seedText}:${sequenceId}:${strand}`));
-    starts.forEach((windowStart, index) => {
+    starts.forEach((windowStart) => {
+      const normalizedPosition = validStarts <= 1 ? 0 : (windowStart - 1) / (validStarts - 1);
+      const random = pseudoRandom(hashSeed(`${seedText}:${sequenceId}:${strand}:${windowStart}`));
       output.push({
         sequenceId,
         ...coordinates(windowStart, strand),
         strand,
-        score: illustrativeScore(index, starts.length, random, strand),
+        score: illustrativeScore(normalizedPosition, random, strand),
         parameters: metadata,
       });
     });
@@ -188,10 +188,10 @@ export function callPrototypePeaks(
 }
 
 function fallbackContigs(run: PrototypePredictionRun) {
-  const context = run.input.genomeContext;
-  if (context.contigs.length) return context.contigs;
-  const length = context.totalLength && context.totalLength >= PROTOTYPE_WINDOW_BASES
-    ? context.totalLength
+  const source = run.mode === 'genome-scan' ? run.input.scanSource : run.input.genomeContext;
+  if (source.contigs.length) return source.contigs;
+  const length = source.totalLength && source.totalLength >= PROTOTYPE_WINDOW_BASES
+    ? source.totalLength
     : 2_400;
   return [
     { sequenceId: 'illustrative_contig_1', length: Math.max(600, Math.round(length * 0.5)) },
@@ -200,12 +200,15 @@ function fallbackContigs(run: PrototypePredictionRun) {
   ];
 }
 
+function contextIdentity(context: PrototypePredictionRun['input']['genomeContext']) {
+  return context.checksum
+    || (context.kind === 'catalog' ? context.accession : `${context.kind}:${context.fileName}:${context.totalLength ?? 'unknown'}`);
+}
+
 export function createPrototypeFixture(run: PrototypePredictionRun): PrototypePredictionFixture {
   const genomeContext = run.input.genomeContext;
-  const checksum = run.mode === 'candidate'
-    ? run.input.checksum
-    : genomeContext.checksum
-      || `${genomeContext.kind}:${genomeContext.kind === 'catalog' ? genomeContext.accession : genomeContext.fileName}:${genomeContext.totalLength ?? 'unknown'}`;
+  const sourceIdentity = run.mode === 'candidate' ? run.input.checksum : contextIdentity(run.input.scanSource);
+  const checksum = `${sourceIdentity}:${contextIdentity(genomeContext)}`;
   const windows = run.mode === 'candidate'
     ? windowsForSequence('candidate_sequence', run.input.length, run.parameters, checksum, null)
     : fallbackContigs(run).flatMap((contig) => windowsForSequence(contig.sequenceId, contig.length, run.parameters, checksum, 180));

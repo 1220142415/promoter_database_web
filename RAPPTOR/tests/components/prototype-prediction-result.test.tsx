@@ -1,22 +1,25 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import PrototypePredictionResultView from '@/features/prediction/prototype-result-view';
 import {
   DEFAULT_PROTOTYPE_MODEL_SPEC,
   PROTOTYPE_CANDIDATE_GENOME_EXAMPLE,
-  PROTOTYPE_GENOME_EXAMPLE,
   writePrototypePredictionRun,
   type PrototypePredictionRun,
 } from '@/features/prediction/prototype';
 
+vi.mock('@/features/prediction/prototype/prototype-browser', () => ({
+  default: () => <div data-testid="prototype-genome-browser">Reference sequence · Raw score · Called peak</div>,
+}));
+
 const candidateRun: PrototypePredictionRun = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   runId: 'prototype_candidate-result-001',
   createdAt: '2026-09-01T00:00:00.000Z',
   mode: 'candidate',
-  parameters: { mode: 'candidate', strandMode: 'both', cutoff: .9 },
+  parameters: { mode: 'candidate', strandMode: 'both', cutoff: .9, strideBases: 1 },
   input: {
     kind: 'candidate',
     displayName: 'candidate_tutorial',
@@ -32,29 +35,53 @@ const candidateRun: PrototypePredictionRun = {
 };
 
 const genomeRun: PrototypePredictionRun = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   runId: 'prototype_genome-result-001',
   createdAt: '2026-09-01T00:00:00.000Z',
   mode: 'genome-scan',
-  parameters: { mode: 'genome-scan', strandMode: 'both', cutoff: .9, topK: 10 },
-  input: { kind: 'genome-scan', genomeContext: PROTOTYPE_GENOME_EXAMPLE },
+  parameters: { mode: 'genome-scan', strandMode: 'both', cutoff: .9, strideBases: 1 },
+  input: { kind: 'genome-scan', scanSource: PROTOTYPE_CANDIDATE_GENOME_EXAMPLE, genomeContext: PROTOTYPE_CANDIDATE_GENOME_EXAMPLE },
   modelSpec: DEFAULT_PROTOTYPE_MODEL_SPEC,
 };
 
-afterEach(() => window.sessionStorage.clear());
+afterEach(() => {
+  vi.useRealTimers();
+  window.sessionStorage.clear();
+});
 
 describe('prototype prediction result', () => {
-  it('shows focused strand scores and anchors without scan-only result concepts', async () => {
+  it('shows simulated queue progress before revealing the focused result', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-02T12:00:00.000Z'));
+    const queuedRun: PrototypePredictionRun = { ...candidateRun, runId: 'prototype_candidate-queued-001', createdAt: '2026-09-02T12:00:00.000Z' };
+    writePrototypePredictionRun(queuedRun);
+    render(<PrototypePredictionResultView runId={queuedRun.runId} />);
+
+    expect(screen.getByRole('region', { name: 'Prediction progress' })).toHaveTextContent('Waiting in queue');
+    expect(screen.getByRole('progressbar', { name: 'Prediction job progress' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Focused 100 bp result' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download/ })).not.toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
+    expect(screen.getByRole('region', { name: 'Prediction progress' })).toHaveTextContent('Result ready');
+    expect(screen.getByRole('heading', { name: 'Focused 100 bp result' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Download (GFF3|bedGraph)/i })).toHaveLength(2);
+  });
+
+  it('shows a compact focused strand comparison without anchor or scan-only result concepts', async () => {
     writePrototypePredictionRun(candidateRun);
     render(<PrototypePredictionResultView runId={candidateRun.runId} />);
 
     expect(await screen.findByRole('heading', { name: 'Prediction result' })).toBeInTheDocument();
     expect(screen.getByText('Focused 100 bp scoring')).toBeInTheDocument();
     expect(screen.getByText('No model was run')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Focused 100 bp raw scores' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Focused 100 bp result' })).toBeInTheDocument();
     expect(screen.getAllByText('Illustrative raw score')).toHaveLength(2);
-    expect(screen.getByText('Anchor +80')).toBeInTheDocument();
-    expect(screen.getByText('Anchor −21')).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: /Forward strand.*illustrative raw score/ })).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: /Reverse strand.*illustrative raw score/ })).toBeInTheDocument();
+    expect(screen.queryByText('100 bp anchor positions')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Anchor base/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('At or below cutoff')).toHaveLength(2);
     expect(screen.getByText(/cutoff only labels the score state/i)).toBeInTheDocument();
     expect(screen.queryByText(/raw score curve|top windows|called peak|top results/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -62,16 +89,16 @@ describe('prototype prediction result', () => {
     expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
   });
 
-  it('renders multi-contig raw scores and called peaks without exposing internal peak parameters', async () => {
+  it('uses the genome browser for scan results without exposing internal peak parameters', async () => {
     writePrototypePredictionRun(genomeRun);
     render(<PrototypePredictionResultView runId={genomeRun.runId} />);
 
     expect(await screen.findByRole('heading', { name: 'Prediction result' })).toBeInTheDocument();
-    expect(screen.getByText('Whole genome / contigs scan')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Raw scores and called peaks' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /demo_contig_A/i })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /demo_contig_B/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Parquet Live service only/i })).toBeDisabled();
+    expect(screen.getByText('Sequence / contig scan')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Genome browser' })).toBeInTheDocument();
+    expect(await screen.findByTestId('prototype-genome-browser')).toHaveTextContent('Reference sequence · Raw score · Called peak');
+    expect(screen.getAllByRole('button', { name: /Download (GFF3|bedGraph)/i })).toHaveLength(2);
+    expect(screen.queryByText('Top called peaks')).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/sigma|minimum peak distance|minDistance/i);
   });
 

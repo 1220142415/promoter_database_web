@@ -94,7 +94,7 @@
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   overflow: hidden;
@@ -163,6 +163,108 @@
   color: var(--muted);
   font-size: 11px;
   line-height: 1.55;
+}
+
+.focusedComparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--line);
+}
+
+.focusedComparison[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.focusedStrandRow {
+  min-width: 0;
+  padding: 15px 17px 14px;
+  background: #fbfcfb;
+}
+
+.focusedStrandHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.focusedStrandSummary {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  margin-top: 10px;
+}
+
+.focusedStrandSummary > strong {
+  color: var(--ink);
+  font: 600 30px/1 Georgia, "Times New Roman", serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.focusedStrandSummary > small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.focusedMeterArea {
+  min-width: 0;
+  margin-top: 11px;
+}
+
+.focusedMeterLegend {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  margin-top: 5px;
+  color: var(--muted);
+  font: 8px "SFMono-Regular", Consolas, monospace;
+}
+
+.focusedMeterLegend span:nth-child(2) {
+  color: var(--ink-soft);
+  font-weight: 800;
+  text-align: center;
+}
+
+.focusedMeterLegend span:last-child {
+  text-align: right;
+}
+
+.focusedMeter {
+  position: relative;
+  height: 9px;
+  border: 1px solid #c7d3cf;
+  border-radius: 5px;
+  background: #e5ebe9;
+}
+
+.focusedMeterFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  max-width: 100%;
+  border-radius: 4px;
+  background: var(--teal);
+}
+
+.focusedStrandRow:nth-child(2) .focusedMeterFill {
+  background: var(--gold);
+}
+
+.focusedCutoff {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ink);
+  transform: translateX(-1px);
 }
 
 .focusedScoreGrid {
@@ -618,7 +720,7 @@
 
 .downloads {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -778,17 +880,14 @@
     grid-template-columns: 1fr;
   }
 
-  .summary,
   .factGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .summary > div:nth-child(2),
   .factGrid > div:nth-child(2) {
     border-right: 0;
   }
 
-  .summary > div:nth-child(n + 3),
   .factGrid > div:nth-child(n + 3) {
     border-top: 1px solid var(--line);
   }
@@ -804,11 +903,27 @@
   .interpret h2 {
     grid-column: 1 / -1;
   }
+
 }
 
 @media (max-width: 720px) {
   .page {
     padding-bottom: 58px;
+  }
+
+  .summary {
+    grid-template-columns: 1fr;
+  }
+
+  .summary > div,
+  .summary > div:nth-child(2) {
+    min-height: 96px;
+    border-top: 1px solid var(--line);
+    border-right: 0;
+  }
+
+  .summary > div:first-child {
+    border-top: 0;
   }
 
   .intro {
@@ -836,6 +951,14 @@
     align-items: start;
     flex-direction: column;
     gap: 9px;
+  }
+
+  .focusedComparison {
+    grid-template-columns: 1fr;
+  }
+
+  .focusedStrandRow {
+    padding-inline: 13px;
   }
 
   .focusedScoreGrid {
@@ -900,22 +1023,5 @@
 
   .interpret a {
     width: 100%;
-  }
-}
-
-@media (max-width: 460px) {
-  .summary {
-    grid-template-columns: 1fr;
-  }
-
-  .summary > div,
-  .summary > div:nth-child(2) {
-    min-height: 96px;
-    border-top: 1px solid var(--line);
-    border-right: 0;
-  }
-
-  .summary > div:first-child {
-    border-top: 0;
   }
 }

@@ -130,6 +130,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
             scores,
             upstream_len=runtime.upstream_len,
         )
+        _progress("writing_outputs", 90.0, windows=len(scores), scores_written=len(scores))
         artifacts = score_writer.close(success=True)
     except Exception:
         score_writer.close(success=False)
@@ -207,6 +208,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                     windows=total_windows,
                     scores_written=total_windows,
                 )
+        _progress("writing_outputs", 92.0, windows=total_windows, scores_written=total_windows)
         artifacts = artifact_writer.close(success=True)
         artifacts.extend([
             {**_file_metadata(fasta_path, "fasta"), "content_type": "text/plain; charset=utf-8"},

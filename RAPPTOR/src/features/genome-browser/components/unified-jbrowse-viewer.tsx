@@ -116,6 +116,10 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   const studies = useMemo(() => sortedStudies(experimental?.studies || []), [experimental?.studies]);
   const allowedStudyIds = useMemo(() => new Set(studies.map((study) => study.studyId)), [studies]);
   const assemblyName = prediction?.assemblyName || experimental?.assemblyName || experimental!.accession;
+  const allowShareView = prediction?.allowShareView !== false;
+  const shareUnavailableByDefault = allowShareView
+    ? 'Sharing is available for a single reference sequence after the browser loads.'
+    : 'Sharing is unavailable for browser-local prototype input.';
   // The prediction assembly supplies the reference FASTA whenever both
   // evidence types are present, so its contig name is the only safe default
   // location. Experimental metadata may use an accession fallback that is
@@ -123,7 +127,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   const defaultLocus = prediction?.defaultLocus || experimental?.defaultLocus || `${assemblyName}:1-10000`;
   const [shareAvailable, setShareAvailable] = useState(false);
   const [shareUnavailableReason, setShareUnavailableReason] = useState(
-    'Sharing is available for a single reference sequence after the browser loads.',
+    shareUnavailableByDefault,
   );
   const [shareTarget, setShareTarget] = useState<Element | null>(null);
   const [restoreMessage, setRestoreMessage] = useState('');
@@ -147,6 +151,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const predictionUnindexed = prediction?.adapterMode === 'unindexed';
     const sequenceTrackId = `${assemblyName}-reference-sequence`;
     const tracks: Array<Record<string, unknown>> = [];
+    const alwaysIncludedSnapshots: SessionTrackSnapshot[] = [];
     const definitions: SessionTrackDefinition[] = [{
       token: 'sequence',
       snapshot: {
@@ -257,6 +262,72 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       });
     }
 
+    if (!prediction?.assets.promoterScoresPlus && prediction?.prototypeTracks?.rawScoresBedGraphPlus) {
+      const plusUrl = resolveAsset(prediction.assetBase, prediction.prototypeTracks.rawScoresBedGraphPlus);
+      const minusUrl = prediction.prototypeTracks.rawScoresBedGraphMinus
+        ? resolveAsset(prediction.assetBase, prediction.prototypeTracks.rawScoresBedGraphMinus)
+        : null;
+      const scoreTrackLabel = prediction.prototypeTracks.rawScoresLabel || 'Illustrative raw scores';
+      const plusTrackId = `${assemblyName}-prototype-raw-scores-plus`;
+      const plusTrackName = minusUrl ? `${scoreTrackLabel} · + strand` : scoreTrackLabel;
+      staticRegistry.scores = plusTrackId;
+      tracks.push({
+        trackId: plusTrackId,
+        name: plusTrackName,
+        metadata: {
+          ...predictionDownload('scores-plus', plusTrackName, plusUrl),
+          rapptorEvidenceType: 'illustrative_prototype',
+        },
+        assemblyNames: [assemblyName],
+        type: 'QuantitativeTrack',
+        adapter: { type: 'BedGraphAdapter', bedGraphLocation: { uri: plusUrl } },
+        displays: [{
+          displayId: `${plusTrackId}-display`,
+          type: 'LinearWiggleDisplay',
+          defaultRendering: 'xyplot',
+          autoscale: 'local',
+          minScore: 0,
+          maxScore: 1,
+        }],
+      });
+      definitions.push({
+        token: 'scores',
+        snapshot: {
+          type: 'QuantitativeTrack',
+          configuration: plusTrackId,
+          displays: [{ type: 'LinearWiggleDisplay', configuration: `${plusTrackId}-display`, heightPreConfig: minusUrl ? 120 : 180 }],
+        },
+      });
+      if (minusUrl) {
+        const minusTrackId = `${assemblyName}-prototype-raw-scores-minus`;
+        const minusTrackName = `${scoreTrackLabel} · − strand`;
+        tracks.push({
+          trackId: minusTrackId,
+          name: minusTrackName,
+          metadata: {
+            ...predictionDownload('scores-minus', minusTrackName, minusUrl),
+            rapptorEvidenceType: 'illustrative_prototype',
+          },
+          assemblyNames: [assemblyName],
+          type: 'QuantitativeTrack',
+          adapter: { type: 'BedGraphAdapter', bedGraphLocation: { uri: minusUrl } },
+          displays: [{
+            displayId: `${minusTrackId}-display`,
+            type: 'LinearWiggleDisplay',
+            defaultRendering: 'xyplot',
+            autoscale: 'local',
+            minScore: 0,
+            maxScore: 1,
+          }],
+        });
+        alwaysIncludedSnapshots.push({
+          type: 'QuantitativeTrack',
+          configuration: minusTrackId,
+          displays: [{ type: 'LinearWiggleDisplay', configuration: `${minusTrackId}-display`, heightPreConfig: 120 }],
+        });
+      }
+    }
+
     if (prediction?.assets.predictedPromoters) {
       const trackId = `${assemblyName}-predicted-promoters`;
       const dataUrl = resolveAsset(prediction.assetBase, prediction.assets.predictedPromoters);
@@ -288,6 +359,43 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           type: 'LinearBasicDisplay',
           renderer: {
             type: PROMOTER_FEATURE_RENDERER,
+            height: 18,
+            showLabels: false,
+            showDescriptions: false,
+            maxFeatureGlyphExpansion: 24,
+          },
+        }],
+      });
+      definitions.push({
+        token: 'promoters',
+        snapshot: {
+          type: 'FeatureTrack',
+          configuration: trackId,
+          displays: [{ type: 'LinearBasicDisplay', configuration: `${trackId}-display`, heightPreConfig: 170 }],
+        },
+      });
+    }
+
+    if (!prediction?.assets.predictedPromoters && prediction?.prototypeTracks?.calledPeaksGff3) {
+      const trackId = `${assemblyName}-prototype-called-peaks`;
+      const dataUrl = resolveAsset(prediction.assetBase, prediction.prototypeTracks.calledPeaksGff3);
+      const calledPeaksLabel = prediction.prototypeTracks.calledPeaksLabel || 'Illustrative called peaks';
+      staticRegistry.promoters = trackId;
+      tracks.push({
+        trackId,
+        name: calledPeaksLabel,
+        metadata: {
+          ...predictionDownload('promoters', calledPeaksLabel, dataUrl),
+          rapptorEvidenceType: 'illustrative_prototype',
+        },
+        assemblyNames: [assemblyName],
+        type: 'FeatureTrack',
+        adapter: { type: 'Gff3Adapter', gffLocation: { uri: dataUrl } },
+        displays: [{
+          displayId: `${trackId}-display`,
+          type: 'LinearBasicDisplay',
+          renderer: {
+            type: 'SvgFeatureRenderer',
             height: 18,
             showLabels: false,
             showDescriptions: false,
@@ -426,8 +534,10 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       initialWarnings.unshift('This shared view link is invalid. The genome default view is shown instead.');
     }
     const requestedTracks = parsedShare.kind === 'valid' ? parsedShare.state.tracks : null;
-    const sessionTracks = requestedTracks === null
-      ? definitions.map((definition) => definition.snapshot)
+    const selectedSessionTracks = requestedTracks === null
+      ? definitions.flatMap((definition) => definition.token === 'scores'
+        ? [definition.snapshot, ...alwaysIncludedSnapshots]
+        : [definition.snapshot])
       : requestedTracks.flatMap(({ token, height }) => {
           const definition = definitionsByToken.get(token);
           if (!definition) {
@@ -442,6 +552,9 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
             })),
           }];
         });
+    const sessionTracks = requestedTracks === null
+      ? selectedSessionTracks
+      : [...selectedSessionTracks, ...alwaysIncludedSnapshots];
 
     const referenceBase = prediction ? prediction.assetBase : experimental!.assetBase;
     const referenceAssets = prediction?.assets || experimental!.assets;
@@ -454,7 +567,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         sequence: {
           type: 'ReferenceSequenceTrack',
           trackId: sequenceTrackId,
-          name: 'Reference sequence',
+          name: prediction?.trackLabels?.reference || 'Reference sequence',
           metadata: {
             rapptorDownload: prediction
               ? predictionDownload('reference', 'Reference sequence', referenceUrl).rapptorDownload
@@ -500,13 +613,18 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       onChange: () => {
         const view = stateTree?.session.view;
         if (!view || !view.initialized || view.width <= 0) return;
-        const extracted = extractJBrowseShareState(view, registry);
-        setShareAvailable(extracted.kind === 'valid');
-        setShareUnavailableReason(extracted.kind === 'invalid' ? extracted.warnings.join(' ') : '');
         if (onRegionChange) {
           const region = visibleTrackRegion(view);
           if (region) onRegionChange(region);
         }
+        if (!allowShareView) {
+          setShareAvailable(false);
+          setShareUnavailableReason('Sharing is unavailable for browser-local prototype input.');
+          return;
+        }
+        const extracted = extractJBrowseShareState(view, registry);
+        setShareAvailable(extracted.kind === 'valid');
+        setShareUnavailableReason(extracted.kind === 'invalid' ? extracted.warnings.join(' ') : '');
       },
     });
     return {
@@ -515,12 +633,12 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       initialWarnings,
       trackLabels: new Map(tracks.map((track) => [String(track.trackId), String(track.name)])),
     };
-  }, [assemblyName, experimental, onRegionChange, parsedShare, prediction, studies]);
+  }, [allowShareView, assemblyName, experimental, onRegionChange, parsedShare, prediction, studies]);
 
   useEffect(() => {
     setShareFeedback(null);
     setShareAvailable(false);
-    setShareUnavailableReason('Sharing is available for a single reference sequence after the browser loads.');
+    setShareUnavailableReason(shareUnavailableByDefault);
     let initialization = initializationPromises.current.get(viewState);
     if (!initialization) {
       initialization = (async () => {
@@ -566,12 +684,13 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     void initialization.then((warnings) => {
       if (!active) return;
       setRestoreMessage(warnings.join(' '));
+      if (!allowShareView) return;
       const extracted = extractJBrowseShareState(viewState.session.view, trackRegistry);
       setShareAvailable(extracted.kind === 'valid');
       setShareUnavailableReason(extracted.kind === 'invalid' ? extracted.warnings.join(' ') : '');
     });
     return () => { active = false; };
-  }, [assemblyName, defaultLocus, initialWarnings, parsedShare, trackRegistry, viewState]);
+  }, [allowShareView, assemblyName, defaultLocus, initialWarnings, parsedShare, shareUnavailableByDefault, trackRegistry, viewState]);
 
   useEffect(() => {
     const sequenceTrackId = `${assemblyName}-reference-sequence`;
@@ -591,6 +710,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   }, [assemblyName, trackLabels, viewState]);
 
   const handleShare = async () => {
+    if (!allowShareView) return;
     const extracted = extractJBrowseShareState(viewState.session.view, trackRegistry);
     if (extracted.kind === 'invalid') {
       const message = extracted.warnings.join(' ') || 'This view cannot be shared.';
@@ -609,7 +729,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     }
   };
 
-  const shareActions = (
+  const shareActions = allowShareView ? (
     <div className="browser-share-actions">
       <div className="browser-share-feedback" aria-live="polite">
         {!shareAvailable && shareUnavailableReason ? <span id="unified-browser-share-unavailable">{shareUnavailableReason}</span> : null}
@@ -628,11 +748,11 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         <span>Share view</span>
       </button>
     </div>
-  );
+  ) : null;
 
   return (
     <div className="portal-browser-shell" data-testid="jbrowse-viewer" data-viewer-kind="unified">
-      {shareTarget ? createPortal(shareActions, shareTarget) : shareActions}
+      {shareTarget && shareActions ? createPortal(shareActions, shareTarget) : shareActions}
       {restoreMessage ? <p className="browser-share-notice" role="status">{restoreMessage}</p> : null}
       {partialViewMessage ? <p className="browser-share-notice" role="status">{partialViewMessage}</p> : null}
       {shareFeedback?.manualUrl ? (

@@ -128,14 +128,6 @@ function storedSubmission(submission: PredictionSubmission): PredictionSubmissio
   };
 }
 
-async function pruneD1Demo(database: D1Database, now: number) {
-  await database.batch([
-    database.prepare('DELETE FROM prediction_demo_tickets WHERE expires_at_ms < ?').bind(now),
-    database.prepare('DELETE FROM prediction_demo_uploads WHERE expires_at_ms < ?').bind(now),
-    database.prepare('DELETE FROM prediction_demo_jobs WHERE created_at_ms < ?').bind(now - 7 * 24 * 60 * 60 * 1_000),
-  ]);
-}
-
 function demoJob(record: DemoJobRecord, jobId: string): PredictionJob {
   const submission = normalizeStoredPredictionSubmission(record.submission as PredictionSubmission | LegacyPredictionSubmission);
   const now = Date.now();
@@ -250,7 +242,6 @@ export class DemoPredictionProvider implements PredictionProvider {
     const expiresAt = Date.now() + 120_000;
     const database = demoDatabase();
     if (database) {
-      await pruneD1Demo(database, Date.now());
       await database.batch([
         database.prepare('INSERT INTO prediction_demo_tickets (ticket_hash, request_json, expires_at_ms, used_marker) VALUES (?, ?, ?, NULL)')
           .bind(tokenHash(ticket), JSON.stringify(storedTicketRequest(request)), expiresAt),

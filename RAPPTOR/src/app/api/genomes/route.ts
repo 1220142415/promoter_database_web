@@ -9,11 +9,14 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const query = parseGenomeSearchParams(new URL(request.url).searchParams);
+    const searchParams = new URL(request.url).searchParams;
+    const query = parseGenomeSearchParams(searchParams);
     const result = await unifiedGenomeRepository.search(query);
     return Response.json(result, {
       headers: {
-        'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=300',
+        'Cache-Control': Object.values(query.taxonomy).some(Boolean)
+          ? 'no-store'
+          : 'public, max-age=0, s-maxage=86400, stale-while-revalidate=604800',
       },
     });
   } catch (cause) {

@@ -60,6 +60,8 @@ interface ExperimentalCompositeSnapshot {
   mismatchPredictionAccessions: Set<string>;
 }
 
+const FIXED_CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 interface CursorPayload {
   v: 2;
   revision: string;
@@ -118,13 +120,17 @@ export async function readD1UnifiedGenomeAliases(database: D1Database): Promise<
   const result = await database.prepare([
     'SELECT registry.canonical_accession, prediction.accession AS prediction_accession,',
     'experimental.accession AS experimental_accession',
-    'FROM portal_state prediction_state',
-    'JOIN release_genomes prediction ON prediction.release_id = prediction_state.active_release_id',
-    'JOIN experimental_portal_state experimental_state ON experimental_state.singleton = 1',
-    'JOIN release_genomes experimental ON experimental.release_id = experimental_state.active_release_id',
-    'AND experimental.genome_id = prediction.genome_id',
-    'JOIN genome_registry registry ON registry.genome_id = prediction.genome_id',
-    'WHERE prediction_state.singleton = 1',
+    'FROM experimental_portal_state experimental_state',
+    'CROSS JOIN release_genomes experimental',
+    'CROSS JOIN portal_state prediction_state',
+    'CROSS JOIN release_genomes prediction',
+    'CROSS JOIN genome_registry registry',
+    'WHERE experimental_state.singleton = 1',
+    'AND experimental.release_id = experimental_state.active_release_id',
+    'AND prediction_state.singleton = 1',
+    'AND prediction.release_id = prediction_state.active_release_id',
+    'AND prediction.genome_id = experimental.genome_id',
+    'AND registry.genome_id = experimental.genome_id',
     'AND (registry.canonical_accession IN (prediction.accession, experimental.accession)',
     'OR prediction.accession = experimental.accession)',
     'ORDER BY registry.canonical_accession',
@@ -490,13 +496,22 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       experimentalReleaseId: experimentalRelease.releaseId,
       compositeRevision: compositeRevision(predictionRelease.releaseId, experimentalRelease.releaseId),
     };
-    const rows = await Promise.all(experimentalGenomes.map(async (genome) => {
+    const predictionAccessions = experimentalGenomes.flatMap((genome) => {
+      const canonical = this.resolveCanonicalAccession(genome.accession)!;
+      const alias = this.aliasByCanonical.get(canonical);
+      return alias || genome.primarySequence ? [alias?.predictionAccession || canonical] : [];
+    });
+    const predictionMatches = this.predictionRepository.getByAccessions
+      ? await this.predictionRepository.getByAccessions(predictionAccessions)
+      : new Map((await Promise.all(predictionAccessions.map(async (accession) => [
+        accession,
+        await this.predictionRepository.getByAccession(accession),
+      ] as const))).filter((entry): entry is readonly [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1])));
+    const rows = experimentalGenomes.map((genome) => {
       const canonical = this.resolveCanonicalAccession(genome.accession)!;
       const alias = this.aliasByCanonical.get(canonical);
       const predictionAccession = alias?.predictionAccession || canonical;
-      const match = alias || genome.primarySequence
-        ? await this.predictionRepository.getByAccession(predictionAccession)
-        : null;
+      const match = alias || genome.primarySequence ? predictionMatches.get(predictionAccession) || null : null;
       if (match && match.releaseId !== predictionRelease.releaseId) {
         throw new Error('Prediction release changed while experimental evidence was being composed.');
       }
@@ -504,7 +519,7 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       return compatibility === 'mismatch'
         ? compositeRow(canonical, undefined, genome, 'mismatch')
         : compositeRow(canonical, predictionRowFromMatch(match) || undefined, genome, compatibility);
-    }));
+    });
     if (new Set(rows.map((row) => row.canonicalAccession)).size !== rows.length) {
       throw new UnifiedGenomeAliasError('Multiple experimental genomes resolve to one canonical accession.');
     }
@@ -538,7 +553,7 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
   private async experimentalSnapshot(): Promise<ExperimentalCompositeSnapshot> {
     if (this.experimentalSnapshotCache && this.experimentalSnapshotCache.expiresAt > Date.now()) return this.experimentalSnapshotCache.value;
     const value = this.buildExperimentalSnapshot();
-    this.experimentalSnapshotCache = { expiresAt: Date.now() + 30_000, value };
+    this.experimentalSnapshotCache = { expiresAt: Date.now() + FIXED_CATALOG_CACHE_TTL_MS, value };
     try {
       return await value;
     } catch (cause) {

@@ -552,9 +552,21 @@ async function d1Catalog(database: D1Database): Promise<NormalizedCatalog> {
 }
 
 export class D1ExperimentalTssRepository implements ExperimentalTssRepository {
+  private catalogCache: { expiresAt: number; value: Promise<JsonExperimentalTssRepository> } | null = null;
+
   constructor(private readonly database: D1Database) {}
 
-  private async jsonRepository() { return new JsonExperimentalTssRepository(await d1Catalog(this.database)); }
+  private async jsonRepository() {
+    if (this.catalogCache && this.catalogCache.expiresAt > Date.now()) return this.catalogCache.value;
+    const value = d1Catalog(this.database).then((catalog) => new JsonExperimentalTssRepository(catalog));
+    this.catalogCache = { expiresAt: Date.now() + 24 * 60 * 60 * 1000, value };
+    try {
+      return await value;
+    } catch (cause) {
+      if (this.catalogCache?.value === value) this.catalogCache = null;
+      throw cause;
+    }
+  }
   async getActiveRelease() { return (await this.jsonRepository()).getActiveRelease(); }
   async search(query?: { q?: string; year?: number | null }) { return (await this.jsonRepository()).search(query); }
   async listGenomes() { return (await this.jsonRepository()).listGenomes(); }
@@ -573,6 +585,16 @@ const emptyExperimentalTssRepository = new JsonExperimentalTssRepository({
 let localRepository: JsonExperimentalTssRepository | null = null;
 let localPath: string | null = null;
 let collectionRepository: { base: string; value: Promise<JsonExperimentalTssRepository> } | null = null;
+const d1Repositories = new WeakMap<object, D1ExperimentalTssRepository>();
+
+function repositoryForD1(database: D1Database) {
+  const key = database as object;
+  const cached = d1Repositories.get(key);
+  if (cached) return cached;
+  const repository = new D1ExperimentalTssRepository(database);
+  d1Repositories.set(key, repository);
+  return repository;
+}
 
 function configuredLocalRepository() {
   const configuredPath = stringValue(process.env.EXPERIMENTAL_TSS_CATALOG_PATH);
@@ -643,7 +665,7 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     const local = configuredLocalRepository();
     if (local) return local.getActiveRelease();
     const database = await configuredD1();
-    if (database) return new D1ExperimentalTssRepository(database).getActiveRelease();
+    if (database) return repositoryForD1(database).getActiveRelease();
     const collection = await configuredCollectionRepository();
     if (collection) return collection.getActiveRelease();
     return emptyExperimentalTssRepository.getActiveRelease();
@@ -652,7 +674,7 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     const local = configuredLocalRepository();
     if (local) return local.search(query);
     const database = await configuredD1();
-    if (database) return new D1ExperimentalTssRepository(database).search(query);
+    if (database) return repositoryForD1(database).search(query);
     const collection = await configuredCollectionRepository();
     if (collection) return collection.search(query);
     return emptyExperimentalTssRepository.search(query);
@@ -661,7 +683,7 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     const local = configuredLocalRepository();
     if (local) return local.listGenomes();
     const database = await configuredD1();
-    if (database) return new D1ExperimentalTssRepository(database).listGenomes();
+    if (database) return repositoryForD1(database).listGenomes();
     const collection = await configuredCollectionRepository();
     if (collection) return collection.listGenomes();
     return emptyExperimentalTssRepository.listGenomes();
@@ -670,7 +692,7 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     const local = configuredLocalRepository();
     if (local) return local.getGenome(accession);
     const database = await configuredD1();
-    if (database) return new D1ExperimentalTssRepository(database).getGenome(accession);
+    if (database) return repositoryForD1(database).getGenome(accession);
     const collection = await configuredCollectionRepository();
     if (collection) return collection.getGenome(accession);
     return null;
@@ -679,7 +701,7 @@ export const experimentalTssRepository: ExperimentalTssRepository = {
     const local = configuredLocalRepository();
     if (local) return local.resolveAsset(accession, logicalAsset);
     const database = await configuredD1();
-    if (database) return new D1ExperimentalTssRepository(database).resolveAsset(accession, logicalAsset);
+    if (database) return repositoryForD1(database).resolveAsset(accession, logicalAsset);
     const collection = await configuredCollectionRepository();
     if (collection) return collection.resolveAsset(accession, logicalAsset);
     return null;

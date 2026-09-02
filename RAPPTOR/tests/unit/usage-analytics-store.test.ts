@@ -157,6 +157,10 @@ describe('recording a page view', () => {
       shiftDay(utcDay(), -89),
       shiftDay(utcDay(), -89),
       shiftDay(utcDay(), -1),
+      utcDay() + 'T00:00:00.000Z',
+      Date.parse(utcDay() + 'T00:00:00.000Z'),
+      Date.parse(utcDay() + 'T00:00:00.000Z'),
+      Date.parse(utcDay() + 'T00:00:00.000Z') - 7 * 24 * 60 * 60 * 1_000,
     ]);
   });
 
@@ -258,6 +262,10 @@ describe('reading the report', () => {
       shiftDay(utcDay(), -399),
       shiftDay(utcDay(), -399),
       shiftDay(utcDay(), -1),
+      utcDay() + 'T00:00:00.000Z',
+      Date.parse(utcDay() + 'T00:00:00.000Z'),
+      Date.parse(utcDay() + 'T00:00:00.000Z'),
+      Date.parse(utcDay() + 'T00:00:00.000Z') - 7 * 24 * 60 * 60 * 1_000,
     ]);
   });
 });

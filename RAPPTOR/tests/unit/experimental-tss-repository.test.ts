@@ -267,7 +267,7 @@ describe('experimental TSS repository', () => {
       upstreamUrl: 'https://example.test/releases/experimental-1/objects/GCF_000210855.2/studies/second/raw.bed',
       kind: 'raw-bed',
     });
-    expect(queries.filter((query) => query.includes('FROM experimental_portal_state')).length).toBeGreaterThan(0);
+    expect(queries.filter((query) => query.includes('FROM experimental_portal_state'))).toHaveLength(1);
     expect(queries.some((query) => query.includes('FROM portal_state p'))).toBe(false);
   });
 });

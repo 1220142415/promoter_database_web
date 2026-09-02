@@ -264,7 +264,6 @@ export default function PortalGenomeExplorer({
             <option value="all">All genomes</option>
             <option value="predictions">Predictions available</option>
             <option value="experimental">Experimental TSS available</option>
-            <option value="both">Prediction and experimental</option>
           </select>
         </label> : null}
         <button type="button" className="catalog-reset" onClick={clearFilters} title="Clear filters" aria-label="Clear filters"><RestartAltRoundedIcon /></button>
@@ -323,8 +322,8 @@ export default function PortalGenomeExplorer({
                 <td><span>{genome.phylum || 'Unclassified'}</span><small>{genome.genus || 'Genus not assigned'}</small></td>
                 <td><span>{formatCount(genome.genomeSizeBp)} bp</span><small>{formatCount(genome.contigCount)} contigs</small></td>
                 <td data-predicted-promoters={genome.predictedPromoterCount} data-evidence-state={genome.evidenceState}>
-                  <span className={genome.predictionAccession ? 'evidence-available' : 'evidence-muted'}>
-                    {genome.predictionAccession ? `${genome.predictedPromoterCount.toLocaleString()} predictions` : 'No prediction release'}
+                  <span className={genome.predictionAvailable ? 'evidence-available' : 'evidence-muted'}>
+                    {genome.predictionAvailable ? `${genome.predictedPromoterCount.toLocaleString()} predictions` : 'No prediction data'}
                   </span>
                   {showExperimental ? <small className={genome.experimentalAccession ? 'evidence-available' : 'evidence-muted'}>
                     {genome.experimentalAccession

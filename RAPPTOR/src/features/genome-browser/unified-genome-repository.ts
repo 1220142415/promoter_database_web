@@ -305,6 +305,7 @@ function compositeRow(
   ]);
   const organismName = predictionRow?.organismName || experimentalGenome?.organismName || canonicalAccession;
   const strain = predictionRow?.strain ?? experimentalGenome?.strain ?? null;
+  const predictionAvailable = Boolean(predictionRow || experimentalGenome?.assets.predictedPromoters);
   const assemblySource = predictionRow && experimentalGenome ? 'unified'
     : predictionRow ? 'prediction' : 'experimental';
   return {
@@ -314,8 +315,9 @@ function compositeRow(
     accession: canonicalAccession,
     aliases,
     predictionAccession: predictionRow?.accession || null,
+    predictionAvailable,
     experimentalAccession: experimentalGenome?.accession || null,
-    evidenceState: evidenceState(Boolean(predictionRow), Boolean(experimentalGenome)),
+    evidenceState: evidenceState(predictionAvailable, Boolean(experimentalGenome)),
     organismName,
     strain,
     domain: predictionRow?.domain || null,
@@ -507,12 +509,15 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       throw new UnifiedGenomeAliasError('Multiple experimental genomes resolve to one canonical accession.');
     }
     const bothGenomes = rows.filter((row) => row.evidenceState === 'both').length;
+    const predictionOverlaps = rows.filter((row) => row.predictionAccession).length;
+    const collectionPredictions = rows.filter((row) => row.predictionAvailable && !row.predictionAccession);
     const stats: UnifiedGenomeStats = {
-      totalGenomes: predictionRelease.totalGenomes + experimentalRelease.genomes - bothGenomes,
-      predictionGenomes: predictionRelease.totalGenomes,
+      totalGenomes: predictionRelease.totalGenomes + experimentalRelease.genomes - predictionOverlaps,
+      predictionGenomes: predictionRelease.totalGenomes + collectionPredictions.length,
       experimentalGenomes: experimentalRelease.genomes,
       bothGenomes,
-      totalPredictedPromoters: predictionRelease.totalPredictedPromoters,
+      totalPredictedPromoters: predictionRelease.totalPredictedPromoters
+        + collectionPredictions.reduce((sum, row) => sum + row.predictedPromoterCount, 0),
       totalExperimentalObservations: experimentalRelease.observations,
       totalExperimentalStudies: experimentalRelease.studies,
       totalExperimentalPublications: experimentalRelease.publications,
@@ -624,11 +629,14 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       } else break;
     }
     const hasNext = experimentalOffset < experimentalRows.length || Boolean(includePrediction && nextPrediction);
-    const taxonomy = Object.fromEntries(TAXONOMY_FIELDS.map(([rank, field]) => [
+    const taxonomy = Object.fromEntries(TAXONOMY_FIELDS.map(([rank, field], index) => [
       rank,
       uniqueSorted([
         ...metadata.facets.taxonomy[rank],
-        ...snapshot.rows.map((row) => row[field] as string | null),
+        ...snapshot.rows
+          .filter((row) => TAXONOMY_FIELDS.slice(0, index)
+            .every(([parentRank, parentField]) => !query.taxonomy[parentRank] || row[parentField] === query.taxonomy[parentRank]))
+          .map((row) => row[field] as string | null),
       ]),
     ])) as UnifiedGenomeSearchResponse['facets']['taxonomy'];
     return {
@@ -698,13 +706,15 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
       if (selectedSource === 'experimental') selectedPrediction = null;
       else selectedExperimental = null;
     }
+    const predictionAvailable = Boolean(selectedPrediction || selectedExperimental?.assets.predictedPromoters);
     return {
       canonicalAccession,
       aliases,
-      evidenceState: evidenceState(Boolean(selectedPrediction), Boolean(selectedExperimental)),
+      evidenceState: evidenceState(predictionAvailable, Boolean(selectedExperimental)),
       assemblyCompatibility,
       overlayAllowed: assemblyCompatibility === 'exact' || assemblyCompatibility === 'reciprocal_alias',
       availableAssemblySources,
+      predictionAvailable,
       prediction: selectedPrediction,
       experimental: selectedExperimental,
       releases,

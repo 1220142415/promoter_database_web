@@ -50,10 +50,34 @@ def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
         complete_genome=True,
         fasta=">contig\n" + "ACGT" * 100,
         stride=1,
+        score_cutoff=0.9,
+        output_formats=["bigwig", "gff3"],
     )
     request, _ = api._validate_submission(payload)
     assert request["stride"] == 1
-    assert request["output_formats"] == ["bigwig", "parquet"]
+    assert request["score_cutoff"] == 0.9
+    assert request["output_formats"] == ["bigwig", "gff3"]
+    capabilities = api.current_model()["genome_scan"]
+    assert capabilities["score_cutoff"]["operator"] == ">"
+    assert capabilities["score_cutoff"]["applies_to"] == ["gff3", "json"]
+    assert capabilities["reverse_complementary"]["default"] is True
+    assert "top_k" in capabilities["unsupported_filters"]
+
+
+def test_genome_scan_accepts_a_separate_complete_genome_for_cgr(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    payload = api.JobSubmission(
+        mode="genome_scan",
+        complete_genome=True,
+        fasta=">target\n" + "ACGT" * 30,
+        genome_context="TGCA" * 40,
+        stride=10,
+    )
+    request, billed_bases = api._validate_submission(payload)
+    assert request["genome_context"] == "TGCA" * 40
+    assert request["cgr_source"] == "separate_complete_genome_sequence"
+    assert request["stride"] == 10
+    assert billed_bases == 280
 
 
 def test_submit_and_token_protected_status(tmp_path, monkeypatch):

@@ -110,6 +110,12 @@ test('experimental collection shows dual-study evidence and preserves its shared
   await expect(page.getByRole('heading', { name: 'Experimental TSS studies' })).toBeVisible();
   await expect(page.getByText(`2012 · PMID 22251276`, { exact: true })).toBeVisible();
   await expect(page.getByText(`2012 · PMID 22538806`, { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Experimental assembly downloads')).toHaveCount(0);
+  await expect(page.getByText(/independent study track/)).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Original BED' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Normalized GFF3' })).toHaveCount(0);
+  await expect(page.getByText('Source SHA-256')).toHaveCount(0);
+  await expect(page.getByText('Manifest row')).toHaveCount(0);
 
   const tracks = `study.${firstStudy}:170,sequence:120,study.${secondStudy}:190`;
   const sharedPath = `/genomes/${accession}?view=1&ref=${refName}&center=1000&zoom=0.5&rev=1&tracks=${encodeURIComponent(tracks)}`;

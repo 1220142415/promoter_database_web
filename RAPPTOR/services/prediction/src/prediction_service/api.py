@@ -147,10 +147,21 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     if stride > SETTINGS.max_scan_stride:
         raise InputValidationError(f"stride exceeds limit {SETTINGS.max_scan_stride}")
     request["fasta"] = validated.to_fasta()
-    request["cgr_source"] = "complete_genome_assembly_fasta"
+    genome_context = None
+    if payload.genome_context is not None:
+        genome_context = validate_sequence(
+            payload.genome_context,
+            label="genome_context",
+            min_bases=100,
+            max_bases=SETTINGS.max_genome_bases,
+            max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
+        )
+    request["genome_context"] = genome_context
+    request["cgr_source"] = "separate_complete_genome_sequence" if genome_context else "complete_genome_assembly_fasta"
     request["stride"] = stride
+    request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
     request["output_formats"] = list(payload.output_formats or ["bigwig", "parquet"])
-    return request, validated.total_bases
+    return request, validated.total_bases + (len(genome_context) if genome_context else 0)
 
 
 @app.exception_handler(HTTPException)
@@ -175,9 +186,23 @@ def current_model():
             "default_stride": SETTINGS.default_scan_stride,
             "min_stride": SETTINGS.min_scan_stride,
             "max_stride": SETTINGS.max_scan_stride,
-            "cutoff": None,
+            "score_cutoff": {
+                "default": None,
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "operator": ">",
+                "applies_to": ["gff3", "json"],
+                "unfiltered_formats": ["bigwig", "parquet"],
+            },
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
             "default_output_formats": ["bigwig", "parquet"],
+            "reverse_complementary": {"default": True},
+            "batch_size": {
+                "default": SETTINGS.default_batch_size,
+                "minimum": 1,
+                "maximum": SETTINGS.max_batch_size,
+            },
+            "unsupported_filters": ["top_k", "peak_distance"],
         },
         "complete_genome_field": {
             "predict": "genome_context",

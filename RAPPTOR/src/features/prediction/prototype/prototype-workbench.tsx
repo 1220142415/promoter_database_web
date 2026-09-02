@@ -1,11 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded';
 import type { GenomeCatalogRow, GenomeSearchResponse } from '@/features/genomes/types';
-import { sha256File, sha256Text } from '@/features/prediction/client';
+import { predictionApi, sha256File, sha256Text } from '@/features/prediction/client';
+import { parsePredictionHistory, PREDICTION_HISTORY_KEY, upsertPredictionHistory, type PredictionHistoryEntry } from '@/features/prediction/history';
 import {
   DEFAULT_PROTOTYPE_MODEL_SPEC,
   PROTOTYPE_CANDIDATE_EXAMPLE,
@@ -49,6 +49,22 @@ interface ContextUploadState {
   contigs: Array<{ sequenceId: string; length: number }>;
   loading: boolean;
   error: string | null;
+}
+
+type CreatedDockerJob = {
+  job_id?: string;
+  access_token?: string;
+  artifacts_expires_at?: string | null;
+};
+
+type PredictionTicket = { ticket?: string };
+
+interface ResolvedGenomeInput {
+  fasta: string;
+  sequence: string;
+  totalLength: number;
+  referenceName: string;
+  label: string;
 }
 
 const EMPTY_UPLOAD: UploadedInputState = { file: null, parsed: null, loading: false, error: null };
@@ -132,7 +148,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead }: {
       {error ? (
         <div className={styles.catalogError} role="alert">
           <p>{error}</p>
-          <div><button type="button" onClick={() => void search()}>Retry search</button><button type="button" onClick={onUploadInstead}>Upload FASTA instead</button><Link href="/help/prediction#troubleshooting">Open Help</Link></div>
+          <div><button type="button" onClick={() => void search()}>Retry search</button><button type="button" onClick={onUploadInstead}>Upload FASTA instead</button></div>
         </div>
       ) : null}
       {results.length ? (
@@ -150,7 +166,42 @@ function inferredLabel(mode: PrototypePredictionMode) {
   return mode === 'candidate' ? 'Focused 100 bp window' : 'Sequence / contig scan';
 }
 
-export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PROTOTYPE_MODEL_SPEC.version }: { modelVersion?: string }) {
+function parsedGenomeInput(parsed: PrototypeParsedSequenceInput, label: string): ResolvedGenomeInput {
+  return {
+    fasta: parsed.normalizedForChecksum,
+    sequence: parsed.records.map((record) => record.normalizedSequence).join(''),
+    totalLength: parsed.totalLength,
+    referenceName: parsed.records[0]?.sequenceId || '',
+    label,
+  };
+}
+
+async function catalogGenomeInput(context: PrototypeGenomeContext): Promise<ResolvedGenomeInput> {
+  if (context.kind !== 'catalog' || !context.accession) throw new Error('Select a catalog genome.');
+  const accession = encodeURIComponent(context.accession);
+  let response = await fetch(`/api/remote-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
+  if (!response.ok) response = await fetch(`/api/experimental-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
+  if (!response.ok || !response.body) throw new Error('The selected catalog genome FASTA is not available. Choose another genome or upload FASTA.');
+  let text: string;
+  try {
+    if (response.headers.get('content-type')?.startsWith('text/plain')) text = await response.text();
+    else {
+      if (typeof DecompressionStream === 'undefined') throw new Error('unsupported gzip');
+      text = await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).text();
+    }
+  } catch {
+    throw new Error('The selected catalog genome FASTA could not be decompressed.');
+  }
+  return parsedGenomeInput(parsePrototypeSequenceInput(text), context.displayName);
+}
+
+export default function PrototypePredictionWorkbench({
+  modelVersion = DEFAULT_PROTOTYPE_MODEL_SPEC.version,
+  localTest = false,
+}: {
+  modelVersion?: string;
+  localTest?: boolean;
+}) {
   const router = useRouter();
   const primaryFileRef = useRef<HTMLInputElement>(null);
   const contextFileRef = useRef<HTMLInputElement>(null);
@@ -251,7 +302,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     }
   }
 
-  async function resolveGenomeContext(): Promise<PrototypeGenomeContext> {
+  async function resolveGenomeContextMetadata(): Promise<PrototypeGenomeContext> {
     if (contextKind === 'catalog') {
       if (!contextCatalog) throw new Error('Select the matching genome context.');
       return contextCatalog;
@@ -264,7 +315,16 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     };
   }
 
-  async function primaryScanSource(): Promise<PrototypeGenomeContext> {
+  async function resolveGenomeContextSequence(): Promise<ResolvedGenomeInput> {
+    if (contextKind === 'catalog') {
+      if (!contextCatalog) throw new Error('Select the matching genome context.');
+      return catalogGenomeInput(contextCatalog);
+    }
+    if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid matching genome FASTA.');
+    return parsedGenomeInput(await readPrototypeSequenceFile(contextUpload.file), contextUpload.file.name);
+  }
+
+  async function primaryScanSourceMetadata(): Promise<PrototypeGenomeContext> {
     if (primaryKind === 'catalog') {
       if (!inputCatalog) throw new Error('Select a catalog genome.');
       return inputCatalog;
@@ -285,7 +345,16 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     };
   }
 
-  async function submitPrototype(event: FormEvent<HTMLFormElement>) {
+  async function primaryScanSequence(): Promise<ResolvedGenomeInput> {
+    if (primaryKind === 'catalog') {
+      if (!inputCatalog) throw new Error('Select a catalog genome.');
+      return catalogGenomeInput(inputCatalog);
+    }
+    if (!parsedInput) throw new Error('Provide valid sequence input.');
+    return parsedGenomeInput(parsedInput, primaryKind === 'upload' ? uploadedInput.file?.name || 'Uploaded FASTA' : 'Pasted sequence');
+  }
+
+  async function submitPrediction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const revealStep = (step: HTMLFieldSetElement | null) => {
       step?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
@@ -309,40 +378,101 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
     setSubmitting(true);
     setFormError(null);
     try {
-      const runId = createPrototypeRunId();
-      const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases } };
-      let run: PrototypePredictionRun;
+      if (!localTest) {
+        const runId = createPrototypeRunId();
+        const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases } };
+        let run: PrototypePredictionRun;
+        if (inferredMode === 'candidate') {
+          if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('Focused candidate scoring requires exactly one 100 bp sequence.');
+          const checksum = primaryKind === 'upload' && uploadedInput.file ? await sha256File(uploadedInput.file) : await sha256Text(parsedInput.normalizedForChecksum);
+          run = {
+            ...base, mode: 'candidate', parameters: prototypeParameters('candidate', strandMode, cutoff, strideBases),
+            input: {
+              kind: 'candidate', displayName: 'candidate_sequence', format: parsedInput.format, length: 100, checksum,
+              sourceKind: primaryKind, fileName: primaryKind === 'upload' ? uploadedInput.file?.name || null : null,
+              fileSize: primaryKind === 'upload' ? uploadedInput.file?.size || null : null,
+              genomeContext: await resolveGenomeContextMetadata(),
+            },
+          };
+        } else {
+          run = {
+            ...base,
+            mode: 'genome-scan',
+            parameters: prototypeParameters('genome-scan', strandMode, cutoff, strideBases),
+            input: {
+              kind: 'genome-scan',
+              scanSource: await primaryScanSourceMetadata(),
+              genomeContext: await resolveGenomeContextMetadata(),
+            },
+          };
+        }
+        writePrototypePredictionRun(run);
+        if (run.mode === 'genome-scan' && primaryKind !== 'catalog' && parsedInput) {
+          registerPrototypeTransientInput(run.runId, parsedInput);
+        }
+        router.push(`/predict/demo/${encodeURIComponent(runId)}`);
+        return;
+      }
+
+      let request: Record<string, unknown>;
+      let bases: number;
+      let referenceName: string;
+      let label: string;
+      let historyMode: PredictionHistoryEntry['mode'];
       if (inferredMode === 'candidate') {
         if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('Focused candidate scoring requires exactly one 100 bp sequence.');
-        const checksum = primaryKind === 'upload' && uploadedInput.file ? await sha256File(uploadedInput.file) : await sha256Text(parsedInput.normalizedForChecksum);
-        run = {
-          ...base, mode: 'candidate', parameters: prototypeParameters('candidate', strandMode, cutoff, strideBases),
-          input: {
-            kind: 'candidate', displayName: 'candidate_sequence', format: parsedInput.format, length: 100, checksum,
-            sourceKind: primaryKind, fileName: primaryKind === 'upload' ? uploadedInput.file?.name || null : null,
-            fileSize: primaryKind === 'upload' ? uploadedInput.file?.size || null : null,
-            genomeContext: await resolveGenomeContext(),
-          },
+        const context = await resolveGenomeContextSequence();
+        request = {
+          mode: 'predict', complete_genome: true,
+          sequence: parsedInput.records[0].normalizedSequence,
+          genome_context: context.sequence,
+          reverse_complementary: strandMode === 'both',
         };
+        bases = 100 + context.totalLength;
+        referenceName = context.referenceName;
+        label = primaryKind === 'upload' ? uploadedInput.file?.name || 'Candidate sequence' : 'Candidate sequence';
+        historyMode = 'predict';
       } else {
-        run = {
-          ...base,
-          mode: 'genome-scan',
-          parameters: prototypeParameters('genome-scan', strandMode, cutoff, strideBases),
-          input: {
-            kind: 'genome-scan',
-            scanSource: await primaryScanSource(),
-            genomeContext: await resolveGenomeContext(),
-          },
+        const genome = await primaryScanSequence();
+        const context = await resolveGenomeContextSequence();
+        request = {
+          mode: 'genome_scan', complete_genome: true, fasta: genome.fasta,
+          genome_context: context.sequence,
+          stride: strideBases, score_cutoff: cutoff, reverse_complementary: strandMode === 'both',
+          output_formats: ['bigwig', 'gff3'],
         };
+        bases = genome.totalLength + context.totalLength;
+        referenceName = genome.referenceName;
+        label = genome.label;
+        historyMode = 'genome_scan';
       }
-      writePrototypePredictionRun(run);
-      if (run.mode === 'genome-scan' && primaryKind !== 'catalog' && parsedInput) {
-        registerPrototypeTransientInput(run.runId, parsedInput);
-      }
-      router.push(`/predict/demo/${encodeURIComponent(runId)}`);
+
+      const issued = await predictionApi<PredictionTicket>('/api/prediction-tickets', {
+        method: 'POST',
+        body: JSON.stringify({ turnstileToken: 'local-test', modelVersion, bases }),
+      });
+      if (!issued.ticket) throw new Error('Prediction ticket response is invalid.');
+      const created = await predictionApi<CreatedDockerJob>('/api/predictions/jobs', {
+        method: 'POST',
+        headers: { Authorization: `Ticket ${issued.ticket}` },
+        body: JSON.stringify(request),
+      });
+      if (!created.job_id || !created.access_token) throw new Error('Prediction job response is invalid.');
+      const entry: PredictionHistoryEntry = {
+        jobId: created.job_id,
+        token: created.access_token,
+        refName: referenceName,
+        status: 'queued',
+        mode: historyMode,
+        submittedAt: new Date().toISOString(),
+        label,
+        bases,
+      };
+      localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), entry)));
+      sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
+      router.push(`/predict/task/${encodeURIComponent(created.job_id)}`);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : 'The prototype run could not be prepared.');
+      setFormError(cause instanceof Error ? cause.message : localTest ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
       setSubmitting(false);
     }
   }
@@ -365,17 +495,25 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
       ? { title: 'Genome context required', detail: 'Complete Step 2 by selecting a catalog genome or uploading the matching genome FASTA. The result preview will then become available.' }
       : !parametersReady
         ? { title: 'Check the score cutoff', detail: 'Enter a score cutoff from 0 to 1 to continue.' }
-        : { title: 'Ready to preview', detail: 'The next page shows a deterministic illustrative result; no prediction model will run.' };
-  const submitLabel = submitting ? 'Preparing…' : 'Preview illustrative result';
+        : localTest
+          ? { title: 'Ready to queue', detail: 'The validated input and matching CGR genome will be sent to the configured RAPPtor prediction service.' }
+          : { title: 'Ready to preview', detail: 'The next page shows a deterministic illustrative result; no prediction model will run.' };
+  const submitLabel = submitting ? (localTest ? 'Queuing…' : 'Preparing…') : (localTest ? 'Queue prediction' : 'Preview illustrative result');
+  const inputPrivacyCopy = localTest
+    ? 'The selected input is sent to the configured prediction service only after you queue the task.'
+    : 'The session stores a checksum, lengths, and generic record ids—not pasted DNA or FASTA headers.';
+  const contextPrivacyCopy = localTest
+    ? 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
+    : 'Raw genome FASTA remains browser-local; only metadata and checksum enter sessionStorage.';
 
   return (
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
-        <div><p className="portal-kicker">Prediction prototype</p><h1 id="prototype-heading">Prepare one input. RAPPTOR detects the analysis.</h1><p>A single 100 bp record is scored as a focused window. Longer sequences, multiple contigs, and catalog genomes use a sequence scan.</p></div>
+        <div><p className="portal-kicker">{localTest ? 'Queued prediction' : 'Prediction prototype'}</p><h1 id="prototype-heading">Prepare one input. RAPPTOR detects the analysis.</h1><p>A single 100 bp record is scored as a focused window. Longer sequences, multiple contigs, and catalog genomes use a sequence scan.</p></div>
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
-        <form onSubmit={submitPrototype} className={styles.form}>
+        <form onSubmit={submitPrediction} className={styles.form}>
           <div className={styles.formHeading}>
             <div><span>Automatic detection</span><h2>Sequence or genome input</h2></div>
           </div>
@@ -385,7 +523,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
             <div className={styles.pasteSource}>
               <label className={styles.fieldLabel} htmlFor="prototype-sequence-input">Raw DNA or FASTA</label>
               <textarea id="prototype-sequence-input" rows={7} spellCheck={false} value={inlineInput} aria-invalid={primaryKind === 'inline' && Boolean(inputError)} aria-describedby="prototype-input-status" onChange={(event) => { setInlineInput(event.target.value); setPrimaryKind('inline'); clearGenomeContext(); setFormError(null); }} placeholder=">sequence&#10;ACGT..." />
-              <p className={styles.localNote}>Paste up to 10,000 bases. The session stores a checksum, lengths, and generic record ids—not pasted DNA or FASTA headers.</p>
+              <p className={styles.localNote}>Paste up to 10,000 bases. {inputPrivacyCopy}</p>
               <div className={styles.exampleRow} aria-label="Examples">
                 <span>Try an example</span>
                 <div><button type="button" onClick={loadFocusedExample}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample}>Use E. coli K-12 genome example</button></div>
@@ -425,7 +563,7 @@ export default function PrototypePredictionWorkbench({ modelVersion = DEFAULT_PR
                     <button type="button" onClick={() => contextFileRef.current?.click()}>{contextUpload.file ? 'Replace FASTA file' : 'Choose FASTA file'}</button>
                     <input ref={contextFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handleContextFile} />
                   </div>
-                  <p className={contextUpload.error ? styles.fileError : styles.localNote}>{contextUpload.error || 'Raw genome FASTA remains browser-local; only metadata and checksum enter sessionStorage.'}</p>
+                  <p className={contextUpload.error ? styles.fileError : styles.localNote}>{contextUpload.error || contextPrivacyCopy}</p>
                 </div>
               </div>
               <p className={`${styles.contextStatus} ${contextReady ? styles.valid : ''}`} aria-live="polite">{contextReady ? `CGR context ready: ${activeContextLabel}.` : 'Select a catalog genome or upload a genome FASTA for CGR.'}</p>

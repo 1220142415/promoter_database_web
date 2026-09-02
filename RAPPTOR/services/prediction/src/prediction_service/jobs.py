@@ -111,8 +111,11 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
     cgr = runtime.make_cgr(context_fasta, job_dir)
     _progress("inference", 45.0)
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
-    scores = runtime.score_sequence(sequence, cgr, stride=1, batch_size=batch_size)
-    if len(scores) == 0:
+    scores_by_strand = [("+", runtime.score_sequence(sequence, cgr, stride=1, batch_size=batch_size))]
+    if request.get("reverse_complementary", True):
+        reverse_sequence = runtime.reverse_complement(sequence)
+        scores_by_strand.append(("-", runtime.score_sequence(reverse_sequence, cgr, stride=1, batch_size=batch_size)))
+    if not any(len(scores) for _, scores in scores_by_strand):
         raise ValueError("sequence produced no model windows")
     score_writer = ScanArtifactWriter(
         job_dir,
@@ -123,14 +126,16 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         stride=1,
     )
     try:
-        score_writer.add_scores(
-            "target_sequence",
-            len(sequence),
-            "+",
-            scores,
-            upstream_len=runtime.upstream_len,
-        )
-        _progress("writing_outputs", 90.0, windows=len(scores), scores_written=len(scores))
+        for strand, scores in scores_by_strand:
+            score_writer.add_scores(
+                "target_sequence",
+                len(sequence),
+                strand,
+                scores,
+                upstream_len=runtime.upstream_len,
+            )
+        window_count = sum(len(scores) for _, scores in scores_by_strand)
+        _progress("writing_outputs", 90.0, windows=window_count, scores_written=window_count)
         artifacts = score_writer.close(success=True)
     except Exception:
         score_writer.close(success=False)
@@ -141,8 +146,9 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         "genome_context_bases": len(genome_context),
         "cgr_source": "complete_genome_sequence",
         "complete_genome": "submitter_asserted",
-        "window_count": int(len(scores)),
-        "max_score": float(scores.max()),
+        "reverse_complementary": bool(request.get("reverse_complementary", True)),
+        "window_count": int(sum(len(scores) for _, scores in scores_by_strand)),
+        "max_score": float(max(scores.max() for _, scores in scores_by_strand if len(scores))),
         "score_filename": "scores.json",
         "completed_at": utc_now(),
     }
@@ -162,11 +168,19 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
     fasta_path = storage.write_text(job_id, "input.fasta", validated.to_fasta())
     fasta_index_path = _write_fasta_index(storage, job_id, validated.records)
     _progress("preparing_cgr", 10.0, total_bases=validated.total_bases)
-    cgr = runtime.make_cgr(fasta_path, job_dir)
+    genome_context = request.get("genome_context")
+    if genome_context:
+        context_path = storage.write_text(job_id, "genome_context.fasta", f">genome_context\n{genome_context}\n")
+        cgr = runtime.make_cgr(context_path, job_dir)
+        cgr_source = "separate_complete_genome_sequence"
+    else:
+        cgr = runtime.make_cgr(fasta_path, job_dir)
+        cgr_source = "complete_genome_assembly_fasta"
     stride = int(request.get("stride") or SETTINGS.default_scan_stride)
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
     reverse = bool(request.get("reverse_complementary", True))
     output_formats = tuple(request.get("output_formats") or ("bigwig", "parquet"))
+    score_cutoff = request.get("score_cutoff")
     artifact_writer = ScanArtifactWriter(
         job_dir,
         output_formats,
@@ -174,6 +188,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         model_version=SETTINGS.model_version,
         checkpoint_sha256=runtime.checkpoint_sha256,
         stride=stride,
+        score_cutoff=score_cutoff,
     )
     total_units = len(validated.records) * (2 if reverse else 1)
     completed_units = 0
@@ -207,6 +222,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                     strand=strand,
                     windows=total_windows,
                     scores_written=total_windows,
+                    passing_windows=artifact_writer.passing_score_count,
                 )
         _progress("writing_outputs", 92.0, windows=total_windows, scores_written=total_windows)
         artifacts = artifact_writer.close(success=True)
@@ -222,15 +238,19 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "total_bases": validated.total_bases,
         "contig_count": len(validated.records),
         "ambiguous_fraction": validated.ambiguous_fraction,
-        "cgr_source": "complete_genome_assembly_fasta",
+        "cgr_source": cgr_source,
+        "genome_context_bases": len(genome_context) if genome_context else validated.total_bases,
         "complete_genome": "submitter_asserted",
         "stride": stride,
         "batch_size": batch_size,
         "reverse_complementary": reverse,
         "window_count": total_windows,
         "scores_written": total_windows,
+        "score_cutoff": score_cutoff,
+        "score_cutoff_operator": ">" if score_cutoff is not None else None,
+        "passing_window_count": artifact_writer.passing_score_count,
         "output_formats": list(output_formats),
-        "output_semantics": "all_window_scores_without_cutoff",
+        "output_semantics": "all raw scores; optional cutoff applies only to GFF3/JSON records",
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)

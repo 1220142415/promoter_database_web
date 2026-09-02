@@ -160,6 +160,7 @@ describe('genome detail release contract', () => {
     expect(screen.getByLabelText('Genome key metrics')).toBeInTheDocument();
     expect(screen.getByText('Assembly overview').closest('details')).toHaveAttribute('open');
     expect(screen.getByText('Taxonomy').closest('details')).not.toHaveAttribute('open');
+    expect(container.querySelector('.detail-title-row .release-stamp')).not.toBeInTheDocument();
     expect(screen.getByText('1,600 / Mb')).toBeInTheDocument();
     expect(screen.getByText('RAPPTOR')).toBeInTheDocument();
     expect(screen.queryByText('RAPPTOR 1.0')).not.toBeInTheDocument();
@@ -194,6 +195,21 @@ describe('genome detail release contract', () => {
     expect(screen.queryByText('Reference FAI path')).not.toBeInTheDocument();
     expect(screen.queryByText('Logical object prefix')).not.toBeInTheDocument();
     expect(screen.queryByText('Not reported')).not.toBeInTheDocument();
+  });
+
+  it('hides summary metrics whose values are not reported', async () => {
+    const incomplete = match('GCA_000411415.1', 'available');
+    incomplete.genome.gcContent = null;
+    incomplete.genome.completeness = null;
+    delete (incomplete.genome as Partial<typeof incomplete.genome>).annotationFeatureCount;
+    vi.mocked(genomeCatalogRepository.getByAccession).mockResolvedValue(incomplete);
+    render(await GenomeDetailPage({ params: Promise.resolve({ accession: incomplete.genome.accession }) }));
+
+    expect(screen.queryByText('GC content')).not.toBeInTheDocument();
+    expect(screen.queryByText('Completeness')).not.toBeInTheDocument();
+    expect(screen.queryByText('NCBI annotation features')).not.toBeInTheDocument();
+    expect(screen.queryByText('Not reported')).not.toBeInTheDocument();
+    expect(screen.getByText('Contigs')).toBeInTheDocument();
   });
 
   it('omits the NCBI track for GCA_000421325.1', async () => {

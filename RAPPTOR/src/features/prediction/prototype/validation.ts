@@ -11,7 +11,7 @@ import {
 
 export const PROTOTYPE_CANDIDATE_MIN_BASES = 100 as const;
 export const PROTOTYPE_INLINE_MAX_BASES = 10_000 as const;
-export const PROTOTYPE_GENOME_MAX_BYTES = 50 * 1024 * 1024;
+export const PROTOTYPE_GENOME_MAX_BYTES = 12 * 1024 * 1024;
 export const PROTOTYPE_GENOME_FILE_PATTERN = /\.(?:fa|fasta|fna)(?:\.gz)?$/i;
 
 export class PrototypeValidationError extends Error {
@@ -63,7 +63,7 @@ export function validatePrototypeGenomeFile(file: Pick<File, 'name' | 'size'>) {
   }
   if (file.size <= 0) throw new PrototypeValidationError('Genome FASTA is empty.');
   if (file.size > PROTOTYPE_GENOME_MAX_BYTES) {
-    throw new PrototypeValidationError('Genome FASTA must be 50 MiB or smaller.');
+    throw new PrototypeValidationError('Genome FASTA must be 12 MiB or smaller.');
   }
 }
 

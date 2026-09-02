@@ -447,12 +447,6 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
               url: resolveAsset(experimental!.assetBase, study.assets.rawBed),
               sourcePath: study.assets.rawBed,
             },
-            {
-              kind: 'normalized-gff3',
-              label: 'Normalized experimental TSS GFF3',
-              url: dataUrl,
-              sourcePath: study.assets.data,
-            },
           ],
         },
         assemblyNames: [assemblyName],

@@ -16,15 +16,13 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date);
 }
 
-function taxonomyReleaseLabel(value: string | null) {
-  return value ? `GTDB taxonomy ${value.replace(/^GTDB\s+/i, '')}` : 'GTDB taxonomy not reported';
-}
-
 export default function HomePage() {
   const showExperimental = experimentalTssPublicEnabled();
   const largestPhylum = Math.max(1, ...catalog.topPhyla.map((item) => item.count));
   const releaseLabel = `RAPPTOR ${catalog.releaseDate || catalog.releaseId}`;
   const releaseBase = (catalog.releaseAssetBaseUrl || process.env.NEXT_PUBLIC_RELEASE_ASSET_BASE_URL || '/api/local-release').replace(/\/+$/, '');
+  const totalCatalogGenomes = catalog.totalCatalogGenomes ?? catalog.totalGenomes;
+  const totalCatalogPredictedPromoters = catalog.totalCatalogPredictedPromoters ?? catalog.totalPredictedPromoters;
 
   return (
     <main>
@@ -37,7 +35,6 @@ export default function HomePage() {
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
               {showExperimental ? <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link> : null}
-              <Link href="/predict" className="portal-button portal-button-secondary">Predict a promoter</Link>
             </div>
           </div>
           <div className="sequence-figure" role="img" aria-label="Genome sequence and promoter track overview">
@@ -45,19 +42,19 @@ export default function HomePage() {
             <div className="sequence-track sequence-reference"><span>REFERENCE</span><i /><i /><i /><i /></div>
             <div className="sequence-track sequence-promoters"><span>PREDICTED PROMOTERS</span><b style={{ left: '12%', width: '8%' }} /><b style={{ left: '31%', width: '13%' }} /><b style={{ left: '58%', width: '6%' }} /><b style={{ left: '77%', width: '15%' }} /></div>
             <div className="sequence-track sequence-annotation"><span>GENOME ANNOTATION</span><em style={{ left: '5%', width: '18%' }} /><em style={{ left: '29%', width: '22%' }} /><em style={{ left: '64%', width: '27%' }} /></div>
-            <div className="sequence-locus"><span>Genome-resolved</span><strong>{catalog.totalGenomes.toLocaleString()} assemblies</strong></div>
+            <div className="sequence-locus"><span>Genome-resolved</span><strong>{totalCatalogGenomes.toLocaleString()} assemblies</strong></div>
           </div>
         </div>
       </section>
 
       <section className="portal-metrics" aria-label="Release statistics">
         <div className="portal-shell metrics-grid">
-          <div><PublicRoundedIcon aria-hidden="true" /><span>Genomes</span><strong>{catalog.totalGenomes.toLocaleString()}</strong></div>
-          <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{catalog.totalPredictedPromoters.toLocaleString()}</strong></div>
+          <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{totalCatalogGenomes.toLocaleString()}</strong></div>
+          <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{totalCatalogPredictedPromoters.toLocaleString()}</strong></div>
           <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
           {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div> : null}
+          {showExperimental ? <div><DataObjectRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{catalog.totalExperimentalTss.toLocaleString()}</strong></div> : null}
           {showExperimental ? <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{(catalog.totalEvidencePublications || 0).toLocaleString()}</strong></div> : null}
-          <div className="release-metric"><span>Current release</span><strong>{releaseLabel}</strong><small>{taxonomyReleaseLabel(catalog.sourceReleaseId)}</small></div>
         </div>
       </section>
 
@@ -71,8 +68,7 @@ export default function HomePage() {
           <div className="section-heading">
             <p>Set the strand, score cutoff and number of results to display, then inspect illustrative output before a live RAPPtor service is connected.</p>
             <div className="portal-actions">
-              <Link href="/predict" className="portal-button portal-button-primary">Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></Link>
-              <Link href="/help/prediction" className="portal-button portal-button-secondary">Read the prediction guide</Link>
+              <button type="button" className="portal-button portal-button-primary" disabled>Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></button>
             </div>
           </div>
         </div>
@@ -96,13 +92,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      {showExperimental ? <section className="portal-section evidence-band" id="evidence">
-        <div className="portal-shell evidence-layout">
-          <div><p className="portal-kicker">Evidence boundaries</p><h2>Predictions and observations stay separate</h2></div>
-          <p>RAPPTOR keeps model-predicted promoter peaks, experimentally observed transcription start sites and contextual NCBI annotations as separate evidence layers.</p>
-        </div>
-      </section> : null}
 
       <section className="portal-section data-access-section" id="data">
         <div className="portal-shell">

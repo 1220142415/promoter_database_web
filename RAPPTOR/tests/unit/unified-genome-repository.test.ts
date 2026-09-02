@@ -71,6 +71,8 @@ function predictionRepository(rows: GenomeCatalogRow[]): GenomeCatalogRepository
         releaseId: 'prediction-1', referenceSha256: 'a'.repeat(64), assetBase: '/api/remote-data', storage: null,
         genome: makeGenome({
           accession: row.accession, organismName: row.organismName,
+          strain: row.strain, domain: row.domain, phylum: row.phylum, className: row.className,
+          orderName: row.orderName, family: row.family, genus: row.genus,
           predictedPromoterCount: row.predictedPromoterCount,
         }),
       };
@@ -329,6 +331,43 @@ describe('unified genome repository', () => {
     expect(first.total).toBe(500);
     expect(first.pageInfo.hasNext).toBe(true);
     expect(searchCalls).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps experimental taxonomy facets inside the selected parent path', async () => {
+    const predictionRows = [
+      makeCatalogRow(makeGenome({ accession: 'GCF_000000001.1', phylum: 'Bacillota_B', className: 'Clostridia' })),
+      makeCatalogRow(makeGenome({ accession: 'GCF_000000002.1', phylum: 'Spirochaetota', className: 'Leptospirae' })),
+    ];
+    const repository = new CompositeUnifiedGenomeRepository(
+      predictionRepository(predictionRows),
+      experimentalRepository(predictionRows.map((row) => experimentalGenome(row.accession))),
+    );
+
+    const result = await repository.search(query({
+      taxonomy: { domain: 'Bacteria', phylum: 'Bacillota_B', class: '', order: '', family: '', genus: '' },
+    }));
+
+    expect(result.facets.taxonomy.class).toEqual(['Clostridia']);
+  });
+
+  it('counts prediction GFF files stored with the experimental collection as prediction evidence', async () => {
+    const genome = experimentalGenome('GCF_000014625.1', 2_317);
+    genome.predictedPromoterCount = 46_015;
+    genome.assets.predictedPromoters = 'predicted-promoters.gff3';
+    const repository = new CompositeUnifiedGenomeRepository(predictionRepository([]), experimentalRepository([genome]));
+
+    const result = await repository.search(query({ evidence: 'predictions' }));
+    expect(result.items[0]).toMatchObject({
+      canonicalAccession: 'GCF_000014625.1', predictionAccession: null,
+      predictionAvailable: true, evidenceState: 'both', predictedPromoterCount: 46_015,
+    });
+    expect(result.stats).toMatchObject({
+      totalGenomes: 1, predictionGenomes: 1, experimentalGenomes: 1, bothGenomes: 1,
+      totalPredictedPromoters: 46_015,
+    });
+    await expect(repository.getByAccession(genome.accession)).resolves.toMatchObject({
+      prediction: null, predictionAvailable: true, evidenceState: 'both',
+    });
   });
 
   it('links metadata-only experimental assemblies to an exact prediction accession', async () => {

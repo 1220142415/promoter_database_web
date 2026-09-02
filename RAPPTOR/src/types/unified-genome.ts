@@ -31,6 +31,7 @@ export interface UnifiedGenomeRow extends GenomeCatalogRow {
   canonicalAccession: string;
   aliases: string[];
   predictionAccession: string | null;
+  predictionAvailable: boolean;
   experimentalAccession: string | null;
   evidenceState: UnifiedGenomeEvidenceState;
   experimentalObservationCount: number;
@@ -85,6 +86,7 @@ export interface UnifiedGenomeMatch {
   assemblyCompatibility: 'exact' | 'reciprocal_alias' | 'single_source' | 'mismatch';
   overlayAllowed?: boolean;
   availableAssemblySources?: Array<'prediction' | 'experimental'>;
+  predictionAvailable: boolean;
   prediction: GenomeCatalogMatch | null;
   experimental: ExperimentalTssGenome | null;
   releases: UnifiedGenomeReleases;

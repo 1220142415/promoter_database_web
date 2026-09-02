@@ -8,6 +8,11 @@ import PrototypePredictionWorkbench from '@/features/prediction/prototype/protot
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('@/features/prediction/client', () => ({
+  predictionApi: vi.fn(async (url: string, init?: RequestInit) => {
+    const response = await fetch(url, init);
+    if (!response.ok) throw new Error('Prediction request failed.');
+    return response.json();
+  }),
   sha256Text: vi.fn(async () => 'a'.repeat(64)),
   sha256File: vi.fn(async () => 'b'.repeat(64)),
 }));
@@ -151,7 +156,7 @@ describe('prototype prediction workbench', () => {
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     expect(await screen.findByRole('button', { name: 'Retry search' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload FASTA instead' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Help' })).toHaveAttribute('href', '/help/prediction#troubleshooting');
+    expect(screen.queryByRole('link', { name: 'Open Help' })).not.toBeInTheDocument();
     expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('ACGT');
   });
 
@@ -168,5 +173,44 @@ describe('prototype prediction workbench', () => {
     await user.click(submit);
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a score cutoff from 0 to 1');
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('queues the unified scan input with its separate CGR sequence, cutoff, strands and selected step', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/remote-data/')) {
+        return new Response(`>chromosome\n${'ACGT'.repeat(40)}\n`, { headers: { 'Content-Type': 'text/plain' } });
+      }
+      if (url === '/api/prediction-tickets') return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      if (url === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'b'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench localTest />);
+
+    await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
+    await user.click(screen.getByRole('button', { name: 'Use this genome for CGR' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Step' }), '10');
+    await user.clear(screen.getByRole('spinbutton', { name: /^Score cutoff/ }));
+    await user.type(screen.getByRole('spinbutton', { name: /^Score cutoff/ }), '0.8');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Strands/ }), 'forward');
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'b'.repeat(32)}`));
+    expect(jobRequest).toMatchObject({
+      mode: 'genome_scan',
+      genome_context: expect.any(String),
+      stride: 10,
+      score_cutoff: 0.8,
+      reverse_complementary: false,
+      output_formats: ['bigwig', 'gff3'],
+    });
+    expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
   });
 });

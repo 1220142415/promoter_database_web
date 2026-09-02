@@ -217,7 +217,7 @@ test.describe('catalog failure and mobile focused result', () => {
 
     await expect(page.getByRole('alert').filter({ hasText: 'Your other inputs are still here' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry search' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Open Help' })).toHaveAttribute('href', '/help/prediction#troubleshooting');
+    await expect(page.getByRole('link', { name: 'Open Help' })).toHaveCount(0);
     await expect(sequenceInput).toHaveValue(originalSequence);
 
     await page.getByRole('button', { name: 'Upload FASTA instead' }).click();

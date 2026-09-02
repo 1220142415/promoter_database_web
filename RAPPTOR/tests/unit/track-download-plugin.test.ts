@@ -117,4 +117,39 @@ describe('RAPPTOR JBrowse track download plugin', () => {
     const element = { name: 'LinearPileupDisplay', stateModel: {} };
     expect(extension?.(element)).toBe(element);
   });
+
+  it('hides display selection from every track menu and downloads the original experimental BED', () => {
+    let extension: ((element: { name: string; stateModel: { extend: (callback: (self: unknown) => unknown) => unknown } }) => unknown) | undefined;
+    const pluginManager = {
+      addToExtensionPoint: vi.fn((_name: string, callback: typeof extension) => { extension = callback; }),
+    };
+    new RapptorTrackDownloadPlugin().install(pluginManager as never);
+
+    type MenuItem = { label?: string; onClick?: () => void };
+    let extender: ((self: unknown) => { views: { trackMenuItems: () => MenuItem[] } }) | undefined;
+    const featureTrack = {
+      name: 'FeatureTrack',
+      stateModel: { extend: vi.fn((callback: typeof extender) => { extender = callback; return {}; }) },
+    };
+    extension?.(featureTrack as never);
+    const views = extender?.({ trackMenuItems: () => [{ label: 'About track' }, { label: 'Display types' }] });
+
+    mocks.getConf.mockReturnValue({
+      rapptorEvidenceType: 'experimental_tss',
+      rapptorExperimentalDownloads: [{
+        kind: 'raw-bed',
+        label: 'Original BED observations',
+        url: '/api/experimental-data/GCF_000210855.2/studies/study/raw.bed',
+      }],
+    });
+    const experimentalItems = views?.views.trackMenuItems() || [];
+    expect(experimentalItems.map((item) => item.label)).toEqual(['About track', 'Download original BED']);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    experimentalItems[1].onClick?.();
+    expect(click).toHaveBeenCalledOnce();
+    click.mockRestore();
+
+    mocks.getConf.mockReturnValue({ rapptorDownload: { kind: 'annotation' } });
+    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track']);
+  });
 });

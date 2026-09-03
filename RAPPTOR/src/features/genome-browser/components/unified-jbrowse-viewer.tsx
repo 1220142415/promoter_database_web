@@ -365,6 +365,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           type: 'LinearBasicDisplay',
           renderer: {
             type: PROMOTER_FEATURE_RENDERER,
+            peakWindowBp: prediction?.promoterPeakWindowBp || 0,
             height: 18,
             showLabels: false,
             showDescriptions: false,

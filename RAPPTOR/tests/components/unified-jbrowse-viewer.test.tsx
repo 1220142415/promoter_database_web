@@ -222,6 +222,15 @@ describe('unified JBrowse viewer', () => {
     });
   });
 
+  it('passes an inferred 100 bp window to point-peak promoter tracks', () => {
+    render(<UnifiedJBrowseViewer prediction={{ ...prediction(), promoterPeakWindowBp: 100 }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ trackId: string; displays: Array<{ renderer: { peakWindowBp?: number } }> }>;
+    };
+    const promoters = config.tracks.find((track) => track.trackId.endsWith('-predicted-promoters'))!;
+    expect(promoters.displays[0].renderer.peakWindowBp).toBe(100);
+  });
+
   it('extracts volatile optional-track block failures without treating them as reference failures', () => {
     const failures = inspectUnifiedJBrowseFailures({
       session: { view: { tracks: [{

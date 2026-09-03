@@ -29,7 +29,7 @@ describe('portal header', () => {
     const open = screen.getByRole('button', { name: 'Open navigation' });
     expect(open).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('link', { name: 'Genomes' })).toHaveClass('is-active');
-    expect(screen.queryByRole('link', { name: 'Predict' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Predict' })).toHaveAttribute('href', '/predict');
     expect(screen.queryByRole('link', { name: 'Help' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Experimental TSS' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage');
@@ -51,10 +51,4 @@ describe('portal header', () => {
     expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
   });
 
-  it('keeps prediction hidden when the live service is enabled', () => {
-    render(<PortalHeader showPrediction />);
-    expect(screen.queryByRole('link', { name: 'Predict' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Help' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Run RAPPTOR' })).not.toBeInTheDocument();
-  });
 });

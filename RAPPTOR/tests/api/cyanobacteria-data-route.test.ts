@@ -52,7 +52,7 @@ describe('cyanobacteria release asset route', () => {
   it('rejects unknown IDs, unlisted files, traversal forms, and invalid ranges', async () => {
     expect((await GET(new Request('http://localhost/test'), context('unknown', 'reference.fa.gz'))).status).toBe(404);
     expect((await GET(new Request('http://localhost/test'), context('ASM970v1', 'private.txt'))).status).toBe(404);
-    expect((await GET(new Request('http://localhost/test'), context('ASM970v1', 'experimentally-supported-tss.gff3.gz'))).status).toBe(404);
+    expect((await GET(new Request('http://localhost/test'), context('Cf6912', 'experimentally-supported-tss.gff3.gz'))).status).toBe(404);
     expect((await GET(new Request('http://localhost/test'), context('ASM970v1', 'sources', '..', 'reference.fa.gz'))).status).toBe(404);
     const invalid = await GET(
       new Request('http://localhost/test', { headers: { Range: 'bytes=10-' } }),

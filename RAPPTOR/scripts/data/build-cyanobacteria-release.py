@@ -65,6 +65,26 @@ GENOMES = {
         "candidate": "gff3_cutoff_0/ASM970v1.smoothed_peaks_gt_0.gff3",
         "prediction": "cyanobacteria_promoter_annotations/ASM970v1.smoothed_peaks_gt_0.9.gff3",
         "annotationSourcePath": "cyanobacteria_gene_annotations/ASM970v1.ncbi.gff3",
+        "experimentalTss": {
+            "path": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
+            "seqidPrefix": "GCF_000009705.1:",
+            "label": "Experimentally supported TSS (Mitschke et al., 2011)",
+            "studyId": "2011_22135468_GCF_000009705.1",
+            "pmid": "22135468",
+            "year": 2011,
+            "title": "Dynamics of transcriptional start site selection during nitrogen stress-induced cell differentiation in Anabaena sp. PCC7120.",
+            "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+            "doi": "10.1073/pnas.1112724108",
+            "assemblyAccession": "GCF_000009705.1",
+            "expectedObservationCount": 13_705,
+            "expectedUniqueTssCount": 13_705,
+            "expectedStrands": {"plus": 6_929, "minus": 6_776},
+            "expectedSequenceCount": 7,
+            "methodBoundary": "Study-level TSS observations under the conditions reported by the source publication; not universal promoter validation.",
+            "hfPath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
+            "hfAssetSha256": "f47d7a2623ceb9c9d4b164ea69827ae41671f0ce97a5e8fe47fbc5c0e8a3f283",
+            "sourceManifestSha256": "1c27312b8a5fedd9973df058672e7da14d0e9ecfb67e0d019df20d556f85dac5",
+        },
     },
     "Cf6912": {
         "identifierType": "dataset identifier",
@@ -682,7 +702,7 @@ def release_catalog(genomes: list[dict], generated_at: str) -> dict:
         "title": "RAPPTOR cyanobacterial promoter predictions",
         "description": (
             "Three cyanobacterial reference genomes with scored candidate peaks, score > 0.9 promoter "
-            "predictions and genome annotations."
+            "predictions, genome annotations and study-linked experimental TSS evidence where available."
         ),
         "assetBaseUrl": HF_ASSET_BASE,
         "manifest": "manifest.tsv",
@@ -726,8 +746,8 @@ def validate_release(root: Path) -> dict:
         release["totalGenomes"] != 3
         or release["totalCandidatePeaks"] != 2_609_318
         or release["totalPredictedPromoters"] != 112_862
-        or release.get("totalExperimentallySupportedGenomes") != 0
-        or release.get("totalExperimentalTssObservations") != 0
+        or release.get("totalExperimentallySupportedGenomes") != 1
+        or release.get("totalExperimentalTssObservations") != 13_705
     ):
         raise ReleaseValidationError("Release totals do not match the fixed acceptance contract")
     observed_genomes = {genome["id"]: genome for genome in release.get("genomes", [])}
@@ -739,8 +759,8 @@ def validate_release(root: Path) -> dict:
             raise ReleaseValidationError(f"{genome_id}: release counts do not match the fixed acceptance contract")
         if genome.get("validation", {}).get("finalSubsetVerified") is not True:
             raise ReleaseValidationError(f"{genome_id}: final score > 0.9 subset verification is missing")
-        if genome.get("experimentalEvidence") is not None:
-            raise ReleaseValidationError(f"{genome_id}: experimental evidence is not part of this public release")
+        if bool(genome.get("experimentalEvidence")) != (genome_id == "ASM970v1"):
+            raise ReleaseValidationError(f"{genome_id}: experimental evidence does not match the release contract")
     manifest_rows = (root / "manifest.tsv").read_text(encoding="utf-8").splitlines()
     if not manifest_rows or manifest_rows[0] != "path\tbytes\tsha256":
         raise ReleaseValidationError("Invalid release manifest header")

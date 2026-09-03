@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { readConfObject } from '@jbrowse/core/configuration';
+import type { AnyConfigurationModel } from '@jbrowse/core/configuration';
 import { bpToPx, measureText, type Feature, type Region } from '@jbrowse/core/util';
 import { observer } from 'mobx-react';
 
@@ -31,9 +33,7 @@ type LayoutRect = [number, number, number, number];
 
 type FeatureLayout = {
   addRect: (id: string, left: number, right: number, height: number, data?: unknown) => number | null;
-  getByCoord?: (x: number, y: number) => string | undefined;
   getDataByID?: (id: string) => unknown;
-  getByID?: (id: string) => LayoutRect | undefined;
   getTotalHeight: () => number;
 };
 
@@ -154,8 +154,7 @@ function featureAtEvent(event: React.MouseEvent, element: SVGSVGElement | null, 
   return typeof layoutData?.featureId === 'string' ? layoutData.featureId : layoutId;
 }
 
-function screenInterval(feature: Feature, region: Region, bpPerPx: number) {
-  const { start, end } = featureCoordinates(feature);
+function screenIntervalFromCoordinates(start: number, end: number, region: Region, bpPerPx: number) {
   const rawStartPx = bpToPx(start, region, bpPerPx);
   const rawEndPx = bpToPx(end, region, bpPerPx);
   const viewportWidth = (region.end - region.start) / bpPerPx;
@@ -181,6 +180,18 @@ function screenInterval(feature: Feature, region: Region, bpPerPx: number) {
     viewportWidth,
     visible: rawRight > 0 && rawLeft < viewportWidth,
   };
+}
+
+function screenInterval(feature: Feature, region: Region, bpPerPx: number) {
+  const { start, end } = featureCoordinates(feature);
+  return screenIntervalFromCoordinates(start, end, region, bpPerPx);
+}
+
+export function promoterPeakWindowCoordinates(feature: Feature) {
+  const { start } = featureCoordinates(feature);
+  return normalizeStrand(feature.get('strand')) === -1
+    ? { start: start - 20, end: start + 80 }
+    : { start: start - 79, end: start + 21 };
 }
 
 function endpointInViewport(px: number, viewportWidth: number) {
@@ -312,19 +323,21 @@ function promoterFlag(
 
 function renderPromoterFeature(
   feature: Feature,
-  props: Pick<StrandRendererProps, 'bpPerPx' | 'displayModel' | 'layout' | 'regions'>,
+  props: Pick<StrandRendererProps, 'bpPerPx' | 'config' | 'displayModel' | 'layout' | 'regions'>,
 ) {
-  const { bpPerPx, displayModel, layout, regions } = props;
+  const { bpPerPx, config, displayModel, layout, regions } = props;
   const region = regions[0];
   const id = String(feature.id());
   const { start, end } = featureCoordinates(feature);
   const strand = normalizeStrand(feature.get('strand'));
-  const interval = screenInterval(feature, region, bpPerPx);
-  if (!interval.visible || !interval.width) return null;
   const direction = screenDirection(strand, region.reversed);
   const color = strandColor(strand);
   const formal = isFormalPromoter(feature);
   const peak = isPromoterPeak(feature);
+  const windowedPeak = peak && Number(readConfObject(config as AnyConfigurationModel, 'peakWindowBp')) === 100;
+  const bodyCoordinates = windowedPeak ? promoterPeakWindowCoordinates(feature) : { start, end };
+  const interval = screenIntervalFromCoordinates(bodyCoordinates.start, bodyCoordinates.end, region, bpPerPx);
+  if (!interval.visible || !interval.width) return null;
   const flagged = formal || peak;
   const anchorPosition = formal ? promoterAnchorPosition(feature)
     : peak ? start + 0.5 : undefined;
@@ -332,12 +345,13 @@ function renderPromoterFeature(
   const anchorVisible = flagged
     && anchorX !== undefined
     && endpointInViewport(anchorX, interval.viewportWidth);
-  const showBody = peak ? false : !formal || shouldShowPromoterBody(interval.width);
+  const promoterWindow = formal || windowedPeak;
+  const showBody = peak ? windowedPeak && shouldShowPromoterBody(interval.width) : !formal || shouldShowPromoterBody(interval.width);
   if (flagged && !anchorVisible && !showBody) return null;
 
   const layoutBounds = flagged && anchorVisible && anchorPosition !== undefined
-    ? promoterFlagLayoutBounds(start, end, anchorPosition, strand, bpPerPx)
-    : { start, end };
+    ? promoterFlagLayoutBounds(bodyCoordinates.start, bodyCoordinates.end, anchorPosition, strand, bpPerPx)
+    : bodyCoordinates;
   const top = layout.addRect(id, layoutBounds.start, layoutBounds.end, PROMOTER_GLYPH_HEIGHT, {
     label: feature.get('name') || feature.get('id'),
     refName: feature.get('refName'),
@@ -347,8 +361,8 @@ function renderPromoterFeature(
   const selected = displayModel?.selectedFeatureId === id;
   const hovered = displayModel?.featureIdUnderMouse === id
     || displayModel?.featureUnderMouse?.id?.() === id;
-  const bodyY = formal ? top + PROMOTER_BODY_TOP_OFFSET : top + 7;
-  const bodyHeight = formal ? PROMOTER_BODY_HEIGHT : 10;
+  const bodyY = promoterWindow ? top + PROMOTER_BODY_TOP_OFFSET : top + 7;
+  const bodyHeight = promoterWindow ? PROMOTER_BODY_HEIGHT : 10;
   const arrowGeometry = flagged
     ? { left: interval.left, right: interval.right, placement: undefined }
     : separateArrowFromBody(interval, direction, annotationArrowPlacement(feature, direction, interval));
@@ -377,10 +391,13 @@ function renderPromoterFeature(
       data-feature-type={String(feature.get('type') || 'promoter').toLowerCase()}
       data-formal-promoter={formal ? 'true' : 'false'}
       data-promoter-peak={peak ? 'true' : 'false'}
+      data-promoter-window={windowedPeak ? '100' : undefined}
       data-strand={strandLabel(strand)}
       data-screen-direction={direction}
     >
-      <title>{formal ? 'Predicted promoter (100 bp); anchor at 80th base' : 'Predicted promoter peak'}</title>
+      <title>{formal ? 'Predicted promoter (100 bp); anchor at 80th base'
+        : windowedPeak ? 'Predicted promoter (100 bp); anchor at predicted peak'
+          : 'Predicted promoter peak'}</title>
       {showBody ? <rect data-role="promoter-body" {...bodyRect} fill={color} fillOpacity={1} /> : null}
       {flagged && anchorVisible ? promoterFlag(anchorX!, top, direction, color, formal ? '80th-base' : 'predicted-peak') : null}
       {!flagged && arrowGeometry.placement

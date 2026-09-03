@@ -22,6 +22,7 @@ import {
   isRegionFeature,
   normalizeStrand,
   promoterAnchorCoordinate,
+  promoterPeakWindowCoordinates,
   promoterFlagLayoutBounds,
   screenDirection,
   shouldShowPromoterBody,
@@ -62,7 +63,13 @@ const forwardRegion = {
   reversed: false,
 } as Region;
 
-function renderingProps(features: Map<string, Feature>, layout = { addRect: vi.fn().mockReturnValue(0), getTotalHeight: () => 24 }) {
+function renderingProps(
+  features: Map<string, Feature>,
+  layout: ComponentProps<typeof PromoterFeatureRendering>['layout'] = {
+    addRect: vi.fn().mockReturnValue(0),
+    getTotalHeight: () => 24,
+  },
+) {
   return {
     blockKey: 'block-1',
     bpPerPx: 1,
@@ -198,6 +205,19 @@ describe('strand feature SVG output', () => {
     expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('data-anchor', 'predicted-peak');
     expect(glyph?.querySelector('[data-role="promoter-flag"]')).toHaveAttribute('fill', MINUS_STRAND_COLOR);
     expect(glyph?.querySelector('[data-role="promoter-arrow"]')).toBeNull();
+  });
+
+  it('expands configured point peaks into strand-aware 100 bp promoter windows', () => {
+    const plus = feature('peak-plus', 'promoter_peak', 1, 100, 101);
+    const minus = feature('peak-minus', 'promoter_peak', -1, 200, 201);
+    expect(promoterPeakWindowCoordinates(plus)).toEqual({ start: 21, end: 121 });
+    expect(promoterPeakWindowCoordinates(minus)).toEqual({ start: 180, end: 280 });
+    const { container } = render(<PromoterFeatureRendering {...{
+      ...renderingProps(new Map([[plus.id(), plus], [minus.id(), minus]])),
+      config: { peakWindowBp: 100 },
+    }} />);
+    expect(container.querySelector('[data-feature-id="peak-plus"] [data-role="promoter-body"]')).toHaveAttribute('width', '100');
+    expect(container.querySelector('[data-feature-id="peak-minus"] [data-role="promoter-body"]')).toHaveAttribute('width', '100');
   });
 
   it('does not fake a formal promoter flag at a clipped anchor', () => {

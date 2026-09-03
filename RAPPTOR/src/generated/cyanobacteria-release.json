@@ -2,8 +2,8 @@
   "releaseId": "2026-08-27",
   "generatedAt": "2026-08-27T14:22:30.157945Z",
   "title": "RAPPTOR cyanobacterial promoter predictions",
-  "description": "Three cyanobacterial reference genomes with scored candidate peaks, score > 0.9 promoter predictions, genome annotations and study-linked experimental TSS evidence where available.",
-  "assetBaseUrl": "https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main/cyanobacteria/releases/2026-08-27",
+  "description": "Three cyanobacterial reference genomes with scored candidate peaks, 100 bp promoter predictions spanning 80 bp upstream and 20 bp downstream of score > 0.9 peaks, genome annotations and study-linked experimental TSS evidence where available.",
+  "assetBaseUrl": "https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/1f43a48b29419a4a95d2970931fdd787d496953a/cyanobacteria/releases/2026-08-27",
   "manifest": "manifest.tsv",
   "checksums": "checksums.sha256",
   "releaseMetadata": "release.json",
@@ -157,6 +157,13 @@
             "NC_003267.1",
             "NC_003241.1"
           ]
+        },
+        "predictionFeatureType": "promoter",
+        "predictionWindow": {
+          "lengthBp": 100,
+          "upstreamBp": 80,
+          "downstreamBp": 20,
+          "anchorAttribute": "peak_position"
         }
       },
       "coordinateSystems": {
@@ -179,10 +186,12 @@
           "selection": "smoothed promoter_peak records with model score > 0"
         },
         "finalPredictions": {
-          "originalFileName": "ASM970v1.smoothed_peaks_gt_0.9.gff3",
+          "originalFileName": "ASM970v1.promoters_up80_down20.gff3",
           "releaseAsset": "sources/final-predictions.source.gff3.gz",
-          "sha256": "8a7b3d6474447cf3c727434ca4ba43bb72f30eb4ead06dcccc4f66720f131a99",
-          "selection": "strict subset of candidate peaks with model score > 0.9"
+          "sha256": "d9110a3e55a4c011eaf4271a16c1dde646160d83747f7e7899acce8c0d63d28b",
+          "selection": "100 bp promoter intervals spanning 80 bp upstream and 20 bp downstream of each model-score peak > 0.9",
+          "featureType": "promoter",
+          "anchorAttribute": "peak_position"
         },
         "genomeAnnotation": {
           "originalFileName": "ASM970v1.ncbi.gff3",
@@ -282,7 +291,14 @@
         "annotationFeatureCounts": {
           "CDS": 6856
         },
-        "annotationCircularOriginSplitFeatures": 0
+        "annotationCircularOriginSplitFeatures": 0,
+        "predictionFeatureType": "promoter",
+        "predictionWindow": {
+          "lengthBp": 100,
+          "upstreamBp": 80,
+          "downstreamBp": 20,
+          "anchorAttribute": "peak_position"
+        }
       },
       "coordinateSystems": {
         "sourceGff3": "1-based closed",
@@ -304,10 +320,12 @@
           "selection": "smoothed promoter_peak records with model score > 0"
         },
         "finalPredictions": {
-          "originalFileName": "Cf6912.smoothed_peaks_gt_0.9.gff3",
+          "originalFileName": "Cf6912.promoters_up80_down20.gff3",
           "releaseAsset": "sources/final-predictions.source.gff3.gz",
-          "sha256": "6132cc8c3255534db940142821f573fba4fe5c3b8884beee740f4f28582f2aaa",
-          "selection": "strict subset of candidate peaks with model score > 0.9"
+          "sha256": "3933731e483adb973d3e058d35a91edd5506e916f8839084d1b932a78af57b89",
+          "selection": "100 bp promoter intervals spanning 80 bp upstream and 20 bp downstream of each model-score peak > 0.9",
+          "featureType": "promoter",
+          "anchorAttribute": "peak_position"
         },
         "genomeAnnotation": {
           "originalFileName": "Cf6912.prodigal.gff3",
@@ -401,7 +419,14 @@
           "SRP_RNA": 1,
           "rRNA": 9
         },
-        "annotationCircularOriginSplitFeatures": 0
+        "annotationCircularOriginSplitFeatures": 0,
+        "predictionFeatureType": "promoter",
+        "predictionWindow": {
+          "lengthBp": 100,
+          "upstreamBp": 80,
+          "downstreamBp": 20,
+          "anchorAttribute": "peak_position"
+        }
       },
       "coordinateSystems": {
         "sourceGff3": "1-based closed",
@@ -423,10 +448,12 @@
           "selection": "smoothed promoter_peak records with model score > 0"
         },
         "finalPredictions": {
-          "originalFileName": "CP003597.1.smoothed_peaks_gt_0.9.gff3",
+          "originalFileName": "CP003597.1.promoters_up80_down20.gff3",
           "releaseAsset": "sources/final-predictions.source.gff3.gz",
-          "sha256": "5288d7289592f8aec07baee2a0d586f735b449ee8c17ca96deb6c7f86fc1a5a1",
-          "selection": "strict subset of candidate peaks with model score > 0.9"
+          "sha256": "7e0f4906fbf5515a8b25783eeb4a6fdd7fb3e73b30d195ccbc9a67be3c218fff",
+          "selection": "100 bp promoter intervals spanning 80 bp upstream and 20 bp downstream of each model-score peak > 0.9",
+          "featureType": "promoter",
+          "anchorAttribute": "peak_position"
         },
         "genomeAnnotation": {
           "originalFileName": "CP003597.1.gff3",
@@ -436,5 +463,11 @@
         }
       }
     }
-  ]
+  ],
+  "predictionWindow": {
+    "lengthBp": 100,
+    "upstreamBp": 80,
+    "downstreamBp": 20,
+    "anchorAttribute": "peak_position"
+  }
 }

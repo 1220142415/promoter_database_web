@@ -28,6 +28,7 @@ describe('cyanobacteria collection pages', () => {
     expect(screen.getAllByText('13,705')).toHaveLength(3);
     const config = JSON.parse(screen.getByTestId('cyanobacteria-browser-config').textContent || '{}');
     expect(config.prediction.assemblyName).toBe('ASM970v1');
+    expect(config.prediction.assetBase).toMatch(/\/v-1f43a48b29419a4a95d2970931fdd787d496953a$/);
     expect(config.experimental.studies[0].studyId).toBe('2011_22135468_GCF_000009705.1');
   });
 });

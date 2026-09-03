@@ -254,6 +254,17 @@ class FakeStatement implements D1PreparedStatement {
           .map((value, index) => ({ facet_kind: ['domain', 'phylum', 'class', 'order', 'family', 'genus'][index], value })),
       ] as T[]);
     }
+    if (this.query.startsWith('SELECT value FROM facet_options')) {
+      const values: Record<string, string> = {
+        domain: 'Bacteria',
+        phylum: 'Bacillota',
+        class: 'Bacilli',
+        order: 'Bacillales',
+        family: 'Bacillaceae',
+        genus: 'Bacillus',
+      };
+      return d1Result([{ value: values[String(this.bindings[1])] }] as T[]);
+    }
     return d1Result<T>([]);
   }
 
@@ -590,6 +601,27 @@ describe('D1 genome catalog repository', () => {
     expect(database.preparedQueries.filter((query) => query.includes('FROM portal_state'))).toHaveLength(1);
     expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
     expect(database.preparedQueries.filter((query) => query.startsWith('WITH filtered AS'))).toHaveLength(2);
+  });
+
+  it('reuses ancestor taxonomy facets while preserving immediate result refreshes', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await repository.search(DEFAULT_GENOME_SEARCH_QUERY);
+    const domain = await repository.search({
+      ...DEFAULT_GENOME_SEARCH_QUERY,
+      taxonomy: { ...DEFAULT_GENOME_SEARCH_QUERY.taxonomy, domain: 'Bacteria' },
+    });
+    const phylum = await repository.search({
+      ...DEFAULT_GENOME_SEARCH_QUERY,
+      taxonomy: { ...DEFAULT_GENOME_SEARCH_QUERY.taxonomy, domain: 'Bacteria', phylum: 'Bacillota' },
+    });
+
+    expect(domain.facets.taxonomy.phylum).toEqual(['Bacillota']);
+    expect(phylum.facets.taxonomy.class).toEqual(['Bacilli']);
+    expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
+    expect(database.preparedQueries.filter((query) => query.startsWith('SELECT value FROM facet_options'))).toHaveLength(2);
+    expect(database.preparedQueries.filter((query) => query.startsWith('WITH filtered AS'))).toHaveLength(3);
   });
 
   it('binds cursors to the active release and complete query configuration', async () => {

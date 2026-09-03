@@ -879,6 +879,28 @@ async function d1Facets(database: D1Database, releaseId: string, query: GenomeSe
   };
 }
 
+async function d1NextTaxonomyFacet(
+  database: D1Database,
+  releaseId: string,
+  query: GenomeSearchQuery,
+  rankIndex: number,
+) {
+  const ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus'] as const;
+  const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'] as const;
+  const rank = ranks[rankIndex];
+  if (!rank) return [];
+  const clauses = ['release_id = ?', 'kind = ?'];
+  const bindings = [releaseId, rank];
+  for (let parent = 0; parent < rankIndex; parent += 1) {
+    clauses.push(columns[parent] + ' = ?');
+    bindings.push(query.taxonomy[ranks[parent]]);
+  }
+  const result = await database.prepare('SELECT value FROM facet_options WHERE ' + clauses.join(' AND ') + ' ORDER BY value')
+    .bind(...bindings)
+    .all<{ value: string }>();
+  return result.results.map((row) => row.value);
+}
+
 function hasGenomeFilters(query: GenomeSearchQuery) {
   return Boolean(query.q || query.source || query.annotation || query.evidence || Object.values(query.taxonomy).some(Boolean));
 }
@@ -943,11 +965,28 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
   }
 
   private async facets(releaseId: string, query: GenomeSearchQuery) {
-    if (Object.values(query.taxonomy).some(Boolean)) return d1Facets(this.database, releaseId, query);
-    const key = JSON.stringify([releaseId, ...Object.values(query.taxonomy)]);
+    const taxonomy = Object.values(query.taxonomy);
+    const key = JSON.stringify([releaseId, ...taxonomy]);
     const cached = this.facetCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
-    const value = await d1Facets(this.database, releaseId, query);
+    const depth = taxonomy.findIndex((value) => !value);
+    const selectedRanks = depth === -1 ? taxonomy.length : depth;
+    const contiguous = taxonomy.slice(selectedRanks).every((value) => !value);
+    const parentKey = selectedRanks > 0
+      ? JSON.stringify([releaseId, ...taxonomy.map((value, index) => index < selectedRanks - 1 ? value : '')])
+      : null;
+    const parent = parentKey ? this.facetCache.get(parentKey) : null;
+    let value: GenomeSearchResponse['facets'];
+    if (contiguous && parent && parent.expiresAt > Date.now()) {
+      const nextRank = TAXONOMY_RANKS[selectedRanks]?.key;
+      value = {
+        sources: parent.value.sources,
+        taxonomy: { ...parent.value.taxonomy },
+      };
+      if (nextRank) value.taxonomy[nextRank] = await d1NextTaxonomyFacet(this.database, releaseId, query, selectedRanks);
+    } else {
+      value = await d1Facets(this.database, releaseId, query);
+    }
     cacheValue(this.facetCache, key, value, MAX_FACET_CACHE_ENTRIES);
     return value;
   }

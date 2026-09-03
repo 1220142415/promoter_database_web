@@ -82,7 +82,6 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
     regionExportBase: '/api/cyanobacteria-region',
     adapterMode: 'indexed' as const,
     annotationTrackKind: 'annotation' as const,
-    promoterPeakWindowBp: 100 as const,
     assets: genome.assets,
     trackLabels: {
       scores: 'Raw prediction scores (+ / - strands)',

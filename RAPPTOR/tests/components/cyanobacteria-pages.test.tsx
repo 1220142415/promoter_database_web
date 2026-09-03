@@ -21,14 +21,13 @@ describe('cyanobacteria collection pages', () => {
     expect(screen.getByText('35,720')).toBeInTheDocument();
   });
 
-  it('uses 100 bp promoter windows and publishes the available cyanobacteria TSS study', async () => {
+  it('publishes the available cyanobacteria TSS study', async () => {
     const page = await CyanobacteriaGenomePage({ params: Promise.resolve({ genomeId: 'ASM970v1' }) });
     render(page);
     expect(screen.getByText('Literature evidence')).toBeInTheDocument();
     expect(screen.getAllByText('13,705')).toHaveLength(3);
     const config = JSON.parse(screen.getByTestId('cyanobacteria-browser-config').textContent || '{}');
     expect(config.prediction.assemblyName).toBe('ASM970v1');
-    expect(config.prediction.promoterPeakWindowBp).toBe(100);
     expect(config.experimental.studies[0].studyId).toBe('2011_22135468_GCF_000009705.1');
   });
 });

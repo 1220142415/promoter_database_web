@@ -34,8 +34,6 @@ export interface JBrowseAssemblyConfig {
   regionExportBase?: string;
   adapterMode?: 'indexed' | 'unindexed';
   annotationTrackKind?: 'ncbi' | 'annotation';
-  /** Expand one-base promoter peaks into their inferred model input window. */
-  promoterPeakWindowBp?: 100;
   trackLabels?: {
     reference?: string;
     scores?: string;

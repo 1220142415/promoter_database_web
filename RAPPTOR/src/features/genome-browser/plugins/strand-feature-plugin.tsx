@@ -97,7 +97,7 @@ export const StrandFeatureTooltip = observer(function StrandFeatureTooltip({ mod
 
 const promoterRendererConfig = ConfigurationSchema(
   PROMOTER_FEATURE_RENDERER,
-  { peakWindowBp: { type: 'number', defaultValue: 0 } },
+  {},
   { baseConfiguration: svgFeatureConfigSchema, explicitlyTyped: true },
 );
 

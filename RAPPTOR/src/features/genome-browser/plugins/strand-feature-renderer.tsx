@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { bpToPx, measureText, type Feature, type Region } from '@jbrowse/core/util';
-import { GranularRectLayout } from '@jbrowse/core/util/layouts';
 import { observer } from 'mobx-react';
 
 // Color always encodes the biological strand.  Reversing a JBrowse view only
@@ -681,11 +680,6 @@ export const PromoterFeatureRendering = observer(function PromoterFeatureRenderi
 export const DirectionalAnnotationRendering = observer(function DirectionalAnnotationRendering(props: StrandRendererProps) {
   const features = visibleAnnotationFeatures(props.features);
   const region = props.regions[0];
-  const jointLayout = new GranularRectLayout<{ featureId: string }>({
-    pitchX: 1,
-    pitchY: 1,
-    maxHeight: 10000,
-  });
   const placedFeatures = features.flatMap((feature) => {
     const interval = screenInterval(feature, region, props.bpPerPx);
     if (!interval.visible || !interval.width) return [];
@@ -693,30 +687,18 @@ export const DirectionalAnnotationRendering = observer(function DirectionalAnnot
     const label = featureName(feature);
     const labelWidth = measureText(label, 11);
     const labelPlacement = annotationLabelPlacement(feature, region, props.bpPerPx, labelWidth);
-    const direction = screenDirection(feature.get('strand'), region.reversed);
-    const arrowGeometry = separateArrowFromBody(
-      interval,
-      direction,
-      annotationArrowPlacement(feature, direction, interval),
-    );
-    const arrowTail = arrowGeometry.placement
-      ? arrowGeometry.placement.tip - direction * FEATURE_ARROW_LENGTH
-      : undefined;
-    const arrowLeft = arrowGeometry.placement
-      ? Math.min(arrowGeometry.left, arrowGeometry.placement.tip, arrowTail!)
-      : arrowGeometry.left;
-    const arrowRight = arrowGeometry.placement
-      ? Math.max(arrowGeometry.right, arrowGeometry.placement.tip, arrowTail!)
-      : arrowGeometry.right;
-    const collisionLeft = Math.min(arrowLeft, labelPlacement.visible ? labelPlacement.x : arrowLeft);
-    const collisionRight = Math.max(arrowRight, labelPlacement.visible
-      ? labelPlacement.x + labelPlacement.width
-      : arrowRight);
+    const { start, end } = featureCoordinates(feature);
+    const midpoint = (start + end) / 2;
+    const strand = normalizeStrand(feature.get('strand'));
+    const arrowPadding = FEATURE_ARROW_LENGTH * props.bpPerPx;
+    const labelPadding = labelWidth * props.bpPerPx / 2;
+    const collisionStart = Math.min(start, midpoint - labelPadding, strand === -1 ? start - arrowPadding : start);
+    const collisionEnd = Math.max(end, midpoint + labelPadding, strand === 1 ? end + arrowPadding : end);
     const layoutId = annotationLayoutId(id);
-    const top = jointLayout.addRect(
+    const top = props.layout.addRect(
       layoutId,
-      collisionLeft,
-      collisionRight + ANNOTATION_JOINT_GAP,
+      collisionStart,
+      collisionEnd + ANNOTATION_JOINT_GAP * props.bpPerPx,
       ANNOTATION_JOINT_LANE_HEIGHT,
       { featureId: id },
     );
@@ -725,7 +707,7 @@ export const DirectionalAnnotationRendering = observer(function DirectionalAnnot
   const glyphs = placedFeatures.map(({ feature, labelPlacement, layoutId, top }) => (
     renderAnnotationFeature(feature, props, top, labelPlacement, layoutId)
   ));
-  const contentHeight = Math.max(ANNOTATION_JOINT_LANE_HEIGHT, jointLayout.getTotalHeight());
+  const contentHeight = Math.max(ANNOTATION_JOINT_LANE_HEIGHT, props.layout.getTotalHeight());
   return props.exportSVG
     ? <>{glyphs}</>
     : <FeatureSvgWrapper

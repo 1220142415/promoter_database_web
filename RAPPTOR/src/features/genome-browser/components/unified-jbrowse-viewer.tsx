@@ -328,11 +328,17 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       }
     }
 
-    if (prediction?.assets.predictedPromoters) {
+    const experimentalPromoters = experimental?.assets.predictedPromoters || null;
+    const promoterBase = experimentalPromoters ? experimental!.assetBase : prediction?.assetBase || '';
+    const promoterData = experimentalPromoters || prediction?.assets.predictedPromoters || null;
+    const promoterIndex = experimentalPromoters
+      ? experimental?.assets.predictedPromotersIndex || null
+      : prediction?.assets.predictedPromotersIndex || null;
+    if (promoterData) {
       const trackId = `${assemblyName}-predicted-promoters`;
-      const dataUrl = resolveAsset(prediction.assetBase, prediction.assets.predictedPromoters);
-      const promoterTrackLabel = prediction.trackLabels?.promoters || 'RAPPTOR predicted promoters';
-      const promoterUnindexed = predictionUnindexed || !prediction.assets.predictedPromotersIndex;
+      const dataUrl = resolveAsset(promoterBase, promoterData);
+      const promoterTrackLabel = prediction?.trackLabels?.promoters || 'RAPPTOR predicted promoters';
+      const promoterUnindexed = experimentalPromoters ? !promoterIndex : predictionUnindexed || !promoterIndex;
       staticRegistry.promoters = trackId;
       tracks.push({
         trackId,
@@ -351,7 +357,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
               gffGzLocation: { uri: dataUrl },
               index: {
                 indexType: 'TBI',
-                location: { uri: resolveAsset(prediction.assetBase, prediction.assets.predictedPromotersIndex) },
+                location: { uri: resolveAsset(promoterBase, promoterIndex!) },
               },
             },
         displays: [{
@@ -376,7 +382,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       });
     }
 
-    if (!prediction?.assets.predictedPromoters && prediction?.prototypeTracks?.calledPeaksGff3) {
+    if (!promoterData && prediction?.prototypeTracks?.calledPeaksGff3) {
       const trackId = `${assemblyName}-prototype-called-peaks`;
       const dataUrl = resolveAsset(prediction.assetBase, prediction.prototypeTracks.calledPeaksGff3);
       const calledPeaksLabel = prediction.prototypeTracks.calledPeaksLabel || 'Illustrative called peaks';

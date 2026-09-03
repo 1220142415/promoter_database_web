@@ -141,7 +141,7 @@ describe('unified JBrowse viewer', () => {
     render(<UnifiedJBrowseViewer prediction={prediction()} experimental={experimental()} />);
     expect(screen.getByTestId('mock-unified-jbrowse')).toBeInTheDocument();
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
-      tracks: Array<{ name: string; metadata: Record<string, unknown> }>;
+      tracks: Array<{ name: string; metadata: Record<string, unknown>; adapter: { type: string; gffLocation?: { uri: string } } }>;
       plugins: Array<{ name: string }>;
       defaultSession: { view: { tracks: Array<{ configuration: string }> } };
     };
@@ -167,6 +167,10 @@ describe('unified JBrowse viewer', () => {
       'RapptorTrackDownloadPlugin',
     ]);
     expect(config.tracks[1].metadata).toMatchObject({ rapptorEvidenceType: 'prediction' });
+    expect(config.tracks[1].adapter).toMatchObject({
+      type: 'Gff3Adapter',
+      gffLocation: { uri: `/api/experimental-data/${accession}/genomes/predicted-promoters.gff3` },
+    });
     expect(config.tracks[2].metadata).toMatchObject({
       rapptorEvidenceType: 'experimental_tss',
       rapptorExperimentalDownloads: [

@@ -335,7 +335,9 @@ function compositeRow(
     genomeSource: predictionRow?.genomeSource || (experimentalGenome ? 'NCBI RefSeq' : null),
     genomeSizeBp: predictionRow?.genomeSizeBp ?? experimentalGenome?.genomeSizeBp ?? null,
     contigCount: predictionRow?.contigCount ?? experimentalGenome?.contigCount ?? null,
-    predictedPromoterCount: predictionRow?.predictedPromoterCount ?? experimentalGenome?.predictedPromoterCount ?? 0,
+    predictedPromoterCount: experimentalGenome?.assets.predictedPromoters
+      ? experimentalGenome.predictedPromoterCount ?? 0
+      : predictionRow?.predictedPromoterCount ?? 0,
     experimentalObservationCount: studies.reduce((sum, study) => sum + study.recordCount, 0),
     experimentalStudyCount: studies.length,
     assemblyCompatibility: compatibility,
@@ -526,12 +528,16 @@ export class CompositeUnifiedGenomeRepository implements UnifiedGenomeRepository
     const bothGenomes = rows.filter((row) => row.evidenceState === 'both').length;
     const predictionOverlaps = rows.filter((row) => row.predictionAccession).length;
     const collectionPredictions = rows.filter((row) => row.predictionAvailable && !row.predictionAccession);
+    const refinedPredictionDelta = rows
+      .filter((row) => row.experimentalAccession && row.predictionAccession && row.predictedPromoterCount !== row.predictionSearchRow?.predictedPromoterCount)
+      .reduce((sum, row) => sum + row.predictedPromoterCount - (row.predictionSearchRow?.predictedPromoterCount || 0), 0);
     const stats: UnifiedGenomeStats = {
       totalGenomes: predictionRelease.totalGenomes + experimentalRelease.genomes - predictionOverlaps,
       predictionGenomes: predictionRelease.totalGenomes + collectionPredictions.length,
       experimentalGenomes: experimentalRelease.genomes,
       bothGenomes,
       totalPredictedPromoters: predictionRelease.totalPredictedPromoters
+        + refinedPredictionDelta
         + collectionPredictions.reduce((sum, row) => sum + row.predictedPromoterCount, 0),
       totalExperimentalObservations: experimentalRelease.observations,
       totalExperimentalStudies: experimentalRelease.studies,

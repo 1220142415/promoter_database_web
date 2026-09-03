@@ -228,6 +228,8 @@ describe('unified genome repository', () => {
     };
     const experimental = experimentalGenome('GCF_000007325.1', 930, null);
     experimental.referenceAccession = 'GCF_000007325.1';
+    experimental.predictedPromoterCount = 4_197;
+    experimental.assets.predictedPromoters = 'predicted-promoters.gff3';
     const repository = new CompositeUnifiedGenomeRepository(
       prediction,
       experimentalRepository([experimental]),
@@ -241,6 +243,9 @@ describe('unified genome repository', () => {
       canonicalAccession: 'GCA_000007325.1', evidenceState: 'both',
       assemblyCompatibility: 'reciprocal_alias', overlayAllowed: true,
     });
+    const result = await repository.search(query());
+    expect(result.items[0].predictedPromoterCount).toBe(4_197);
+    expect(result.stats.totalPredictedPromoters).toBe(4_197);
   });
 
   it('keeps checksum-mismatched exact accessions as separate assembly rows and gates detail overlays', async () => {

@@ -208,6 +208,29 @@ describe('on-demand genome browser', () => {
     expect(screen.getByTestId('prepared-unified-browser')).toHaveAttribute('data-ncbi', 'true');
   });
 
+  it('prefers the fine promoter file stored with an experimental genome', async () => {
+    const experimental = {
+      releaseId: 'experimental-1',
+      accession: 'GCF_000007325.1',
+      assetBase: '/api/experimental-data/GCF_000007325.1',
+      assets: { predictedPromoters: 'predicted-promoters.gff3' },
+    } as ExperimentalTssGenome;
+    render(
+      <PortalOnDemandBrowserPanel
+        accession="GCA_000007325.1"
+        releaseId="RAPPTOR 2026-08-13"
+        plannedAssets={plannedAssets}
+        experimental={experimental}
+      />,
+    );
+
+    expect(await screen.findByTestId('prepared-unified-browser')).toBeInTheDocument();
+    expect(vi.mocked(loadCachedGenomeAsset).mock.calls[1].slice(0, 2)).toEqual([
+      '/api/experimental-data/GCF_000007325.1/predicted-promoters.gff3',
+      'experimental-1/GCF_000007325.1/promoters/predicted-promoters.gff3',
+    ]);
+  });
+
   it('marks an intentionally absent annotation without requesting it', async () => {
     const withoutAnnotation = {
       ...plannedAssets,

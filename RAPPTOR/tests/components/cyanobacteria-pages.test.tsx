@@ -21,12 +21,18 @@ describe('cyanobacteria collection pages', () => {
     expect(screen.getByText('35,720')).toBeInTheDocument();
   });
 
-  it('keeps unpublished cyanobacteria evidence out of the public browser config', async () => {
+  it('adds the published cyanobacteria TSS study to the public browser config', async () => {
     const page = await CyanobacteriaGenomePage({ params: Promise.resolve({ genomeId: 'ASM970v1' }) });
     render(page);
-    expect(screen.queryByText('Literature evidence')).not.toBeInTheDocument();
+    expect(screen.getByText('Literature evidence')).toBeInTheDocument();
+    expect(screen.getByText('13,705', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'PMID 22135468' })).toHaveAttribute('href', 'https://pubmed.ncbi.nlm.nih.gov/22135468/');
     const config = JSON.parse(screen.getByTestId('cyanobacteria-browser-config').textContent || '{}');
     expect(config.prediction.assemblyName).toBe('ASM970v1');
-    expect(config.experimental).toBeNull();
+    expect(config.experimental).toMatchObject({
+      accession: 'ASM970v1',
+      assemblyName: 'ASM970v1',
+      studies: [{ pmid: '22135468', year: 2011, recordCount: 13705 }],
+    });
   });
 });

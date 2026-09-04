@@ -185,6 +185,19 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .rapptor-feature-details-heading .MuiTypography-root { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font: 750 16px/1.25 Arial, sans-serif; }
 .rapptor-feature-details-content { max-height: calc(100vh - 145px); overflow: auto; overscroll-behavior: contain; padding: 8px; }
 .rapptor-feature-details-loading { min-height: 160px; display: grid; place-items: center; }
+.rapptor-about-content { width: min(100%, 820px); box-sizing: border-box; padding: 20px 24px 24px; color: var(--ink); }
+.rapptor-about-section { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 17px; }
+.rapptor-about-section h3 { margin: 0 0 10px; color: var(--ink-soft); font: 750 12px/1.3 Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+.rapptor-about-facts { display: grid; gap: 0; margin: 0; }
+.rapptor-about-facts > div { display: grid; grid-template-columns: minmax(150px, 32%) minmax(0, 1fr); gap: 16px; border-bottom: 1px solid #edf1ef; padding: 10px 0; }
+.rapptor-about-facts > div:last-child { border-bottom: 0; }
+.rapptor-about-facts dt { color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+.rapptor-about-facts dd { min-width: 0; margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.rapptor-about-facts code { color: var(--teal-dark); font: 12px "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+.rapptor-about-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+.rapptor-about-action { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--teal-dark); border-radius: 5px; padding: 7px 13px; background: var(--teal-dark); color: white; font-size: 12px; font-weight: 750; text-decoration: none; }
+.rapptor-about-action:hover { background: var(--teal); }
+.rapptor-about-action:focus-visible { outline: 3px solid rgba(24, 139, 118, .25); outline-offset: 2px; }
 .browser-share-actions { min-height: 34px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 0 2px 8px; }
 .browser-share-feedback { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; color: var(--teal-dark); font-size: 11px; font-weight: 700; line-height: 1.4; text-align: right; }
 .browser-share-button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 11px; background: white; color: var(--teal-dark); box-shadow: 0 1px 2px rgba(23, 36, 34, .06); font-size: 12px; font-weight: 750; cursor: pointer; transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease; }
@@ -369,6 +382,10 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .browser-share-actions { grid-template-columns: minmax(0, 1fr) auto; margin-inline: 0; }
   .browser-share-button { padding-inline: 10px; }
   .browser-loading { min-height: 480px; }
+  .rapptor-about-content { padding: 16px 14px 20px; }
+  .rapptor-about-facts > div { grid-template-columns: 1fr; gap: 4px; padding: 9px 0; }
+  .rapptor-about-actions { display: grid; grid-template-columns: 1fr; }
+  .rapptor-about-action { width: 100%; }
   .genome-metadata-section { padding-inline: 14px; }
   .genome-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .genome-metric { min-height: 100px; padding: 15px; }

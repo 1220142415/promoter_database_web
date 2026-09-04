@@ -51,7 +51,7 @@ function experimentalAssembly(genome: NonNullable<ReturnType<typeof getCyanobact
       sourceFile: evidence.hfPath,
       sourceSha256: null,
       duplicateGroupCount: null,
-      publication: { title: evidence.title, authors: [], journal: evidence.journal, doi: evidence.doi, status: 'resolved' },
+      publication: { title: evidence.title, authors: ['Mitschke J', 'Vioque A', 'Haas F', 'Hess WR', 'Muro-Pastor AM'], journal: evidence.journal, doi: evidence.doi, status: 'resolved' },
       assets: { rawBed: genome.assets.experimentalTssSource || data, data, index: genome.assets.experimentalTssIndex || null },
       checksums: {},
     }],
@@ -88,6 +88,13 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
       promoters: 'Predicted promoters (score > 0.9)',
       experimentalTss: genome.experimentalEvidence?.label,
       annotation: genome.annotation.label,
+    },
+    predictionProcessing: { sigma: 1, distance: 10, cutoff: 0.9, positionBase: 0 },
+    annotationAbout: {
+      genomeBuild: genome.id,
+      genomeBuildAccession: genome.id,
+      annotationSource: genome.annotation.source,
+      sequenceRegions: [{ refName: genome.primarySequence, start: 1, end: genome.genomeSizeBp }],
     },
   };
   const featureCounts = Object.entries(genome.annotation.featureCounts);

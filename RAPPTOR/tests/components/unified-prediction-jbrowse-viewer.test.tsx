@@ -129,6 +129,7 @@ describe('prediction-only unified JBrowse configuration', () => {
       'RapptorMirroredScorePlugin',
       'RapptorStrandFeaturePlugin',
       'RapptorTrackDownloadPlugin',
+      'RapptorAboutTrackPlugin',
     ]);
     expect(config.defaultSession.view.tracks[0].displays[0].configuration).toBe(
       'GCA_000411415.1-reference-sequence-LinearReferenceSequenceDisplay',

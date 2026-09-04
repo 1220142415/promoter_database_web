@@ -44,6 +44,26 @@ function formatDate(value: string | null | undefined) {
   return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
 }
 
+function recordValue(record: Record<string, unknown> | null | undefined, ...keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function numericValue(record: Record<string, unknown> | null | undefined, ...keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function metadataValue(value: unknown): ReactNode {
   if (value === null || value === undefined || value === '') return 'Not reported';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -90,6 +110,13 @@ function predictionAssembly(match: GenomeCatalogMatch | null): JBrowseReleaseAss
     : { ...genome.assets, ncbiAnnotations: null, ncbiAnnotationsIndex: null };
   const regionExportBase = process.env.NEXT_PUBLIC_REGION_EXPORT_BASE_URL
     || (process.env.NODE_ENV === 'production' ? undefined : '/api/local-region');
+  const details = match.details;
+  const promoterConfiguration = details?.promoter.configuration;
+  const promoterProvenance = details?.promoter.provenance;
+  const annotationProvenance = details?.annotation.provenance;
+  const annotationSourceId = details?.annotation.sourceId;
+  const annotationSourceVersion = details?.annotation.sourceVersion;
+  const annotationSource = [annotationSourceId, annotationSourceVersion].filter(Boolean).join(' ') || null;
   return {
     assemblyName: genome.accession,
     defaultLocus,
@@ -97,6 +124,30 @@ function predictionAssembly(match: GenomeCatalogMatch | null): JBrowseReleaseAss
     regionExportBase,
     assets,
     adapterMode: match.adapterMode,
+    predictionProcessing: {
+      sigma: numericValue(promoterConfiguration, 'sigma', 'smoothingSigma')
+        ?? numericValue(promoterProvenance, 'sigma', 'smoothingSigma')
+        ?? 1,
+      distance: numericValue(promoterConfiguration, 'distance', 'minDistanceBp', 'minimumPeakDistance')
+        ?? numericValue(promoterProvenance, 'distance', 'minDistanceBp', 'minimumPeakDistance')
+        ?? 10,
+      cutoff: numericValue(promoterConfiguration, 'cutoff', 'threshold', 'scoreCutoff')
+        ?? numericValue(promoterProvenance, 'cutoff', 'threshold', 'scoreCutoff')
+        ?? 0.9,
+      positionBase: numericValue(promoterConfiguration, 'positionBase', 'position_base')
+        ?? numericValue(promoterProvenance, 'positionBase', 'position_base')
+        ?? 0,
+    },
+    annotationAbout: {
+      genomeBuild: details?.assemblyName,
+      genomeBuildAccession: details?.refseqAssemblyAccession || details?.genbankAssemblyAccession || genome.accession,
+      annotationDate: recordValue(annotationProvenance, 'annotationDate', 'annotation_date') || details?.annotation.generatedAt,
+      annotationSource,
+      processor: recordValue(annotationProvenance, 'processor'),
+      sequenceRegions: genome.primarySequence && genome.genomeSizeBp
+        ? [{ refName: genome.primarySequence, start: 1, end: genome.genomeSizeBp }]
+        : [],
+    },
   };
 }
 
@@ -119,6 +170,14 @@ function experimentalAssembly(genome: ExperimentalTssGenome): JBrowseReleaseAsse
       ncbiAnnotationsIndex: genome.assets.ncbiAnnotationsIndex,
     },
     trackLabels: { annotation: 'Prodigal / eggNOG CDS annotations' },
+    predictionProcessing: { sigma: 1, distance: 10, cutoff: 0.9, positionBase: 0 },
+    annotationAbout: {
+      genomeBuild: genome.assemblyName,
+      genomeBuildAccession: genome.accession,
+      sequenceRegions: genome.primarySequence && genome.genomeSizeBp
+        ? [{ refName: genome.primarySequence, start: 1, end: genome.genomeSizeBp }]
+        : [],
+    },
   };
 }
 

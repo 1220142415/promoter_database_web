@@ -165,6 +165,7 @@ describe('unified JBrowse viewer', () => {
       'RapptorStrandFeaturePlugin',
       'RapptorExperimentalTssPlugin',
       'RapptorTrackDownloadPlugin',
+      'RapptorAboutTrackPlugin',
     ]);
     expect(config.tracks[1].metadata).toMatchObject({ rapptorEvidenceType: 'prediction' });
     expect(config.tracks[2].metadata).toMatchObject({

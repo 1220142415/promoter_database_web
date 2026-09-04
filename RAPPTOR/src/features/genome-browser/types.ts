@@ -26,6 +26,24 @@ export interface JBrowsePrototypeTracks {
   calledPeaksLabel?: string;
 }
 
+/** User-facing processing metadata for a prediction track's About panel. */
+export interface JBrowsePredictionProcessing {
+  sigma?: number | null;
+  distance?: number | null;
+  cutoff?: number | null;
+  positionBase?: number | null;
+}
+
+/** Curated NCBI annotation metadata; raw adapter/file fields stay internal. */
+export interface JBrowseAnnotationAbout {
+  genomeBuild?: string | null;
+  genomeBuildAccession?: string | null;
+  annotationDate?: string | null;
+  annotationSource?: string | null;
+  processor?: string | null;
+  sequenceRegions?: Array<{ refName: string; start: number; end: number }>;
+}
+
 export interface JBrowseAssemblyConfig {
   assemblyName: string;
   defaultLocus: string;
@@ -41,6 +59,8 @@ export interface JBrowseAssemblyConfig {
     experimentalTss?: string;
     annotation?: string;
   };
+  predictionProcessing?: JBrowsePredictionProcessing | null;
+  annotationAbout?: JBrowseAnnotationAbout | null;
   /**
    * Local, illustrative tracks for the browser-only prediction prototype.
    * They are not part of the release asset contract.

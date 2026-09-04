@@ -12,6 +12,7 @@ import RapptorStrandFeaturePlugin, {
   PROMOTER_FEATURE_RENDERER,
 } from '@/features/genome-browser/plugins/strand-feature-plugin';
 import RapptorTrackDownloadPlugin from '@/features/genome-browser/plugins/track-download-plugin';
+import RapptorAboutTrackPlugin from '@/features/genome-browser/plugins/about-track-plugin';
 import {
   buildJBrowseShareUrl,
   extractJBrowseShareState,
@@ -341,6 +342,12 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           ...predictionDownload('promoters', promoterTrackLabel, dataUrl),
           rapptorEvidenceType: 'prediction',
           rapptorStrandFeatureMode: 'promoter',
+          rapptorProcessing: {
+            sigma: prediction.predictionProcessing?.sigma ?? 1,
+            distance: prediction.predictionProcessing?.distance ?? 10,
+            cutoff: prediction.predictionProcessing?.cutoff ?? 0.9,
+            positionBase: prediction.predictionProcessing?.positionBase ?? 0,
+          },
         },
         assemblyNames: [assemblyName],
         type: 'FeatureTrack',
@@ -387,6 +394,12 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         metadata: {
           ...predictionDownload('promoters', calledPeaksLabel, dataUrl),
           rapptorEvidenceType: 'illustrative_prototype',
+          rapptorProcessing: {
+            sigma: prediction.predictionProcessing?.sigma ?? 1,
+            distance: prediction.predictionProcessing?.distance ?? 10,
+            cutoff: prediction.predictionProcessing?.cutoff ?? 0.9,
+            positionBase: prediction.predictionProcessing?.positionBase ?? 0,
+          },
         },
         assemblyNames: [assemblyName],
         type: 'FeatureTrack',
@@ -495,6 +508,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         metadata: {
           ...predictionDownload(prediction.annotationTrackKind || 'ncbi', annotationLabel, dataUrl),
           rapptorStrandFeatureMode: 'annotation',
+          ...(prediction.annotationAbout ? { rapptorAnnotation: prediction.annotationAbout } : {}),
         },
         assemblyNames: [assemblyName],
         type: 'FeatureTrack',
@@ -595,6 +609,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         RapptorStrandFeaturePlugin,
         ...(experimental ? [RapptorExperimentalTssPlugin] : []),
         RapptorTrackDownloadPlugin,
+        RapptorAboutTrackPlugin,
       ],
       defaultSession: {
         name: `${assemblyName} evidence view`,

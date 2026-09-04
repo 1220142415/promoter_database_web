@@ -16,6 +16,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'rapptor-cyanobacteria-route-'));
   await mkdir(join(root, 'ASM970v1'), { recursive: true });
   await writeFile(join(root, 'ASM970v1', 'reference.fa.gz'), Buffer.from('0123456789'));
+  await writeFile(join(root, 'ASM970v1', 'experimentally-supported-tss.gff3.gz'), Buffer.from('experimental'));
   process.env.CYANOBACTERIA_DATA_ROOT = root;
   delete process.env.CYANOBACTERIA_ASSET_BASE_URL;
 });
@@ -47,12 +48,19 @@ describe('cyanobacteria release asset route', () => {
     expect(head.status).toBe(200);
     expect(head.headers.get('content-length')).toBe('10');
     expect(head.body).toBeNull();
+
+    const experimental = await GET(
+      new Request('http://localhost/api/cyanobacteria-data/ASM970v1/experimentally-supported-tss.gff3.gz'),
+      context('ASM970v1', 'experimentally-supported-tss.gff3.gz'),
+    );
+    expect(experimental.status).toBe(200);
+    expect(await experimental.text()).toBe('experimental');
   });
 
   it('rejects unknown IDs, unlisted files, traversal forms, and invalid ranges', async () => {
     expect((await GET(new Request('http://localhost/test'), context('unknown', 'reference.fa.gz'))).status).toBe(404);
     expect((await GET(new Request('http://localhost/test'), context('ASM970v1', 'private.txt'))).status).toBe(404);
-    expect((await GET(new Request('http://localhost/test'), context('ASM970v1', 'experimentally-supported-tss.gff3.gz'))).status).toBe(404);
+    expect((await GET(new Request('http://localhost/test'), context('Cf6912', 'experimentally-supported-tss.gff3.gz'))).status).toBe(404);
     expect((await GET(new Request('http://localhost/test'), context('ASM970v1', 'sources', '..', 'reference.fa.gz'))).status).toBe(404);
     const invalid = await GET(
       new Request('http://localhost/test', { headers: { Range: 'bytes=10-' } }),

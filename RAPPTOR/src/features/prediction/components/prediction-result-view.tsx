@@ -92,6 +92,7 @@ export function predictionBrowserAssembly(assets: PredictionBrowserAssets | unde
         : 'RAPPTOR promoter probabilities (+ strand)',
       promoters: 'RAPPTOR model-positive promoter windows',
     },
+    predictionProcessing: { sigma: 1, distance: 10, cutoff: 0.9, positionBase: 0 },
   };
 }
 

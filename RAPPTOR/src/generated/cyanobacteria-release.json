@@ -2,7 +2,7 @@
   "releaseId": "2026-08-27",
   "generatedAt": "2026-08-27T14:22:30.157945Z",
   "title": "RAPPTOR cyanobacterial promoter predictions",
-  "description": "Three cyanobacterial reference genomes with scored candidate peaks, score > 0.9 promoter predictions and genome annotations.",
+  "description": "Three cyanobacterial reference genomes with scored candidate peaks, score > 0.9 promoter predictions, genome annotations and study-linked experimental TSS evidence where available.",
   "assetBaseUrl": "https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main/cyanobacteria/releases/2026-08-27",
   "manifest": "manifest.tsv",
   "checksums": "checksums.sha256",
@@ -10,8 +10,8 @@
   "totalGenomes": 3,
   "totalCandidatePeaks": 2609318,
   "totalPredictedPromoters": 112862,
-  "totalExperimentallySupportedGenomes": 0,
-  "totalExperimentalTssObservations": 0,
+  "totalExperimentallySupportedGenomes": 1,
+  "totalExperimentalTssObservations": 13705,
   "genomes": [
     {
       "id": "ASM970v1",
@@ -59,11 +59,26 @@
         "candidateSource": "sources/candidate-peaks.source.gff3.gz",
         "predictionSource": "sources/final-predictions.source.gff3.gz",
         "annotationSource": "sources/genome-annotation.source.gff3.gz",
-        "experimentalTss": null,
-        "experimentalTssIndex": null,
-        "experimentalTssSource": null
+        "experimentalTss": "experimentally-supported-tss.gff3.gz",
+        "experimentalTssIndex": "experimentally-supported-tss.gff3.gz.tbi",
+        "experimentalTssSource": "sources/experimentally-supported-tss.source.bed.gz"
       },
-      "experimentalEvidence": null,
+      "experimentalEvidence": {
+        "status": "experimentally_supported",
+        "label": "Experimental TSS · Mitschke et al. · 2011",
+        "studyId": "2011_22135468_GCF_000009705.1",
+        "pmid": "22135468",
+        "year": 2011,
+        "title": "Dynamics of transcriptional start site selection during nitrogen stress-induced cell differentiation in Anabaena sp. PCC7120.",
+        "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+        "doi": "10.1073/pnas.1112724108",
+        "assemblyAccession": "GCF_000009705.1",
+        "observationCount": 13705,
+        "uniqueTssCount": 13705,
+        "crossStudySupportedTssCount": 0,
+        "methodBoundary": "Published experimental observations from the conditions reported by the source study; not model validation.",
+        "hfPath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed"
+      },
       "validation": {
         "referenceSequences": [
           {
@@ -123,7 +138,26 @@
           "RNase_P_RNA": 1,
           "sequence_feature": 1
         },
-        "annotationCircularOriginSplitFeatures": 10
+        "annotationCircularOriginSplitFeatures": 10,
+        "experimentalTss": {
+          "observationCount": 13705,
+          "uniqueTssCount": 13705,
+          "duplicateObservationCount": 0,
+          "strands": {
+            "plus": 6929,
+            "minus": 6776
+          },
+          "sequenceCount": 7,
+          "sequences": [
+            "NC_003272.1",
+            "NC_003276.1",
+            "NC_003240.1",
+            "NC_003273.1",
+            "NC_003270.1",
+            "NC_003267.1",
+            "NC_003241.1"
+          ]
+        }
       },
       "coordinateSystems": {
         "sourceGff3": "1-based closed",
@@ -155,6 +189,18 @@
           "releaseAsset": "sources/genome-annotation.source.gff3.gz",
           "sha256": "5b721e88e52bd6b3e5e6e7bf4f90dfe6360fba603d232a4a117a44033839a48b",
           "source": "NCBI genome annotation"
+        },
+        "experimentalTss": {
+          "originalFileName": "2011_22135468_GCF_000009705.1.bed",
+          "releaseAsset": "sources/experimentally-supported-tss.source.bed.gz",
+          "normalizedTrack": "experimentally-supported-tss.gff3.gz",
+          "sha256": "f47d7a2623ceb9c9d4b164ea69827ae41671f0ce97a5e8fe47fbc5c0e8a3f283",
+          "huggingFacePath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
+          "sourceManifestSha256": "1c27312b8a5fedd9973df058672e7da14d0e9ecfb67e0d019df20d556f85dac5",
+          "studyId": "2011_22135468_GCF_000009705.1",
+          "pmid": "22135468",
+          "coordinateConversion": "BED 0-based half-open single-base intervals to GFF3 1-based closed points",
+          "seqidNormalization": "removed exact prefix GCF_000009705.1:"
         }
       }
     },

@@ -44,6 +44,15 @@ describe('GET /api/genomes', () => {
     expect(body.items).toHaveLength(limit);
   });
 
+  it('does not cache low-reuse taxonomy paths', async () => {
+    mockedReadFile.mockReturnValue(catalogJson());
+    const root = await GET(new Request('http://localhost/api/genomes'));
+    const taxonomy = await GET(new Request('http://localhost/api/genomes?domain=Bacteria'));
+
+    expect(root.headers.get('Cache-Control')).toContain('s-maxage=86400');
+    expect(taxonomy.headers.get('Cache-Control')).toBe('no-store');
+  });
+
   it('validates limits, filters, and cursor continuity', async () => {
     mockedReadFile.mockReturnValue(catalogJson());
     const first = await GET(new Request('http://localhost/api/genomes?limit=100&sort=promoters&direction=desc'));

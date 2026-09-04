@@ -254,7 +254,10 @@ export default async function GenomeDetailPage({
   const organismName = genome?.organismName || experimental!.organismName;
   const strain = genome?.strain || experimental?.strain;
   const hasPredictions = match.predictionAvailable;
-  const predictedPromoterCount = genome?.predictedPromoterCount ?? experimental?.predictedPromoterCount ?? null;
+  const usesExperimentalPredictions = Boolean(experimental?.assets.predictedPromoters);
+  const predictedPromoterCount = usesExperimentalPredictions
+    ? experimental?.predictedPromoterCount ?? null
+    : genome?.predictedPromoterCount ?? null;
   const genomeSizeBp = genome?.genomeSizeBp ?? experimental?.genomeSizeBp ?? null;
   const browserPrediction = predictionAssembly(prediction) || (experimental ? experimentalAssembly(experimental) : null);
   const browserExperimental = experimental
@@ -357,8 +360,10 @@ export default async function GenomeDetailPage({
               { label: 'Prediction model', value: details?.promoter.sourceId || (hasPredictions ? 'RAPPTOR' : null) },
               { label: 'Prediction generated at', value: formatDate(details?.promoter.generatedAt) },
               { label: 'Taxonomy source', value: details?.taxonomySource },
-              { label: 'RAPPTOR prediction release', value: prediction?.releaseId || (hasPredictions ? experimental?.releaseId : null), mono: true },
-              { label: 'Prediction availability', value: prediction ? 'Available in active prediction release' : hasPredictions ? 'Available in experimental genome collection' : 'Not available' },
+              { label: 'RAPPTOR prediction release', value: usesExperimentalPredictions ? experimental?.releaseId : prediction?.releaseId || null, mono: true },
+              { label: 'Prediction availability', value: usesExperimentalPredictions
+                ? 'Fine-resolution scan from experimental genome collection'
+                : prediction ? 'Available in active prediction release' : 'Not available' },
               { label: 'Dataset', value: details?.release.hfRepository
                 ? <a href={`https://huggingface.co/datasets/${details.release.hfRepository}`} target="_blank" rel="noreferrer">Open Hugging Face dataset</a>
                 : hasPredictions ? <a href={EXPERIMENTAL_COLLECTION_URL} target="_blank" rel="noreferrer">Open Hugging Face dataset</a> : null },

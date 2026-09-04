@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { NextResponse } from 'next/server';
 import {
   cyanobacteriaAssetPath,
+  cyanobacteriaAssetVersion,
   cyanobacteriaGenomeFiles,
   cyanobacteriaRelease,
   cyanobacteriaReleaseFiles,
@@ -148,7 +149,12 @@ async function serveRemote(request: Request, genomeId: string, file: string, hea
 }
 
 async function serve(request: Request, context: RouteContext, headOnly: boolean) {
-  const { genomeId, file: parts } = await context.params;
+  const { genomeId, file: requestedParts } = await context.params;
+  const version = `v-${cyanobacteriaAssetVersion}`;
+  if (requestedParts[0]?.startsWith('v-') && requestedParts[0] !== version) {
+    return NextResponse.json({ error: 'Unknown cyanobacteria asset version.' }, { status: 404 });
+  }
+  const parts = requestedParts[0] === version ? requestedParts.slice(1) : requestedParts;
   const file = parts.join('/');
   if (!allowedAsset(genomeId, file)) {
     return NextResponse.json({ error: 'Unknown cyanobacteria release asset.' }, { status: 404 });

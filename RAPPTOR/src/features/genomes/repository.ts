@@ -70,6 +70,7 @@ export class InvalidGenomeCursorError extends Error {
 export interface GenomeCatalogRepository {
   search(query: GenomeSearchQuery): Promise<GenomeSearchResponse>;
   getByAccession(accession: string): Promise<GenomeCatalogMatch | null>;
+  getByAccessions?(accessions: string[]): Promise<Map<string, GenomeCatalogMatch>>;
   getActiveRelease(): Promise<ActiveReleaseSummary>;
 }
 
@@ -299,13 +300,6 @@ class JsonGenomeCatalogRepository implements GenomeCatalogRepository {
 
 type D1ReleaseRow = Record<string, string | number | null>;
 type D1GenomeRow = Record<string, string | number | null>;
-type D1FeatureAggregateRow = {
-  feature_type: string;
-  status: string;
-  genome_count: number;
-  feature_count: number | null;
-};
-
 type D1TaxonomyMatchRow = {
   query_token: string;
   kind: GenomeTaxonomyRank;
@@ -785,7 +779,8 @@ function d1Sort(query: GenomeSearchQuery) {
 const MAX_TAXONOMY_PREFIX_MATCHES = 16;
 const MAX_FACET_CACHE_ENTRIES = 128;
 const MAX_TAXONOMY_CACHE_ENTRIES = 256;
-const QUERY_CACHE_TTL_MS = 300_000;
+const MAX_GENOME_MATCH_CACHE_ENTRIES = 512;
+const QUERY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function cacheValue<T>(
   cache: Map<string, { expiresAt: number; value: T }>,
@@ -849,12 +844,12 @@ async function d1TaxonomyMatches(database: D1Database, releaseId: string, query:
 async function d1Facets(database: D1Database, releaseId: string, query: GenomeSearchQuery): Promise<GenomeSearchResponse['facets']> {
   const parents = [query.taxonomy.domain, query.taxonomy.phylum, query.taxonomy.class, query.taxonomy.order, query.taxonomy.family];
   const ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus'];
-  const branches = ["kind = 'source'"];
+  const branches = ["SELECT 'source' AS facet_kind, value FROM facet_options WHERE release_id = ? AND kind = 'source'"];
   const bindings: string[] = [releaseId];
   for (let index = 0; index < ranks.length; index += 1) {
     if (index > 0 && !parents.slice(0, index).every(Boolean)) continue;
-    const clauses = ["kind = ?"];
-    const rankBindings = [ranks[index]];
+    const clauses = ['release_id = ?', `kind = '${ranks[index]}'`];
+    const rankBindings = [releaseId];
     const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'];
     for (let parent = 0; parent < index && parent < parents.length; parent += 1) {
       if (parents[parent]) {
@@ -862,11 +857,11 @@ async function d1Facets(database: D1Database, releaseId: string, query: GenomeSe
         rankBindings.push(parents[parent]);
       }
     }
-    branches.push('(' + clauses.join(' AND ') + ')');
+    branches.push(`SELECT '${ranks[index]}' AS facet_kind, value FROM facet_options WHERE ${clauses.join(' AND ')}`);
     bindings.push(...rankBindings);
   }
   const result = await database
-    .prepare('SELECT DISTINCT kind AS facet_kind, value FROM facet_options WHERE release_id = ? AND (' + branches.join(' OR ') + ') ORDER BY facet_kind, value')
+    .prepare(branches.join(' UNION ALL ') + ' ORDER BY facet_kind, value')
     .bind(...bindings)
     .all<{ facet_kind: string; value: string }>();
   const values = Object.fromEntries(['source', ...ranks].map((kind) => [kind, [] as string[]]));
@@ -884,29 +879,114 @@ async function d1Facets(database: D1Database, releaseId: string, query: GenomeSe
   };
 }
 
+async function d1NextTaxonomyFacet(
+  database: D1Database,
+  releaseId: string,
+  query: GenomeSearchQuery,
+  rankIndex: number,
+) {
+  const ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus'] as const;
+  const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'] as const;
+  const rank = ranks[rankIndex];
+  if (!rank) return [];
+  const clauses = ['release_id = ?', 'kind = ?'];
+  const bindings = [releaseId, rank];
+  for (let parent = 0; parent < rankIndex; parent += 1) {
+    clauses.push(columns[parent] + ' = ?');
+    bindings.push(query.taxonomy[ranks[parent]]);
+  }
+  const result = await database.prepare('SELECT value FROM facet_options WHERE ' + clauses.join(' AND ') + ' ORDER BY value')
+    .bind(...bindings)
+    .all<{ value: string }>();
+  return result.results.map((row) => row.value);
+}
+
 function hasGenomeFilters(query: GenomeSearchQuery) {
   return Boolean(query.q || query.source || query.annotation || query.evidence || Object.values(query.taxonomy).some(Boolean));
+}
+
+function precomputedTotalQuery(releaseId: string, query: GenomeSearchQuery) {
+  const taxonomy = Object.entries(query.taxonomy).filter((entry): entry is [GenomeTaxonomyRank, string] => Boolean(entry[1]));
+  if (query.q || query.annotation || query.evidence || query.source && taxonomy.length) return null;
+  if (query.source) {
+    return {
+      sql: "SELECT genome_count AS count FROM facet_options WHERE release_id = ? AND kind = 'source' AND value = ? LIMIT 1",
+      bindings: [releaseId, query.source],
+    };
+  }
+  const selected = taxonomy.at(-1);
+  if (!selected) return null;
+  const [rank, value] = selected;
+  const ranks: GenomeTaxonomyRank[] = ['domain', 'phylum', 'class', 'order', 'family', 'genus'];
+  const columns = ['domain', 'phylum', 'class_name', 'order_name', 'family'];
+  const index = ranks.indexOf(rank);
+  const clauses = ['release_id = ?', 'kind = ?', 'value = ?'];
+  const bindings: string[] = [releaseId, rank, value];
+  for (let parent = 0; parent < index; parent += 1) {
+    clauses.push(columns[parent] + ' = ?');
+    bindings.push(query.taxonomy[ranks[parent]]);
+  }
+  return { sql: 'SELECT genome_count AS count FROM facet_options WHERE ' + clauses.join(' AND ') + ' LIMIT 1', bindings };
+}
+
+async function d1FilteredTotal(
+  database: D1Database,
+  releaseId: string,
+  query: GenomeSearchQuery,
+  where: ReturnType<typeof d1Where>,
+) {
+  const fixed = precomputedTotalQuery(releaseId, query);
+  if (fixed) {
+    const row = await database.prepare(fixed.sql).bind(...fixed.bindings).first<{ count: number }>();
+    if (row) return Number(row.count || 0);
+  }
+  const annotationJoin = query.annotation
+    ? " LEFT JOIN feature_sets a ON a.release_id = g.release_id AND a.accession = g.accession AND a.feature_type = 'gene_annotation' AND a.is_default = 1"
+    : '';
+  const row = await database.prepare('SELECT COUNT(*) AS count FROM genomes g' + annotationJoin + ' WHERE ' + where.clauses.join(' AND '))
+    .bind(...where.bindings)
+    .first<{ count: number }>();
+  return Number(row?.count || 0);
 }
 
 export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
   private releaseCache: { expiresAt: number; value: D1ReleaseRow } | null = null;
   private facetCache = new Map<string, { expiresAt: number; value: GenomeSearchResponse['facets'] }>();
   private taxonomySearchCache = new Map<string, { expiresAt: number; value: Map<string, D1TaxonomyMatch[]> }>();
+  private matchCache = new Map<string, { expiresAt: number; value: Promise<GenomeCatalogMatch | null> }>();
 
   constructor(private database: D1Database) {}
 
   private async activeRelease() {
     if (this.releaseCache && this.releaseCache.expiresAt > Date.now()) return this.releaseCache.value;
     const value = await activeD1Release(this.database);
-    this.releaseCache = { value, expiresAt: Date.now() + 30_000 };
+    this.releaseCache = { value, expiresAt: Date.now() + QUERY_CACHE_TTL_MS };
     return value;
   }
 
   private async facets(releaseId: string, query: GenomeSearchQuery) {
-    const key = JSON.stringify([releaseId, ...Object.values(query.taxonomy)]);
+    const taxonomy = Object.values(query.taxonomy);
+    const key = JSON.stringify([releaseId, ...taxonomy]);
     const cached = this.facetCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
-    const value = await d1Facets(this.database, releaseId, query);
+    const depth = taxonomy.findIndex((value) => !value);
+    const selectedRanks = depth === -1 ? taxonomy.length : depth;
+    const contiguous = taxonomy.slice(selectedRanks).every((value) => !value);
+    const parentKey = selectedRanks > 0
+      ? JSON.stringify([releaseId, ...taxonomy.map((value, index) => index < selectedRanks - 1 ? value : '')])
+      : null;
+    const parent = parentKey ? this.facetCache.get(parentKey) : null;
+    let value: GenomeSearchResponse['facets'];
+    if (contiguous && parent && parent.expiresAt > Date.now()) {
+      const nextRank = TAXONOMY_RANKS[selectedRanks]?.key;
+      value = {
+        sources: parent.value.sources,
+        taxonomy: { ...parent.value.taxonomy },
+      };
+      if (nextRank) value.taxonomy[nextRank] = await d1NextTaxonomyFacet(this.database, releaseId, query, selectedRanks);
+    } else {
+      value = await d1Facets(this.database, releaseId, query);
+    }
     cacheValue(this.facetCache, key, value, MAX_FACET_CACHE_ENTRIES);
     return value;
   }
@@ -951,14 +1031,15 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     }
     const filtered = D1_LIST_SELECT + ' WHERE ' + where.clauses.join(' AND ');
     const includeFilteredCount = hasGenomeFilters(query);
-    const select = 'WITH filtered AS (' + filtered + ') SELECT filtered.*'
-      + (includeFilteredCount ? ', (SELECT COUNT(*) FROM filtered) AS total_count' : '')
-      + ' FROM filtered'
+    const select = 'WITH filtered AS (' + filtered + ') SELECT filtered.* FROM filtered'
       + (cursorClauses.length ? ' WHERE ' + cursorClauses.join(' AND ') : '')
       + ' ORDER BY ' + sort.outerOrder + ' LIMIT ?';
-    const [pageResult, facets] = await Promise.all([
+    const [pageResult, facets, total] = await Promise.all([
       this.database.prepare(select).bind(...bindings, query.limit + 1).all<D1GenomeRow>(),
       this.facets(releaseId, query),
+      includeFilteredCount
+        ? d1FilteredTotal(this.database, releaseId, query, where)
+        : Promise.resolve(Number(release.total_genomes || 0)),
     ]);
     const rows = pageResult.results.map(d1RowToCatalogRow);
     const hasNext = rows.length > query.limit;
@@ -966,16 +1047,13 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     return {
       releaseId,
       items: page,
-      total: includeFilteredCount ? Number(pageResult.results[0]?.total_count || 0) : Number(release.total_genomes || 0),
+      total,
       facets,
       pageInfo: { nextCursor: hasNext && page.length ? encodeCursor(page[page.length - 1], query, releaseId) : null, hasNext },
     };
   }
 
-  async getByAccession(accession: string): Promise<GenomeCatalogMatch | null> {
-    const release = await this.activeRelease();
-    const row = await this.database.prepare(D1_GENOME_SELECT + ' WHERE g.release_id = ? AND g.accession = ?').bind(String(release.release_id), accession).first<D1GenomeRow>();
-    if (!row) return null;
+  private matchFromRow(row: D1GenomeRow, release: D1ReleaseRow): GenomeCatalogMatch {
     const releaseId = String(release.release_id);
     const details = d1CatalogDetails(row, release);
     if (row.promoter_status !== 'ready') {
@@ -1032,6 +1110,51 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     return { releaseId, assetBase: '/api/remote-data', genome, storage: genome.storage!, resourceStatus: 'ready', details };
   }
 
+  async getByAccession(accession: string): Promise<GenomeCatalogMatch | null> {
+    const release = await this.activeRelease();
+    const key = String(release.release_id) + ':' + accession;
+    const cached = this.matchCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const value = this.database.prepare(D1_GENOME_SELECT + ' WHERE g.release_id = ? AND g.accession = ?')
+      .bind(String(release.release_id), accession).first<D1GenomeRow>()
+      .then((row) => row ? this.matchFromRow(row, release) : null);
+    cacheValue(this.matchCache, key, value, MAX_GENOME_MATCH_CACHE_ENTRIES);
+    try {
+      return await value;
+    } catch (cause) {
+      this.matchCache.delete(key);
+      throw cause;
+    }
+  }
+
+  async getByAccessions(accessions: string[]): Promise<Map<string, GenomeCatalogMatch>> {
+    const unique = [...new Set(accessions)];
+    if (!unique.length) return new Map();
+    const release = await this.activeRelease();
+    const releaseId = String(release.release_id);
+    const matches = new Map<string, GenomeCatalogMatch>();
+    const missing: string[] = [];
+    for (const accession of unique) {
+      const cached = this.matchCache.get(releaseId + ':' + accession);
+      const match = cached && cached.expiresAt > Date.now() ? await cached.value : null;
+      if (match) matches.set(accession, match);
+      else missing.push(accession);
+    }
+    if (!missing.length) return matches;
+    const placeholders = missing.map(() => '?').join(', ');
+    const result = await this.database
+      .prepare(D1_GENOME_SELECT + ` WHERE g.release_id = ? AND g.accession IN (${placeholders})`)
+      .bind(releaseId, ...missing)
+      .all<D1GenomeRow>();
+    for (const row of result.results) {
+      const accession = String(row.accession);
+      const match = this.matchFromRow(row, release);
+      matches.set(accession, match);
+      cacheValue(this.matchCache, releaseId + ':' + accession, Promise.resolve(match), MAX_GENOME_MATCH_CACHE_ENTRIES);
+    }
+    return matches;
+  }
+
   async getActiveRelease(): Promise<ActiveReleaseSummary> {
     const row = await this.activeRelease();
     const releaseId = String(row.release_id);
@@ -1042,34 +1165,23 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
     const hasPrecomputedCounts = Number.isFinite(Number(summary.predictedPromoters ?? promoterObject.featureCount))
       && Number.isFinite(Number(summary.annotationAvailable))
       && Number.isFinite(Number(summary.annotationMissing));
-    const aggregates = hasPrecomputedCounts ? [] : (await this.database.prepare(
-      'SELECT feature_type, status, COUNT(*) AS genome_count, SUM(feature_count) AS feature_count FROM feature_sets WHERE release_id = ? GROUP BY feature_type, status',
-    ).bind(releaseId).all<D1FeatureAggregateRow>()).results;
-    const promoterRows = aggregates.filter((entry) => entry.feature_type === 'promoter' && (entry.status === 'ready' || entry.status === 'staged'));
-    const annotationReady = aggregates.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'ready');
-    const annotationStaged = aggregates.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'staged');
-    const annotationMissing = aggregates.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'missing');
-    const annotationFailed = aggregates.find((entry) => entry.feature_type === 'gene_annotation' && entry.status === 'failed');
+    if (!hasPrecomputedCounts) {
+      throw new GenomeCatalogUnavailableError('Active release is missing precomputed feature statistics.');
+    }
     const resourceStatus = row.release_asset_base_url ? 'ready' : 'staged';
-    const annotationCataloged = hasPrecomputedCounts
-      ? Number(summary.annotationAvailable || 0)
-      : Number(annotationReady?.genome_count || 0) + Number(annotationStaged?.genome_count || 0);
+    const annotationCataloged = Number(summary.annotationAvailable || 0);
     const totalExperimentalGenomes = Number.isFinite(Number(summary.totalExperimentalGenomes))
       ? Number(summary.totalExperimentalGenomes)
-      : Number((await this.database.prepare(
-        `SELECT COUNT(DISTINCT accession) AS count FROM feature_sets WHERE release_id = ? AND status IN ('ready', 'staged') AND (feature_type = 'tss' OR (feature_type = 'promoter' AND evidence_type <> 'prediction'))`,
-      ).bind(releaseId).first<{ count: number }>())?.count || 0);
+      : 0;
     return {
       releaseId, sourceReleaseId: row.source_release_id as string | null,
       releaseDate: row.release_date as string | null, generatedAt: row.generated_at as string | null,
       description: row.description as string | null, totalGenomes: Number(row.total_genomes),
-      totalPredictedPromoters: hasPrecomputedCounts
-        ? Number((summary.predictedPromoters ?? promoterObject.featureCount) || 0)
-        : promoterRows.reduce((total, entry) => total + Number(entry.feature_count || 0), 0),
+      totalPredictedPromoters: Number((summary.predictedPromoters ?? promoterObject.featureCount) || 0),
       totalAnnotatedGenomes: annotationCataloged,
-      totalDownloadedAnnotations: annotationCataloged + Number(annotationFailed?.genome_count || 0),
-      totalMissingAnnotations: hasPrecomputedCounts ? Number(summary.annotationMissing || 0) : Number(annotationMissing?.genome_count || 0),
-      totalIncompatibleAnnotations: Number(annotationFailed?.genome_count || 0), totalUsableAnnotations: Number(annotationReady?.genome_count || 0),
+      totalDownloadedAnnotations: annotationCataloged,
+      totalMissingAnnotations: Number(summary.annotationMissing || 0),
+      totalIncompatibleAnnotations: 0, totalUsableAnnotations: annotationCataloged,
       totalCircularOriginSplitFeatures: Number(summary.totalCircularOriginSplitFeatures || 0),
       totalCircularOriginSplitGenomes: Number(summary.totalCircularOriginSplitGenomes || 0),
       totalExperimentalTss: Number(summary.totalExperimentalTss || 0),
@@ -1099,5 +1211,11 @@ function repositoryForD1(database: D1Database) {
 export const genomeCatalogRepository: GenomeCatalogRepository = {
   async search(query) { const database = await configuredD1(); return database ? repositoryForD1(database).search(query) : jsonRepository.search(query); },
   async getByAccession(accession) { const database = await configuredD1(); return database ? repositoryForD1(database).getByAccession(accession) : jsonRepository.getByAccession(accession); },
+  async getByAccessions(accessions) {
+    const database = await configuredD1();
+    if (database) return repositoryForD1(database).getByAccessions(accessions);
+    const matches = await Promise.all(accessions.map((accession) => jsonRepository.getByAccession(accession)));
+    return new Map(matches.flatMap((match) => match ? [[match.genome.accession, match] as const] : []));
+  },
   async getActiveRelease() { const database = await configuredD1(); return database ? repositoryForD1(database).getActiveRelease() : jsonRepository.getActiveRelease(); },
 };

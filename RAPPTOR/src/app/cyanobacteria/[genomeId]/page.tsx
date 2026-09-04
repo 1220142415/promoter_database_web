@@ -5,7 +5,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
-import { cyanobacteriaRelease, getCyanobacteriaGenome } from '@/features/cyanobacteria/catalog';
+import { cyanobacteriaAssetVersion, cyanobacteriaRelease, getCyanobacteriaGenome } from '@/features/cyanobacteria/catalog';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 
 function formatNumber(value: number, suffix = '') {
@@ -13,7 +13,7 @@ function formatNumber(value: number, suffix = '') {
 }
 
 function dataUrl(genomeId: string, file: string) {
-  return `/api/cyanobacteria-data/${encodeURIComponent(genomeId)}/${file.split('/').map(encodeURIComponent).join('/')}`;
+  return `/api/cyanobacteria-data/${encodeURIComponent(genomeId)}/v-${encodeURIComponent(cyanobacteriaAssetVersion)}/${file.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 function experimentalAssembly(genome: NonNullable<ReturnType<typeof getCyanobacteriaGenome>>): ExperimentalTssGenome | null {
@@ -74,7 +74,7 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
   const { genomeId } = await params;
   const genome = getCyanobacteriaGenome(decodeURIComponent(genomeId));
   if (!genome) notFound();
-  const assetBase = `/api/cyanobacteria-data/${encodeURIComponent(genome.id)}`;
+  const assetBase = dataUrl(genome.id, '').replace(/\/$/u, '');
   const assembly = {
     assemblyName: genome.id,
     defaultLocus: genome.defaultLocus,

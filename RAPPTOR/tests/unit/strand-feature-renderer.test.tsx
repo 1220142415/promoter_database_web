@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Feature, Region } from '@jbrowse/core/util';
+import { GranularRectLayout } from '@jbrowse/core/util/layouts';
 import {
   DirectionalAnnotationRendering,
   DirectionalGlyph,
@@ -61,7 +62,13 @@ const forwardRegion = {
   reversed: false,
 } as Region;
 
-function renderingProps(features: Map<string, Feature>, layout = { addRect: vi.fn().mockReturnValue(0), getTotalHeight: () => 24 }) {
+function renderingProps(
+  features: Map<string, Feature>,
+  layout: ComponentProps<typeof PromoterFeatureRendering>['layout'] = {
+    addRect: vi.fn().mockReturnValue(0),
+    getTotalHeight: () => 24,
+  },
+) {
   return {
     blockKey: 'block-1',
     bpPerPx: 1,
@@ -393,7 +400,7 @@ describe('strand feature SVG output', () => {
     const { container } = render(<DirectionalAnnotationRendering {...props} />);
     expect(container.querySelector('[data-feature-id="contig"]')).toBeNull();
     expect(container.querySelector('[data-feature-id="riboswitch"] [data-role="feature-body"]')).toHaveAttribute('fill', MINUS_STRAND_COLOR);
-    expect(addRect).not.toHaveBeenCalled();
+    expect(addRect).toHaveBeenCalledTimes(1);
     expect(container.querySelector(`[data-annotation-root="${riboswitch.id()}"]`)).toHaveAttribute(
       'data-layout-id',
       annotationLayoutId(riboswitch.id()),
@@ -419,19 +426,32 @@ describe('strand feature SVG output', () => {
   });
 
   it('draws a cross-block annotation label only in the block containing its midpoint', () => {
-    const gene = feature('gene-midpoint', 'gene', 1, 20, 100);
+    const blocker = feature('blocker', 'gene', 1, 0, 25);
+    const gene = feature('gene-midpoint', 'gene', -1, 20, 100);
+    const layout = new GranularRectLayout({ pitchX: 1, pitchY: 1, maxHeight: 10000 });
     const firstProps = {
-      ...renderingProps(new Map([[gene.id(), gene]])),
+      ...renderingProps(new Map([[blocker.id(), blocker], [gene.id(), gene]]), layout),
       regions: [{ ...forwardRegion, end: 60 }],
     } as ComponentProps<typeof DirectionalAnnotationRendering>;
     const secondProps = {
-      ...renderingProps(new Map([[gene.id(), gene]])),
+      ...renderingProps(new Map([[gene.id(), gene]]), layout),
       regions: [{ ...forwardRegion, start: 60, end: 120 }],
     } as ComponentProps<typeof DirectionalAnnotationRendering>;
     const first = render(<DirectionalAnnotationRendering {...firstProps} />);
     const second = render(<DirectionalAnnotationRendering {...secondProps} />);
-    expect(first.container.querySelector('[data-role="annotation-label"]')).toBeNull();
-    expect(second.container.querySelector('[data-role="annotation-label"]')).toHaveTextContent('gene-midpoint');
+    expect({
+      firstLabel: first.container.querySelector('[data-annotation-root="gene-midpoint"] [data-role="annotation-label"]')?.textContent,
+      secondLabel: second.container.querySelector('[data-annotation-root="gene-midpoint"] [data-role="annotation-label"]')?.textContent,
+      firstBodyY: first.container.querySelector('[data-feature-id="gene-midpoint"] [data-role="feature-body"]')?.getAttribute('y'),
+      secondBodyY: second.container.querySelector('[data-feature-id="gene-midpoint"] [data-role="feature-body"]')?.getAttribute('y'),
+      firstHasArrow: Boolean(first.container.querySelector('[data-feature-id="gene-midpoint"] [data-role="feature-arrow"]')),
+    }).toEqual({
+      firstLabel: undefined,
+      secondLabel: 'gene-midpoint',
+      firstBodyY: '24',
+      secondBodyY: '24',
+      firstHasArrow: true,
+    });
   });
 
   it('moves each feature body and its parent label together into collision-assigned lanes', () => {
@@ -448,7 +468,7 @@ describe('strand feature SVG output', () => {
     expect(container.querySelector('[data-feature-id="gene-first"] [data-role="feature-body"]')).toHaveAttribute('y', '0');
     expect(container.querySelector('[data-feature-id="gene-second"] [data-role="feature-body"]')).toHaveAttribute('y', '24');
     expect(container.textContent).not.toContain('child-cds');
-    expect(layout.addRect).not.toHaveBeenCalled();
+    expect(layout.addRect).toHaveBeenCalledTimes(2);
     expect(container.querySelector('svg')).toHaveAttribute('height', String(48 + SVG_HEIGHT_PADDING));
   });
 

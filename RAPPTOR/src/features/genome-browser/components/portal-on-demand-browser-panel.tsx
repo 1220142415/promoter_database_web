@@ -48,6 +48,11 @@ function assetCacheKey(prefix: string, kind: string, url: string, version: strin
   return `${prefix}/${kind}/${version || url}`;
 }
 
+function resolveAsset(base: string, path: string) {
+  if (/^[a-z][a-z\d+.-]*:/iu.test(path) || path.startsWith('/')) return path;
+  return `${base.replace(/\/+$/u, '')}/${path.replace(/^\/+/, '')}`;
+}
+
 function progressLabel(progress: GenomeAssetProgress): GenomeFileProgress {
   if (progress.phase === 'caching') return { label: 'Saving cache', value: 100 };
   if (progress.phase === 'cached') return { label: 'Reading cache', value: 100 };
@@ -153,9 +158,18 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
         }
         return sources;
       };
+      const experimentalPrediction = experimental?.assets?.predictedPromoters
+        ? { genome: experimental, path: experimental.assets.predictedPromoters }
+        : null;
+      const promoterSource = experimentalPrediction
+        ? resolveAsset(experimentalPrediction.genome.assetBase, experimentalPrediction.path)
+        : plannedAssets.predictedPromoters;
+      const promoterCachePrefix = experimentalPrediction
+        ? `${experimentalPrediction.genome.releaseId}/${experimentalPrediction.genome.accession}`
+        : cachePrefix;
       const [reference, promoterGff, annotationGff, scores] = await Promise.all([
         load('reference', plannedAssets.reference, assetCacheKey(cachePrefix, 'reference', plannedAssets.reference, plannedAssets.cacheVersions.reference)),
-        load('promoters', plannedAssets.predictedPromoters, assetCacheKey(cachePrefix, 'promoters', plannedAssets.predictedPromoters, plannedAssets.cacheVersions.predictedPromoters)),
+        load('promoters', promoterSource, assetCacheKey(promoterCachePrefix, 'promoters', promoterSource, experimentalPrediction?.path || plannedAssets.cacheVersions.predictedPromoters)),
         plannedAssets.ncbiAnnotations
           ? load('annotation', plannedAssets.ncbiAnnotations, assetCacheKey(cachePrefix, 'ncbi', plannedAssets.ncbiAnnotations, plannedAssets.cacheVersions.ncbiAnnotations)).catch(() => null)
           : Promise.resolve(null),
@@ -200,7 +214,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       setError(cause instanceof Error ? cause.message : 'Genome files could not be prepared.');
       setStatus('error');
     }
-  }, [accession, hasScores, plannedAssets, releaseId]);
+  }, [accession, experimental, hasScores, plannedAssets, releaseId]);
 
   useEffect(() => {
     void prepare();

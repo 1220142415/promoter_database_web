@@ -2,6 +2,13 @@ import type { ReleaseAssets } from '@/types/release';
 
 export type CyanobacteriaGenomeId = 'ASM970v1' | 'Cf6912' | 'CP003597.1';
 
+export interface CyanobacteriaPredictionWindow {
+  lengthBp: number;
+  upstreamBp: number;
+  downstreamBp: number;
+  anchorAttribute: string;
+}
+
 export interface CyanobacteriaAnnotationSummary {
   source: 'NCBI' | 'Prodigal';
   label: string;
@@ -67,5 +74,6 @@ export interface CyanobacteriaRelease {
   totalPredictedPromoters: number;
   totalExperimentallySupportedGenomes: number;
   totalExperimentalTssObservations: number;
+  predictionWindow: CyanobacteriaPredictionWindow;
   genomes: CyanobacteriaGenome[];
 }

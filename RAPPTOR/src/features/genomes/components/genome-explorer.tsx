@@ -254,7 +254,7 @@ export default function PortalGenomeExplorer({
           <span>NCBI annotation</span>
           <select value={annotationStatus} onChange={(event) => setAnnotationStatus(event.target.value as GenomeAnnotationFilter)}>
             <option value="">Any status</option>
-            <option value="available">Cataloged</option>
+            <option value="available">Available</option>
             <option value="unavailable">Missing</option>
           </select>
         </label>

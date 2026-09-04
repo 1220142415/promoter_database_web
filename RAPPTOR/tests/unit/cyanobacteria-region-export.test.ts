@@ -15,7 +15,7 @@ describe('cyanobacteria region export validation', () => {
     expect(() => validateCyanobacteriaRegionExport({ ...base, refName: '../reference' })).toThrow(/reference sequence/i);
     expect(() => validateCyanobacteriaRegionExport({ ...base, end: 5_000_001 })).toThrow(/5 Mb/i);
     expect(() => validateCyanobacteriaRegionExport({ ...base, tracks: ['ncbi'] })).toThrow(/annotation track/i);
-    expect(() => validateCyanobacteriaRegionExport({ ...base, tracks: ['experimental-tss'] })).toThrow(/not available/i);
+    expect(validateCyanobacteriaRegionExport({ ...base, tracks: ['experimental-tss'] }).tracks).toEqual(['experimental-tss']);
     expect(() => validateCyanobacteriaRegionExport({ ...base, genomeId: 'Cf6912', tracks: ['experimental-tss'] })).toThrow(/not available/i);
   });
 });

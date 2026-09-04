@@ -6,6 +6,8 @@ import type {
 } from '@/features/cyanobacteria/types';
 
 export const cyanobacteriaRelease = releaseData as CyanobacteriaRelease;
+export const cyanobacteriaAssetVersion = cyanobacteriaRelease.assetBaseUrl.match(/\/resolve\/([^/]+)/u)?.[1]
+  || cyanobacteriaRelease.releaseId;
 
 const genomesById = new Map(
   cyanobacteriaRelease.genomes.map((genome) => [genome.id, genome]),

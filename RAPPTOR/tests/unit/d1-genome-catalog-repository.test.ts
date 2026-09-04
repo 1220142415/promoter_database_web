@@ -19,6 +19,8 @@ const releaseRow = {
   total_genomes: 2,
   feature_summary_json: JSON.stringify({
     promoter: { genomeCount: 2, featureCount: 30 },
+    annotationAvailable: 1,
+    annotationMissing: 1,
     totalCircularOriginSplitFeatures: 4,
     totalCircularOriginSplitGenomes: 2,
     totalExperimentalTss: 3,
@@ -171,6 +173,9 @@ class FakeStatement implements D1PreparedStatement {
       return this.database.release as T;
     }
     if (this.query.startsWith('SELECT COUNT')) return { count: this.database.rows.length } as T;
+    if (this.query.includes('SELECT genome_count AS count FROM facet_options')) {
+      return { count: this.database.precomputedFacetCount } as T;
+    }
     if (this.query.includes('SELECT g.*') && !this.query.includes('AS cursor_value')) {
       return (this.database.rows.find((row) => row.accession === this.bindings[1]) || null) as T | null;
     }
@@ -249,6 +254,17 @@ class FakeStatement implements D1PreparedStatement {
           .map((value, index) => ({ facet_kind: ['domain', 'phylum', 'class', 'order', 'family', 'genus'][index], value })),
       ] as T[]);
     }
+    if (this.query.startsWith('SELECT value FROM facet_options')) {
+      const values: Record<string, string> = {
+        domain: 'Bacteria',
+        phylum: 'Bacillota',
+        class: 'Bacilli',
+        order: 'Bacillales',
+        family: 'Bacillaceae',
+        genus: 'Bacillus',
+      };
+      return d1Result([{ value: values[String(this.bindings[1])] }] as T[]);
+    }
     return d1Result<T>([]);
   }
 
@@ -263,6 +279,7 @@ class FakeD1 implements D1Database {
   recorded: Recorded[] = [];
   preparedQueries: string[] = [];
   release: typeof releaseRow | null = { ...releaseRow };
+  precomputedFacetCount = 2;
   rows: JoinedGenomeRow[] = [
     genomeRow('GCA_000000001.1', 2_000_000, 20),
     genomeRow('GCA_000000002.1', null, 10),
@@ -293,7 +310,8 @@ class FakeD1 implements D1Database {
 
 describe('D1 genome catalog repository', () => {
   it('maps the feature catalog schema to the portal model', async () => {
-    const repository = new D1GenomeCatalogRepository(new FakeD1());
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
     const summary = await repository.getActiveRelease();
     expect(summary).toMatchObject({
       releaseId: '2026-08-07',
@@ -352,6 +370,10 @@ describe('D1 genome catalog repository', () => {
         metadataSchemaVersion: '1.0.0',
       },
     });
+
+    const matches = await repository.getByAccessions(['GCA_000000001.1', 'GCA_000000002.1']);
+    expect([...matches.keys()]).toEqual(['GCA_000000001.1', 'GCA_000000002.1']);
+    expect(database.preparedQueries.filter((query) => query.includes('g.accession IN (')).length).toBe(1);
     expect(await repository.getByAccession('GCA_000000001')).toBeNull();
   });
 
@@ -389,7 +411,8 @@ describe('D1 genome catalog repository', () => {
     });
     expect(result.releaseId).toBe('2026-08-07');
     expect(result.facets.taxonomy.genus).toEqual(['Bacillus']);
-    const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    const pageQuery = database.recorded.find((entry) => entry.query.startsWith('WITH filtered AS'))!;
+    const countQuery = database.recorded.find((entry) => entry.query.startsWith('SELECT COUNT(*) AS count FROM genomes g'))!;
     expect(pageQuery.query).toContain("p.feature_type = 'promoter'");
     expect(pageQuery.query).toContain("p.evidence_type = 'prediction'");
     expect(pageQuery.query).toContain('experimental_evidence_json');
@@ -401,12 +424,16 @@ describe('D1 genome catalog repository', () => {
     expect(pageQuery.query).toContain('g.accession IN (SELECT st.accession');
     expect(pageQuery.query).not.toContain('EXISTS (SELECT 1 FROM genome_search_terms');
     expect(pageQuery.query).not.toContain(' LIKE ');
+    expect(countQuery.query).not.toContain('experimental_evidence_json');
+    expect(countQuery.query).not.toContain("p.feature_type = 'promoter'");
+    expect(countQuery.query).toContain("a.feature_type = 'gene_annotation'");
+    expect(countQuery.query).toContain('EXISTS (SELECT 1 FROM feature_sets e');
     expect(pageQuery.bindings).toEqual(expect.arrayContaining([
       'bacillus', 'bacillus\uffff', 'subtilis', 'subtilis\uffff', 'Bacteria', 'Bacillota', 'NCBI GenBank',
     ]));
     expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
-    expect(database.preparedQueries).toHaveLength(4);
-    expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT'))).toBe(false);
+    expect(database.preparedQueries).toHaveLength(5);
+    expect(database.preparedQueries.filter((query) => query.startsWith('SELECT COUNT'))).toHaveLength(1);
     expect(database.recorded.find((entry) => entry.query.includes('facet_kind'))?.bindings).not.toContain('genus');
   });
 
@@ -415,10 +442,35 @@ describe('D1 genome catalog repository', () => {
     const repository = new D1GenomeCatalogRepository(database);
     await repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'Bacillota' });
 
-    const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    const pageQuery = database.recorded.find((entry) => entry.query.startsWith('WITH filtered AS'))!;
     expect(database.preparedQueries.some((query) => query.includes('WITH requested(query_token'))).toBe(true);
     expect(pageQuery.query).toContain('(g.domain = ? AND g.phylum = ?)');
     expect(pageQuery.bindings).toEqual(expect.arrayContaining(['Bacteria', 'Bacillota']));
+  });
+
+  it('reuses fixed genome details within a warm Worker', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await repository.getByAccession('GCA_000000001.1');
+    await repository.getByAccession('GCA_000000001.1');
+
+    expect(database.preparedQueries.filter((query) => query.startsWith('SELECT g.*'))).toHaveLength(1);
+  });
+
+  it('reads fixed taxonomy totals from facet metadata instead of counting genomes', async () => {
+    const database = new FakeD1();
+    database.precomputedFacetCount = 12_345;
+    const repository = new D1GenomeCatalogRepository(database);
+
+    const result = await repository.search({
+      ...DEFAULT_GENOME_SEARCH_QUERY,
+      taxonomy: { ...DEFAULT_GENOME_SEARCH_QUERY.taxonomy, domain: 'Bacteria' },
+    });
+
+    expect(result.total).toBe(12_345);
+    expect(database.preparedQueries.some((query) => query.includes('SELECT genome_count AS count FROM facet_options'))).toBe(true);
+    expect(database.preparedQueries.some((query) => query.startsWith('SELECT COUNT(*) AS count FROM genomes'))).toBe(false);
   });
 
   it('rejects a staged release even if portal_state points at it', async () => {
@@ -462,6 +514,15 @@ describe('D1 genome catalog repository', () => {
     expect(database.preparedQueries.some((query) => query.startsWith('SELECT feature_type'))).toBe(false);
   });
 
+  it('rejects incomplete release statistics instead of scanning feature sets at request time', async () => {
+    const database = new FakeD1();
+    database.release = { ...releaseRow, feature_summary_json: '{}' };
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await expect(repository.getActiveRelease()).rejects.toThrow('missing precomputed feature statistics');
+    expect(database.preparedQueries).toHaveLength(1);
+  });
+
   it('serves staged genome metadata without requiring resource paths', async () => {
     const database = new FakeD1();
     database.rows[0].promoter_status = 'staged';
@@ -479,7 +540,7 @@ describe('D1 genome catalog repository', () => {
     expect(result.items[0]).toMatchObject({ predictedPromoterCount: 20, annotationStatus: 'available' });
     expect(result.total).toBe(2);
     expect(database.recorded.find((entry) => entry.query.includes('ORDER BY filtered.accession'))?.query).not.toContain('total_count');
-    expect(database.recorded.find((entry) => entry.query.includes('facet_kind'))?.bindings).toEqual(['2026-08-07', 'domain']);
+    expect(database.recorded.find((entry) => entry.query.includes('facet_kind'))?.bindings).toEqual(['2026-08-07', '2026-08-07']);
 
     const match = await repository.getByAccession('GCA_000000001.1');
     expect(match).toMatchObject({ resourceStatus: 'staged', assetBase: null, storage: null });
@@ -499,7 +560,7 @@ describe('D1 genome catalog repository', () => {
 
     await repository.search({ ...DEFAULT_GENOME_SEARCH_QUERY, q: 'multipath' });
 
-    const pageQuery = database.recorded.find((entry) => entry.query.includes('(SELECT COUNT(*) FROM filtered) AS total_count'))!;
+    const pageQuery = database.recorded.find((entry) => entry.query.startsWith('WITH filtered AS'))!;
     expect(pageQuery.bindings).toContain('Genus7');
     expect(pageQuery.bindings).not.toContain('Genus8');
     expect(pageQuery.bindings).toHaveLength(56);
@@ -540,6 +601,27 @@ describe('D1 genome catalog repository', () => {
     expect(database.preparedQueries.filter((query) => query.includes('FROM portal_state'))).toHaveLength(1);
     expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
     expect(database.preparedQueries.filter((query) => query.startsWith('WITH filtered AS'))).toHaveLength(2);
+  });
+
+  it('reuses ancestor taxonomy facets while preserving immediate result refreshes', async () => {
+    const database = new FakeD1();
+    const repository = new D1GenomeCatalogRepository(database);
+
+    await repository.search(DEFAULT_GENOME_SEARCH_QUERY);
+    const domain = await repository.search({
+      ...DEFAULT_GENOME_SEARCH_QUERY,
+      taxonomy: { ...DEFAULT_GENOME_SEARCH_QUERY.taxonomy, domain: 'Bacteria' },
+    });
+    const phylum = await repository.search({
+      ...DEFAULT_GENOME_SEARCH_QUERY,
+      taxonomy: { ...DEFAULT_GENOME_SEARCH_QUERY.taxonomy, domain: 'Bacteria', phylum: 'Bacillota' },
+    });
+
+    expect(domain.facets.taxonomy.phylum).toEqual(['Bacillota']);
+    expect(phylum.facets.taxonomy.class).toEqual(['Bacilli']);
+    expect(database.preparedQueries.filter((query) => query.includes('facet_kind'))).toHaveLength(1);
+    expect(database.preparedQueries.filter((query) => query.startsWith('SELECT value FROM facet_options'))).toHaveLength(2);
+    expect(database.preparedQueries.filter((query) => query.startsWith('WITH filtered AS'))).toHaveLength(3);
   });
 
   it('binds cursors to the active release and complete query configuration', async () => {

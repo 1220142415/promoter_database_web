@@ -10,9 +10,10 @@ const links = [
   { href: '/', label: 'Overview' },
   { href: '/genomes', label: 'Genomes' },
   { href: '/cyanobacteria', label: 'Cyanobacteria' },
+  { href: '/predict', label: 'Predict' },
 ];
 
-export default function PortalHeader({ showUsage = false }: { showPrediction?: boolean; showUsage?: boolean }) {
+export default function PortalHeader({ showUsage = false }: { showUsage?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const visibleLinks = [

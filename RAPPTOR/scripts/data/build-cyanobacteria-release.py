@@ -18,10 +18,17 @@ from urllib.parse import quote, unquote
 
 
 RELEASE_ID = "2026-08-27"
+HF_REVISION = "1f43a48b29419a4a95d2970931fdd787d496953a"
 HF_ASSET_BASE = (
-    "https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main/"
+    f"https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/{HF_REVISION}/"
     "cyanobacteria/releases/2026-08-27"
 )
+PREDICTION_WINDOW = {
+    "lengthBp": 100,
+    "upstreamBp": 80,
+    "downstreamBp": 20,
+    "anchorAttribute": "peak_position",
+}
 ASSETS = {
     "fasta": "reference.fa.gz",
     "fastaFai": "reference.fa.gz.fai",
@@ -63,8 +70,28 @@ GENOMES = {
             "limitations": None,
         },
         "candidate": "gff3_cutoff_0/ASM970v1.smoothed_peaks_gt_0.gff3",
-        "prediction": "cyanobacteria_promoter_annotations/ASM970v1.smoothed_peaks_gt_0.9.gff3",
+        "prediction": "cyanobacteria_promoter_annotations/ASM970v1.promoters_up80_down20.gff3",
         "annotationSourcePath": "cyanobacteria_gene_annotations/ASM970v1.ncbi.gff3",
+        "experimentalTss": {
+            "path": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
+            "seqidPrefix": "GCF_000009705.1:",
+            "label": "Experimentally supported TSS (Mitschke et al., 2011)",
+            "studyId": "2011_22135468_GCF_000009705.1",
+            "pmid": "22135468",
+            "year": 2011,
+            "title": "Dynamics of transcriptional start site selection during nitrogen stress-induced cell differentiation in Anabaena sp. PCC7120.",
+            "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+            "doi": "10.1073/pnas.1112724108",
+            "assemblyAccession": "GCF_000009705.1",
+            "expectedObservationCount": 13_705,
+            "expectedUniqueTssCount": 13_705,
+            "expectedStrands": {"plus": 6_929, "minus": 6_776},
+            "expectedSequenceCount": 7,
+            "methodBoundary": "Study-level TSS observations under the conditions reported by the source publication; not universal promoter validation.",
+            "hfPath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
+            "hfAssetSha256": "f47d7a2623ceb9c9d4b164ea69827ae41671f0ce97a5e8fe47fbc5c0e8a3f283",
+            "sourceManifestSha256": "1c27312b8a5fedd9973df058672e7da14d0e9ecfb67e0d019df20d556f85dac5",
+        },
     },
     "Cf6912": {
         "identifierType": "dataset identifier",
@@ -93,7 +120,7 @@ GENOMES = {
             ),
         },
         "candidate": "gff3_cutoff_0/Cf6912.smoothed_peaks_gt_0.gff3",
-        "prediction": "cyanobacteria_promoter_annotations/Cf6912.smoothed_peaks_gt_0.9.gff3",
+        "prediction": "cyanobacteria_promoter_annotations/Cf6912.promoters_up80_down20.gff3",
         "annotationSourcePath": "cyanobacteria_gene_annotations/Cf6912.prodigal.gff3",
     },
     "CP003597.1": {
@@ -117,7 +144,7 @@ GENOMES = {
             "limitations": None,
         },
         "candidate": "gff3_cutoff_0/CP003597.1.smoothed_peaks_gt_0.gff3",
-        "prediction": "cyanobacteria_promoter_annotations/CP003597.1.smoothed_peaks_gt_0.9.gff3",
+        "prediction": "cyanobacteria_promoter_annotations/CP003597.1.promoters_up80_down20.gff3",
         "annotationSourcePath": "cyanobacteria_gene_annotations/CP003597.1.gff3",
     },
 }
@@ -350,13 +377,30 @@ def read_final_peak_set(path: Path, sequence_lengths: dict[str, int]) -> tuple[s
             sequence, feature_type, strand = fields[0], fields[2], fields[6]
             if sequence not in sequence_lengths or end > sequence_lengths.get(sequence, 0):
                 raise ReleaseValidationError(f"{path}:{line_number}: final peak does not match the reference")
-            if feature_type != "promoter_peak" or start != end or strand not in {"+", "-"}:
-                raise ReleaseValidationError(f"{path}:{line_number}: invalid final promoter peak")
+            attributes = parse_gff3_attributes(fields[8])
+            try:
+                anchor = int(attributes.get(PREDICTION_WINDOW["anchorAttribute"], ""))
+            except ValueError as exc:
+                raise ReleaseValidationError(f"{path}:{line_number}: invalid promoter anchor") from exc
+            expected_start = anchor - (
+                PREDICTION_WINDOW["upstreamBp"] if strand == "+" else PREDICTION_WINDOW["downstreamBp"] - 1
+            )
+            expected_end = anchor + (
+                PREDICTION_WINDOW["downstreamBp"] - 1 if strand == "+" else PREDICTION_WINDOW["upstreamBp"]
+            )
+            if (
+                feature_type != "promoter" or strand not in {"+", "-"}
+                or end - start + 1 != PREDICTION_WINDOW["lengthBp"]
+                or (start, end) != (expected_start, expected_end)
+                or attributes.get("upstream_length") != str(PREDICTION_WINDOW["upstreamBp"])
+                or attributes.get("downstream_length") != str(PREDICTION_WINDOW["downstreamBp"])
+            ):
+                raise ReleaseValidationError(f"{path}:{line_number}: invalid 100 bp promoter interval")
             if score is None or not 0.9 < score <= 1:
                 raise ReleaseValidationError(f"{path}:{line_number}: final peak does not satisfy score > 0.9")
-            key = (sequence, start, strand, round(score, 8))
+            key = (sequence, anchor, strand, round(score, 8))
             if key in values:
-                raise ReleaseValidationError(f"{path}:{line_number}: duplicate final peak")
+                raise ReleaseValidationError(f"{path}:{line_number}: duplicate final promoter")
             values.add(key)
             counts[strand] += 1
     return values, counts
@@ -585,8 +629,8 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
         prediction_counts, prediction_origin_splits = sorted_gff(prediction_source, sorted_predictions, sequences)
         annotation_counts, annotation_origin_splits = sorted_gff(annotation_source, sorted_annotations, sequences)
         if prediction_origin_splits:
-            raise ReleaseValidationError(f"{genome_id}: point predictions unexpectedly cross a circular origin")
-        if prediction_counts["promoter_peak"] != observed_final:
+            raise ReleaseValidationError(f"{genome_id}: promoter intervals unexpectedly cross a circular origin")
+        if prediction_counts["promoter"] != observed_final:
             raise ReleaseValidationError(f"{genome_id}: normalized prediction count changed")
         for feature, expected in config["annotation"]["featureCounts"].items():
             if annotation_counts[feature] != expected:
@@ -619,6 +663,8 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
         "finalSubsetVerified": True,
         "annotationFeatureCounts": dict(annotation_counts),
         "annotationCircularOriginSplitFeatures": annotation_origin_splits,
+        "predictionFeatureType": "promoter",
+        "predictionWindow": PREDICTION_WINDOW,
     }
     if experimental_observed:
         observed["experimentalTss"] = experimental_observed
@@ -649,7 +695,9 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
             "originalFileName": prediction_source.name,
             "releaseAsset": ASSETS["predictionSource"],
             "sha256": sha256_file(prediction_source),
-            "selection": "strict subset of candidate peaks with model score > 0.9",
+            "selection": "100 bp promoter intervals spanning 80 bp upstream and 20 bp downstream of each model-score peak > 0.9",
+            "featureType": "promoter",
+            "anchorAttribute": PREDICTION_WINDOW["anchorAttribute"],
         },
         "genomeAnnotation": {
             "originalFileName": annotation_source.name,
@@ -681,8 +729,9 @@ def release_catalog(genomes: list[dict], generated_at: str) -> dict:
         "generatedAt": generated_at,
         "title": "RAPPTOR cyanobacterial promoter predictions",
         "description": (
-            "Three cyanobacterial reference genomes with scored candidate peaks, score > 0.9 promoter "
-            "predictions and genome annotations."
+            "Three cyanobacterial reference genomes with scored candidate peaks, 100 bp promoter predictions "
+            "spanning 80 bp upstream and 20 bp downstream of score > 0.9 peaks, genome annotations and "
+            "study-linked experimental TSS evidence where available."
         ),
         "assetBaseUrl": HF_ASSET_BASE,
         "manifest": "manifest.tsv",
@@ -698,6 +747,7 @@ def release_catalog(genomes: list[dict], generated_at: str) -> dict:
             if genome["experimentalEvidence"]
         ),
         "genomes": genomes,
+        "predictionWindow": PREDICTION_WINDOW,
     }
 
 
@@ -726,8 +776,8 @@ def validate_release(root: Path) -> dict:
         release["totalGenomes"] != 3
         or release["totalCandidatePeaks"] != 2_609_318
         or release["totalPredictedPromoters"] != 112_862
-        or release.get("totalExperimentallySupportedGenomes") != 0
-        or release.get("totalExperimentalTssObservations") != 0
+        or release.get("totalExperimentallySupportedGenomes") != 1
+        or release.get("totalExperimentalTssObservations") != 13_705
     ):
         raise ReleaseValidationError("Release totals do not match the fixed acceptance contract")
     observed_genomes = {genome["id"]: genome for genome in release.get("genomes", [])}
@@ -739,8 +789,10 @@ def validate_release(root: Path) -> dict:
             raise ReleaseValidationError(f"{genome_id}: release counts do not match the fixed acceptance contract")
         if genome.get("validation", {}).get("finalSubsetVerified") is not True:
             raise ReleaseValidationError(f"{genome_id}: final score > 0.9 subset verification is missing")
-        if genome.get("experimentalEvidence") is not None:
-            raise ReleaseValidationError(f"{genome_id}: experimental evidence is not part of this public release")
+        if genome.get("validation", {}).get("predictionWindow") != PREDICTION_WINDOW:
+            raise ReleaseValidationError(f"{genome_id}: 100 bp prediction window metadata is missing")
+        if bool(genome.get("experimentalEvidence")) != (genome_id == "ASM970v1"):
+            raise ReleaseValidationError(f"{genome_id}: experimental evidence does not match the release contract")
     manifest_rows = (root / "manifest.tsv").read_text(encoding="utf-8").splitlines()
     if not manifest_rows or manifest_rows[0] != "path\tbytes\tsha256":
         raise ReleaseValidationError("Invalid release manifest header")

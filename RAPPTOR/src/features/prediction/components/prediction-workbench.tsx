@@ -291,7 +291,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
       const ticketResponse = await fetch('/api/prediction-tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turnstileToken: localTest ? 'local-test' : turnstileToken, modelVersion, bases }),
+        body: JSON.stringify({ mode, turnstileToken: localTest ? 'local-test' : turnstileToken, modelVersion, bases }),
       });
       const ticketBody = await ticketResponse.json() as TicketResponse;
       if (!ticketResponse.ok) throw new Error(ticketBody.error?.message || 'Prediction ticket was rejected.');

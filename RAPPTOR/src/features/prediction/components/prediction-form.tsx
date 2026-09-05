@@ -161,7 +161,7 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
       if (!turnstileToken) throw new PredictionClientError('INVALID_TURNSTILE', 'Complete Turnstile verification before submitting.');
       const ticket = await predictionApi<PredictionTicketResponse>('/api/prediction-tickets', {
         method: 'POST',
-        body: JSON.stringify({ contractVersion: PREDICTION_CONTRACT_VERSION, turnstileToken, modelVersion: capabilities.modelVersion, targetBases: target.length, genomeBytes: genomeFile?.size || 0 }),
+        body: JSON.stringify({ contractVersion: PREDICTION_CONTRACT_VERSION, mode: 'predict', turnstileToken, modelVersion: capabilities.modelVersion, targetBases: target.length, genomeBytes: genomeFile?.size || 0 }),
       });
 
       let genomeContext: GenomeContext;

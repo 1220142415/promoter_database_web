@@ -10,6 +10,8 @@ import { GET as getResult } from '@/app/api/predictions/[jobId]/result/route';
 import { resetDemoPredictionState } from '@/features/prediction/demo-provider';
 import { PREDICTION_CONTRACT_VERSION, type PredictionJob, type PredictionResult, type PredictionTicketResponse, type PredictionUploadSlot } from '@/features/prediction/types';
 
+vi.mock('@/features/auth/supabase', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'person@example.test', emailConfirmed: true }) }));
+
 const modelVersion = 'rapptor-cgr-100bp-demo-v1';
 const bodyRequest = (url: string, body: unknown, headers?: HeadersInit) => new Request(url, {
   method: 'POST',
@@ -21,6 +23,7 @@ const context = (jobId: string) => ({ params: Promise.resolve({ jobId }) });
 async function ticket(genomeBytes = 0) {
   const response = await issueTicket(bodyRequest('http://localhost/api/prediction-tickets', {
     contractVersion: PREDICTION_CONTRACT_VERSION,
+    mode: 'predict',
     turnstileToken: 'demo-turnstile-bypass',
     modelVersion,
     targetBases: 120,
@@ -149,6 +152,7 @@ describe('prediction API contract', () => {
     await expect(capabilities.json()).resolves.toMatchObject({ mode: 'remote', serviceStatus: 'unavailable', demoPreviewAvailable: true, available: false, unavailableReason: 'Cloud prediction is not available in this deployment yet.' });
     const response = await issueTicket(bodyRequest('http://localhost/api/prediction-tickets', {
       contractVersion: PREDICTION_CONTRACT_VERSION,
+      mode: 'predict',
       turnstileToken: 'token',
       modelVersion,
       targetBases: 120,

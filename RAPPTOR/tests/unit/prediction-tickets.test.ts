@@ -2,10 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   consumePredictionTicket,
+  beijingQuotaDay,
   issuePredictionTicket,
   PredictionTicketConfigurationError,
   PredictionTicketLimitError,
   readPredictionTicketSettings,
+  releaseGenomeScanQuota,
+  reserveGenomeScanQuota,
   serviceSecretMatches,
   type PredictionTicketSettings,
 } from '@/features/prediction/tickets';
@@ -13,6 +16,7 @@ import {
 interface TicketRow {
   ticketHash: string;
   ipHash: string;
+  mode: 'predict' | 'genome_scan';
   modelVersion: string;
   requestedBases: number;
   maxBases: number;
@@ -42,16 +46,18 @@ class FakeStatement {
   async run<T>() {
     let changes = 0;
     if (this.sql.startsWith('INSERT INTO prediction_tickets')) {
-      const [ticketHash, ipHash, modelVersion, requestedBases, maxBases, issuedAt, expiresAt,
-        , minuteCutoff, ticketsPerMinute, , dayCutoff, billedBases, basesPerDay] = this.bindings;
+      const [ticketHash, ipHash, mode, modelVersion, requestedBases, maxBases, issuedAt, expiresAt,
+        , minuteCutoff, ticketsPerMinute, limitMode, , dayCutoff, billedBases, basesPerDay] = this.bindings;
       const rows = this.database.rows.filter((row) => row.ipHash === ipHash);
       const minuteTickets = rows.filter((row) => row.issuedAt >= String(minuteCutoff)).length;
-      const dailyBases = rows.filter((row) => row.issuedAt >= String(dayCutoff))
+      const dailyBases = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(dayCutoff))
         .reduce((total, row) => total + row.requestedBases, 0);
-      if (minuteTickets < Number(ticketsPerMinute) && dailyBases + Number(billedBases) <= Number(basesPerDay)) {
+      if (minuteTickets < Number(ticketsPerMinute)
+        && (limitMode === 'predict' || dailyBases + Number(billedBases) <= Number(basesPerDay))) {
         this.database.rows.push({
           ticketHash: String(ticketHash),
           ipHash: String(ipHash),
+          mode: mode as 'predict' | 'genome_scan',
           modelVersion: String(modelVersion),
           requestedBases: Number(requestedBases),
           maxBases: Number(maxBases),
@@ -61,6 +67,14 @@ class FakeStatement {
         });
         changes = 1;
       }
+    } else if (this.sql.startsWith('INSERT INTO prediction_daily_quota')) {
+      const key = `${this.bindings[0]}|${this.bindings[1]}`;
+      if (!this.database.quotaRows.has(key)) {
+        this.database.quotaRows.add(key);
+        changes = 1;
+      }
+    } else if (this.sql.startsWith('DELETE FROM prediction_daily_quota')) {
+      changes = this.database.quotaRows.delete(`${this.bindings[0]}|${this.bindings[1]}`) ? 1 : 0;
     } else if (this.sql.startsWith('UPDATE prediction_tickets')) {
       const [usedAt, ticketHash, modelVersion, now, bases] = this.bindings;
       const row = this.database.rows.find((candidate) => (
@@ -81,6 +95,7 @@ class FakeStatement {
 
 class FakeD1 {
   rows: TicketRow[] = [];
+  quotaRows = new Set<string>();
 
   prepare(sql: string) {
     return new FakeStatement(this, sql);
@@ -154,6 +169,7 @@ describe('one-time prediction tickets', () => {
       address: '203.0.113.8',
       modelVersion: settings.modelVersion,
       bases: 500,
+      mode: 'predict',
     }, now);
 
     expect(database.rows).toHaveLength(1);
@@ -176,7 +192,7 @@ describe('one-time prediction tickets', () => {
     const database = new FakeD1();
     const now = new Date('2026-08-27T08:00:00.000Z');
     const issued = await issuePredictionTicket(database as unknown as D1Database, settings, {
-      address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 500,
+      address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 500, mode: 'predict',
     }, now);
     await expect(consumePredictionTicket(database as unknown as D1Database, {
       ticket: issued.ticket, modelVersion: 'wrong', bases: 500,
@@ -192,7 +208,7 @@ describe('one-time prediction tickets', () => {
   it('enforces configured ticket and base limits', async () => {
     const database = new FakeD1();
     const now = new Date('2026-08-27T08:00:00.000Z');
-    const input = { address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 700 };
+    const input = { address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 700, mode: 'genome_scan' as const };
     await issuePredictionTicket(database as unknown as D1Database, settings, input, now);
     await issuePredictionTicket(database as unknown as D1Database, settings, input, now);
     await expect(issuePredictionTicket(database as unknown as D1Database, settings, input, now))
@@ -203,15 +219,37 @@ describe('one-time prediction tickets', () => {
     const database = new FakeD1();
     const now = new Date('2026-08-27T08:00:00.000Z');
     await expect(issuePredictionTicket(database as unknown as D1Database, settings, {
-      address: '203.0.113.8', modelVersion: 'wrong', bases: 1,
+      address: '203.0.113.8', modelVersion: 'wrong', bases: 1, mode: 'predict',
     }, now)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(issuePredictionTicket(database as unknown as D1Database, settings, {
-      address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 1_001,
+      address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 1_001, mode: 'predict',
     }, now)).rejects.toMatchObject({ code: 'INPUT_TOO_LARGE' });
   });
 
   it('compares the server credential without accepting prefixes', () => {
     expect(serviceSecretMatches('service-secret', 'service-secret')).toBe(true);
     expect(serviceSecretMatches('service', 'service-secret')).toBe(false);
+  });
+
+  it('does not apply the daily base cap to short-sequence tickets', async () => {
+    const database = new FakeD1();
+    for (let minute = 0; minute < 4; minute += 1) {
+      await issuePredictionTicket(database as unknown as D1Database, settings, {
+        address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 700, mode: 'predict',
+      }, new Date(`2026-08-27T08:0${minute}:00.000Z`));
+    }
+    expect(database.rows).toHaveLength(4);
+  });
+
+  it('resets one whole-genome scan per user at Beijing midnight', async () => {
+    const database = new FakeD1();
+    const beforeMidnight = new Date('2026-08-27T15:59:59.000Z');
+    const afterMidnight = new Date('2026-08-27T16:00:00.000Z');
+    expect(beijingQuotaDay(beforeMidnight)).toBe('2026-08-27');
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', beforeMidnight)).resolves.toBe(true);
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', beforeMidnight)).resolves.toBe(false);
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', afterMidnight)).resolves.toBe(true);
+    await releaseGenomeScanQuota(database as unknown as D1Database, 'user-1', afterMidnight);
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', afterMidnight)).resolves.toBe(true);
   });
 });

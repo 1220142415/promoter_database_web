@@ -19,6 +19,8 @@ export class PredictionTicketInputError extends Error {
   }
 }
 
+export type PredictionTaskMode = 'predict' | 'genome_scan';
+
 function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new PredictionTicketConfigurationError(`${name} is required.`);
@@ -88,7 +90,7 @@ function changedRows(result: { meta?: { changes?: unknown } }) {
 export async function issuePredictionTicket(
   database: D1Database,
   settings: PredictionTicketSettings,
-  input: { address: string; modelVersion: string; bases: number },
+  input: { address: string; modelVersion: string; bases: number; mode: PredictionTaskMode },
   now = new Date(),
 ) {
   if (input.modelVersion !== settings.modelVersion) throw new PredictionTicketInputError('INVALID_INPUT', 'Unsupported model version.');
@@ -101,19 +103,20 @@ export async function issuePredictionTicket(
 
   const issuedAt = now.toISOString();
   const minuteCutoff = new Date(now.getTime() - 60_000).toISOString();
-  const dayCutoff = issuedAt.slice(0, 10) + 'T00:00:00.000Z';
-  const ipHash = await hmac(`${issuedAt.slice(0, 10)}|${input.address}`, settings.ipHashSecret);
+  const dayCutoff = new Date(`${beijingQuotaDay(now)}T00:00:00+08:00`).toISOString();
+  const ipHash = await hmac(`${beijingQuotaDay(now)}|${input.address}`, settings.ipHashSecret);
   const ticket = randomTicket();
   const expiresAt = new Date(now.getTime() + settings.ttlSeconds * 1000).toISOString();
   const result = await database.prepare(`INSERT INTO prediction_tickets
-      (ticket_hash, ip_hash, scope, model_version, requested_bases, max_bases, issued_at, expires_at, used_at)
-    SELECT ?, ?, 'prediction', ?, ?, ?, ?, ?, NULL
+      (ticket_hash, ip_hash, scope, task_kind, model_version, requested_bases, max_bases, issued_at, expires_at, used_at)
+    SELECT ?, ?, 'prediction', ?, ?, ?, ?, ?, ?, NULL
     WHERE (SELECT COUNT(*) FROM prediction_tickets WHERE ip_hash = ? AND issued_at >= ?) < ?
-      AND (SELECT COALESCE(SUM(requested_bases), 0) FROM prediction_tickets WHERE ip_hash = ? AND issued_at >= ?) + ? <= ?`)
+      AND (? = 'predict' OR (SELECT COALESCE(SUM(requested_bases), 0) FROM prediction_tickets
+        WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?) + ? <= ?)`)
     .bind(
-      await sha256(ticket), ipHash, settings.modelVersion, input.bases, input.bases, issuedAt, expiresAt,
+      await sha256(ticket), ipHash, input.mode, settings.modelVersion, input.bases, input.bases, issuedAt, expiresAt,
       ipHash, minuteCutoff, settings.ticketsPerMinute,
-      ipHash, dayCutoff, input.bases, settings.basesPerDay,
+      input.mode, ipHash, dayCutoff, input.bases, settings.basesPerDay,
     )
     .run();
   if (changedRows(result) !== 1) throw new PredictionTicketLimitError('Prediction ticket limit reached.');
@@ -127,6 +130,35 @@ export async function issuePredictionTicket(
       conditioning: 'CGR_128x128',
     },
   };
+}
+
+export function beijingQuotaDay(now = new Date()) {
+  return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export function secondsUntilBeijingMidnight(now = new Date()) {
+  const nextMidnight = new Date(`${beijingQuotaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000))}T00:00:00+08:00`);
+  return Math.max(1, Math.ceil((nextMidnight.getTime() - now.getTime()) / 1000));
+}
+
+export async function reserveGenomeScanQuota(database: D1Database, userId: string, now = new Date()) {
+  const result = await database.prepare(`INSERT INTO prediction_daily_quota
+      (user_id, quota_day, task_kind, used, updated_at)
+    VALUES (?, ?, 'genome_scan', 1, ?)
+    ON CONFLICT(user_id, quota_day, task_kind) DO UPDATE SET
+      used = prediction_daily_quota.used + 1,
+      updated_at = excluded.updated_at
+    WHERE prediction_daily_quota.used < 1`)
+    .bind(userId, beijingQuotaDay(now), now.toISOString())
+    .run();
+  return changedRows(result) === 1;
+}
+
+export async function releaseGenomeScanQuota(database: D1Database, userId: string, now = new Date()) {
+  await database.prepare(`DELETE FROM prediction_daily_quota
+    WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan'`)
+    .bind(userId, beijingQuotaDay(now))
+    .run();
 }
 
 export async function consumePredictionTicket(

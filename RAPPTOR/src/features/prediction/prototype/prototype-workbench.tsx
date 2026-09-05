@@ -466,7 +466,7 @@ export default function PrototypePredictionWorkbench({
 
       const issued = await predictionApi<PredictionTicket>('/api/prediction-tickets', {
         method: 'POST',
-        body: JSON.stringify({ turnstileToken: 'local-test', modelVersion, bases }),
+        body: JSON.stringify({ mode: historyMode, turnstileToken: 'local-test', modelVersion, bases }),
       });
       if (!issued.ticket) throw new Error('Prediction ticket response is invalid.');
       const created = await predictionApi<CreatedDockerJob>('/api/predictions/jobs', {

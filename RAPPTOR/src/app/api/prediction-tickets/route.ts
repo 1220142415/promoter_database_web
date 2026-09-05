@@ -12,6 +12,7 @@ import {
   readPredictionTicketSettings,
   verifyTurnstile,
 } from '@/features/prediction/tickets';
+import { requirePredictionAuth } from '@/features/auth/supabase';
 
 export const dynamic = 'force-dynamic';
 const MAX_TICKET_REQUEST_BYTES = 16 * 1024;
@@ -25,12 +26,14 @@ function localTestEnabled(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requirePredictionAuth(request);
+  if (auth instanceof Response) return auth;
   try {
     const contentLength = Number(request.headers.get('content-length'));
     if (Number.isFinite(contentLength) && contentLength > MAX_TICKET_REQUEST_BYTES) {
       return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction ticket request is too large.' } }, { status: 413 });
     }
-    let body: { contractVersion?: unknown; turnstileToken?: unknown; modelVersion?: unknown; bases?: unknown };
+    let body: { contractVersion?: unknown; turnstileToken?: unknown; modelVersion?: unknown; bases?: unknown; mode?: unknown };
     try {
       const raw = await request.text();
       if (new TextEncoder().encode(raw).byteLength > MAX_TICKET_REQUEST_BYTES) {
@@ -41,6 +44,9 @@ export async function POST(request: Request) {
       return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid prediction ticket request.' } }, { status: 400 });
     }
     if (body.contractVersion !== undefined) {
+      if (body.mode !== 'predict') {
+        return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid prediction task mode.' } }, { status: 400 });
+      }
       const capabilities = predictionCapabilities();
       if (!capabilities.available) {
         throw new PredictionProviderError('PREDICTION_UNAVAILABLE', capabilities.unavailableReason || 'Prediction is unavailable.', 503, true);
@@ -51,7 +57,8 @@ export async function POST(request: Request) {
       }
       return Response.json(await predictionProvider().issueTicket(input), { status: 201, headers: { 'Cache-Control': 'no-store' } });
     }
-    if (typeof body.turnstileToken !== 'string' || !body.turnstileToken || body.turnstileToken.length > 4096
+    if ((body.mode !== 'predict' && body.mode !== 'genome_scan')
+      || typeof body.turnstileToken !== 'string' || !body.turnstileToken || body.turnstileToken.length > 4096
       || typeof body.modelVersion !== 'string' || body.modelVersion.length > 200 || typeof body.bases !== 'number') {
       return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid prediction ticket request.' } }, { status: 400 });
     }
@@ -81,6 +88,7 @@ export async function POST(request: Request) {
       address,
       modelVersion: body.modelVersion,
       bases: body.bases,
+      mode: body.mode,
     });
     return Response.json(ticket, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {

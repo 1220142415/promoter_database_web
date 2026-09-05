@@ -2,8 +2,11 @@ import { predictionErrorResponse } from '@/features/prediction/api-response';
 import { predictionCapabilities } from '@/features/prediction/capabilities';
 import { predictionAccessCookie, predictionProvider } from '@/features/prediction/runtime';
 import { parsePredictionSubmission } from '@/features/prediction/validation';
+import { requirePredictionAuth } from '@/features/auth/supabase';
 
 export async function POST(request: Request) {
+  const auth = await requirePredictionAuth(request);
+  if (auth instanceof Response) return auth;
   try {
     const input = parsePredictionSubmission(await request.json(), predictionCapabilities());
     const created = await predictionProvider().createJob(input);

@@ -215,7 +215,7 @@ describe('prototype prediction workbench', () => {
       output_formats: ['bigwig', 'gff3'],
     });
     expect(jobRequest).not.toHaveProperty('genome_context');
-    expect(ticketRequest).toMatchObject({ bases: 160 });
+    expect(ticketRequest).toMatchObject({ bases: 160, mode: 'genome_scan' });
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
   });
 
@@ -251,6 +251,6 @@ describe('prototype prediction workbench', () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'c'.repeat(32)}`));
     expect(jobRequest).toMatchObject({ mode: 'genome_scan', genome_context: 'TGCA'.repeat(40) });
-    expect(ticketRequest).toMatchObject({ bases: 320 });
+    expect(ticketRequest).toMatchObject({ bases: 320, mode: 'genome_scan' });
   });
 });

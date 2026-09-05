@@ -39,6 +39,6 @@ UNIFIED_GENOME_ALIASES_JSON = '[{"canonicalAccession":"GCA_000007325.1","predict
 
 [[d1_databases]]
 binding = "RAPPTOR_DB"
-database_name = "rapptor-catalog"
+database_name = "seqedge-catalog"
 database_id = "13173011-d2b9-4763-b379-ecc1562ef497"
 migrations_dir = "database/migrations"

@@ -21,7 +21,7 @@ The source archive does not identify its GTDB release. The portal therefore repo
 
 1. Open the genome catalog and search by accession, organism, or taxonomy.
 2. Filter the catalog by phylum, genome source, or NCBI annotation availability.
-3. Open one assembly to inspect its reference, predicted promoter, and optional NCBI annotation tracks.
+3. Open one assembly to inspect its reference, promoter predictions, and optional NCBI annotation tracks.
 4. Download the indexed files and genome metadata for that assembly.
 5. Use the Data & methods page for provenance, evidence boundaries, formats, manifests, and checksums.
 
@@ -32,9 +32,10 @@ candidate or genome sequences to the server. Apply
 Cloudflare deployment; only ticket hashes, checksums and job metadata are
 stored. Set `RAPPTOR_PREDICTION_MODE=remote` only after configuring the remote
 Docker API, server token and both Turnstile keys documented in
-`.env.local.example`.
+`.env.local.example`. Set `RAPPTOR_MAX_REQUEST_BYTES` to the same positive byte
+value in the web app and Python service; both default to 12 MiB.
 
-Predicted promoters and NCBI annotations are separate evidence classes. The portal does not infer promoter-gene assignments and does not label predicted peaks as experimental TSS.
+Promoter predictions and NCBI annotations are separate evidence classes. The portal does not infer promoter-gene assignments or label predictions as experimental TSS.
 
 ## Requirements
 
@@ -67,7 +68,7 @@ node scripts/data/build-gtdb-release.mjs --tool-mode native --force
 node scripts/data/validate-gtdb-release.mjs
 ```
 
-To include the step-50 raw RAPPTOR scores, install the offline converter dependencies and pass the directory containing one Parquet file per release accession:
+To include the stride-50 RAPPTOR model scores, install the offline converter dependencies and pass the directory containing one Parquet file per release accession:
 
 ```bash
 python3 -m pip install pyarrow pyBigWig
@@ -86,8 +87,8 @@ reference.fa.gz.fai
 reference.fa.gz.gzi
 predicted-promoters.gff3.gz
 predicted-promoters.gff3.gz.tbi
-promoter-scores.plus.bw          # when raw scores are supplied
-promoter-scores.minus.bw         # when raw scores are supplied
+promoter-scores.plus.bw          # when model scores are supplied
+promoter-scores.minus.bw         # when model scores are supplied
 ncbi-annotations.gff3.gz       # only when available
 ncbi-annotations.gff3.gz.tbi   # only when available
 metadata.json

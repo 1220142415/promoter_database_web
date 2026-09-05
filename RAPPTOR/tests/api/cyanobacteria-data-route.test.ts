@@ -18,6 +18,8 @@ beforeEach(async () => {
   await mkdir(join(root, 'ASM970v1'), { recursive: true });
   await writeFile(join(root, 'ASM970v1', 'reference.fa.gz'), Buffer.from('0123456789'));
   await writeFile(join(root, 'ASM970v1', 'experimentally-supported-tss.gff3.gz'), Buffer.from('experimental'));
+  await mkdir(join(root, 'ASM970v1', 'sources'));
+  await writeFile(join(root, 'ASM970v1', 'sources', 'experimentally-supported-tss.source.bed.gz'), Buffer.from('original compressed BED'));
   process.env.CYANOBACTERIA_DATA_ROOT = root;
   delete process.env.CYANOBACTERIA_ASSET_BASE_URL;
 });
@@ -31,6 +33,14 @@ afterEach(async () => {
 });
 
 describe('cyanobacteria release asset route', () => {
+  it('keeps the BED compression extension when a download is renamed', async () => {
+    const response = await GET(new Request('http://localhost/test?filename=my_study.bed.gz&download=1'),
+      context('ASM970v1', `v-${cyanobacteriaAssetVersion}`, 'sources', 'experimentally-supported-tss.source.bed.gz'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="my_study.bed.gz"');
+    expect(await response.text()).toBe('original compressed BED');
+  });
+
   it('serves allowlisted files with GET, HEAD, and single byte ranges', async () => {
     const full = await GET(new Request('http://localhost/api/cyanobacteria-data/ASM970v1/reference.fa.gz'), context('ASM970v1', 'reference.fa.gz'));
     expect(full.status).toBe(200);

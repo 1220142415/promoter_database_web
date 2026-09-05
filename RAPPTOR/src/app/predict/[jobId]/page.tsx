@@ -3,7 +3,7 @@ import PredictionResultView from '@/features/prediction/components/prediction-re
 
 export const metadata: Metadata = {
   title: 'Promoter prediction result | RAPPTOR',
-  description: 'RAPPTOR candidate promoter scoring job status and result.',
+  description: 'RAPPTOR promoter prediction status and result.',
 };
 
 export default async function PredictionResultPage({ params }: { params: Promise<{ jobId: string }> }) {

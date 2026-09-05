@@ -205,6 +205,9 @@ describe('prediction prototype core', () => {
     expect(() => validatePrototypeInlineLength(10_000)).not.toThrow();
     expect(() => validatePrototypeInlineLength(10_001)).toThrow('10,000 bases or fewer');
     expect(() => validatePrototypeGenomeFile({ name: 'genome.fna.gz', size: 12 * 1024 * 1024 })).not.toThrow();
+    expect(() => validatePrototypeGenomeFile({ name: 'genome.fna.gz', size: 12 * 1024 * 1024 + 1 })).toThrow('12 MiB or smaller');
+    expect(() => validatePrototypeGenomeFile({ name: 'genome.fna.gz', size: 20 * 1024 * 1024 }, 20 * 1024 * 1024)).not.toThrow();
+    expect(() => validatePrototypeGenomeFile({ name: 'genome.fna.gz', size: 20 * 1024 * 1024 + 1 }, 20 * 1024 * 1024)).toThrow('20 MiB or smaller');
     expect(() => validatePrototypeGenomeFile({ name: 'annotations.gff3', size: 500 })).toThrow('.fa, .fasta, or .fna');
   });
 });

@@ -1,6 +1,6 @@
-export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi' | 'annotation' | 'scores-plus' | 'scores-minus';
+export type TrackDownloadKind = 'reference' | 'promoters' | 'ncbi' | 'annotation' | 'scores-plus' | 'scores-minus' | 'raw-bed';
 
-export type TrackDownloadFormat = 'fasta' | 'gff3' | 'bigwig';
+export type TrackDownloadFormat = 'fasta' | 'gff3' | 'bigwig' | 'bed';
 
 export type TrackDownloadScope = 'visible' | 'whole';
 
@@ -70,9 +70,15 @@ const KIND_SETTINGS: Record<TrackDownloadKind, {
     regionExtension: '.bw',
     wholeExtension: '.bw',
   },
+  'raw-bed': {
+    prefix: 'Experimental-TSS',
+    format: 'bed',
+    regionExtension: '.bed',
+    wholeExtension: '.bed',
+  },
 };
 
-const KNOWN_DATA_EXTENSION = /\.(?:gff3(?:\.gz)?|fa(?:sta)?(?:\.gz)?|fna(?:\.gz)?|bed|bw|bigwig|tsv|txt|gz)$/i;
+const KNOWN_DATA_EXTENSION = /\.(?:gff3(?:\.gz)?|fa(?:sta)?(?:\.gz)?|fna(?:\.gz)?|bed(?:\.gz)?|bw|bigwig|tsv|txt|gz)$/i;
 
 export function trackDownloadSettings(kind: TrackDownloadKind) {
   return KIND_SETTINGS[kind];
@@ -82,7 +88,7 @@ export function isTrackDownloadMetadata(value: unknown): value is TrackDownloadM
   if (!value || typeof value !== 'object') return false;
   const metadata = value as Partial<TrackDownloadMetadata>;
   return (
-    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi' || metadata.kind === 'annotation' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus')
+    (metadata.kind === 'reference' || metadata.kind === 'promoters' || metadata.kind === 'ncbi' || metadata.kind === 'annotation' || metadata.kind === 'scores-plus' || metadata.kind === 'scores-minus' || metadata.kind === 'raw-bed')
     && typeof metadata.accession === 'string'
     && typeof metadata.label === 'string'
     && typeof metadata.regionExportBase === 'string'
@@ -103,11 +109,14 @@ export function visibleTrackRegion(view: LinearViewLike): TrackDownloadRegion | 
 }
 
 export function defaultTrackDownloadFilename(
-  metadata: Pick<TrackDownloadMetadata, 'kind' | 'accession'>,
+  metadata: Pick<TrackDownloadMetadata, 'kind' | 'accession'> & Partial<TrackDownloadMetadata>,
   scope: TrackDownloadScope,
   region: TrackDownloadRegion | null,
 ) {
   const settings = KIND_SETTINGS[metadata.kind];
+  if (metadata.kind === 'raw-bed' && metadata.wholeAssetUrl) {
+    return decodeURIComponent(metadata.wholeAssetUrl.split(/[?#]/u)[0].split('/').at(-1)!);
+  }
   if (scope === 'visible' && region) {
     return `${settings.prefix}_${metadata.accession}_${region.refName}_${region.start}-${region.end}${settings.regionExtension}`;
   }
@@ -122,6 +131,9 @@ export function requiredTrackDownloadExtension(
   scope: TrackDownloadScope,
 ) {
   const settings = KIND_SETTINGS[metadata.kind];
+  if (metadata.kind === 'raw-bed') {
+    return metadata.wholeAssetUrl.split(/[?#]/u)[0].endsWith('.gz') ? '.bed.gz' : '.bed';
+  }
   return scope === 'visible' || metadata.downloadMode === 'browser'
     ? settings.regionExtension
     : settings.wholeExtension;
@@ -220,5 +232,5 @@ export function regionTrackDownloadUrl(
 
 export function wholeTrackDownloadUrl(metadata: TrackDownloadMetadata, filename: string) {
   const separator = metadata.wholeAssetUrl.includes('?') ? '&' : '?';
-  return `${metadata.wholeAssetUrl}${separator}filename=${encodeURIComponent(filename)}`;
+  return `${metadata.wholeAssetUrl}${separator}filename=${encodeURIComponent(filename)}${metadata.kind === 'raw-bed' ? '&download=1' : ''}`;
 }

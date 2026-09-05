@@ -11,6 +11,7 @@ import { unifiedGenomeRepository } from '@/features/genome-browser/unified-genom
 import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type { UnifiedGenomeEvidenceFilter } from '@/types/unified-genome';
 import type { ActiveReleaseSummary } from '@/types/release';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ export default async function GenomesPage({
   try {
     initialResult = await unifiedGenomeRepository.search({ ...DEFAULT_UNIFIED_GENOME_SEARCH_QUERY, evidence });
   } catch (cause) {
-    const message = cause instanceof Error ? cause.message : 'The genome catalog is unavailable.';
+    const message = cause instanceof Error ? cause.message : 'Genome catalog unavailable.';
     return <PortalReleaseState message={message} />;
   }
 
@@ -46,15 +47,15 @@ export default async function GenomesPage({
         <p className="portal-kicker">Prediction {initialResult.releases.predictionReleaseId}{showExperimental ? ` · Experimental ${initialResult.releases.experimentalReleaseId || 'Not published'}` : ''}</p>
         <h1>Genome catalog</h1>
         <p>{showExperimental
-          ? 'Search assemblies once, then compare RAPPTOR promoter predictions with literature-derived experimental TSS observations when both are available for the same assembly.'
-          : 'Search bacterial assemblies and inspect RAPPTOR promoter predictions with contextual NCBI annotations.'}</p>
+          ? 'Search assemblies, then compare RAPPTOR promoter predictions with literature-derived experimental TSS observations when both are available.'
+          : 'Search bacterial assemblies and inspect RAPPTOR promoter predictions with NCBI annotations.'}</p>
       </section>
       <section className="portal-shell experimental-metrics" aria-label="Genome evidence statistics">
         <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{initialResult.stats.totalGenomes.toLocaleString()}</strong></div>
-        <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{initialResult.stats.totalPredictedPromoters.toLocaleString()}</strong></div>
+        <div><DataObjectRoundedIcon aria-hidden="true" /><span>{PORTAL_TERMS.promoterPredictions}</span><strong>{initialResult.stats.totalPredictedPromoters.toLocaleString()}</strong></div>
         <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
         {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{initialResult.stats.experimentalGenomes.toLocaleString()}</strong></div> : null}
-        {showExperimental ? <div><MenuBookRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{initialResult.stats.totalExperimentalObservations.toLocaleString()}</strong></div> : null}
+        {showExperimental ? <div><MenuBookRoundedIcon aria-hidden="true" /><span>{PORTAL_TERMS.observations}</span><strong>{initialResult.stats.totalExperimentalObservations.toLocaleString()}</strong></div> : null}
         {showExperimental ? <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{initialResult.stats.totalExperimentalPublications.toLocaleString()}</strong></div> : null}
       </section>
       <section className="portal-shell catalog-section">

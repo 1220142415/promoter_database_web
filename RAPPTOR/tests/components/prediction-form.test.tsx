@@ -21,7 +21,7 @@ const capabilities: PredictionCapabilities = {
   promoterThreshold: .9,
   acceptedTargetFormats: ['raw DNA', 'FASTA'],
   acceptedGenomeFormats: ['.fa'],
-  limits: { targetMaxBases: 10_000, genomeMaxBytes: 50 * 1024 * 1024 },
+  limits: { targetMaxBases: 10_000, genomeMaxBytes: 12 * 1024 * 1024 },
   retention: { inputHours: 24, resultDays: 7 },
   turnstileSiteKey: null,
 };
@@ -33,7 +33,7 @@ describe('prediction form', () => {
     expect(screen.getByText('DEMO PREVIEW')).toBeInTheDocument();
     expect(screen.getByText(/80 bp upstream-side segment/)).toHaveTextContent('anchor at base 80');
     expect(screen.getByText(/80 bp upstream-side segment/)).toHaveTextContent('20 bp downstream-side segment');
-    expect(screen.getByTestId('demo-turnstile')).toHaveTextContent('Local-only demo preparation');
+    expect(screen.getByTestId('demo-turnstile')).toHaveTextContent('Browser-only demo');
     await user.type(screen.getByLabelText('Candidate DNA sequence'), 'ACGT');
     expect(screen.getByText('Candidate sequence must contain at least 100 bases.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview demo result' })).toBeDisabled();
@@ -46,7 +46,7 @@ describe('prediction form', () => {
     expect(screen.getByText(/112 bases/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /Evaluate both strands/ })).toBeChecked();
     await user.click(screen.getByRole('tab', { name: 'Upload genome FASTA' }));
-    expect(screen.getByText('Demo preview computes a checksum locally; the raw file is never uploaded.')).toBeInTheDocument();
+    expect(screen.getByText('The demo computes a local checksum; the file is not uploaded.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Choose genome or contigs FASTA/ })).toBeInTheDocument();
   });
 });

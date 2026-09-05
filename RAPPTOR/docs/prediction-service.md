@@ -97,6 +97,10 @@ Initial limits should be configuration, with conservative deployment values:
 - total global queue length;
 - maximum bases and upload bytes per job.
 
+Set `RAPPTOR_MAX_REQUEST_BYTES` to the same positive byte value in the web app
+and Python service. Both default to `12582912` bytes (12 MiB); the web upload
+limit and service request limit must not diverge.
+
 Use Cloudflare Turnstile on ticket requests and store only a salted IP hash in
 D1. Return `Retry-After` for temporary limits. IP limits deter casual abuse,
 but are not identity or a billing boundary; API keys or accounts are required

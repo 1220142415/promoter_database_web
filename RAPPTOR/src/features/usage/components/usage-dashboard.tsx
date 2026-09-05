@@ -42,11 +42,8 @@ function UsageNotice({ title, children }: { title: string; children: React.React
 function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; rangeDays: number; publicView: boolean }) {
   if (report.totals.views === 0) {
     return (
-      <UsageNotice title="No page views recorded yet">
-        <p>
-          Counting starts once the portal is deployed behind Cloudflare and someone opens a page. Requests from the
-          usage dashboard, APIs, genome data ranges and known crawlers are never counted.
-        </p>
+      <UsageNotice title="No page views yet">
+        <p>Counting starts after Cloudflare deployment. Dashboard, API, genome-range, and crawler requests are excluded.</p>
       </UsageNotice>
     );
   }
@@ -54,10 +51,10 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
   return (
     <>
       <section className="usage-metrics" aria-label="Summary">
-        <div><span>Visitors</span><strong>{report.totals.visitors.toLocaleString()}</strong><small>Approximate daily uniques, summed over the range</small></div>
-        <div><span>Page views</span><strong>{report.totals.views.toLocaleString()}</strong><small>Full page loads; in-app navigation is not counted</small></div>
-        <div><span>Countries / regions</span><strong>{report.totals.countries.toLocaleString()}</strong><small>With at least one visitor</small></div>
-        <div><span>Cities</span><strong>{report.totals.cities.toLocaleString()}</strong><small>Top locations recorded</small></div>
+        <div><span>Visitors</span><strong>{report.totals.visitors.toLocaleString()}</strong><small>Approximate daily uniques, summed by day</small></div>
+        <div><span>Page views</span><strong>{report.totals.views.toLocaleString()}</strong><small>Full page loads; excludes in-app navigation</small></div>
+        <div><span>Countries / regions</span><strong>{report.totals.countries.toLocaleString()}</strong><small>At least one visitor</small></div>
+        <div><span>Cities</span><strong>{report.totals.cities.toLocaleString()}</strong><small>Recorded locations</small></div>
       </section>
 
       <section className="usage-panel">
@@ -98,7 +95,7 @@ function UsageBody({ report, rangeDays, publicView }: { report: UsageReport; ran
         <section className="usage-panel">
           <h2>Cities</h2>
           {report.cities.length === 0 ? (
-            <p className="usage-empty">No city-level data. Set <code>RAPPTOR_ANALYTICS_PRECISION=city</code> and serve the portal through Cloudflare to record cities.</p>
+            <p className="usage-empty">No city data. Set <code>RAPPTOR_ANALYTICS_PRECISION=city</code> and serve through Cloudflare to record cities.</p>
           ) : (
             <div className="usage-table-wrap usage-location-table">
               <table className="usage-table">
@@ -147,7 +144,7 @@ export default async function UsageDashboard({
     try {
       report = await readUsageReport(database, rangeDays);
     } catch (cause) {
-      failure = cause instanceof Error ? cause.message : 'The usage tables could not be read.';
+      failure = cause instanceof Error ? cause.message : 'Usage tables unavailable.';
     }
   }
 
@@ -155,11 +152,10 @@ export default async function UsageDashboard({
     <main className="portal-page usage-page">
       <section className="portal-shell page-intro">
         <p className="portal-kicker">Usage analytics</p>
-        <h1>Who is using RAPPTOR</h1>
+        <h1>How RAPPTOR is used</h1>
         <p>
-          Coarse location counts derived at the edge from the visitor address. No address or user agent is ever stored:
-          each request is reduced to a country, an optional city, and an unlinkable token made with a random daily salt.
-          The visitor total is an approximate daily unique count, summed across the selected range.
+          Coarse locations are derived at the edge. IP addresses and user agents are not stored. Each request becomes a
+          country, an optional city, and an unlinkable daily token. Visitors are approximate daily uniques summed across the range.
         </p>
         <nav className="usage-ranges" aria-label="Reporting range">
           {RANGES.map((range) => (
@@ -178,16 +174,16 @@ export default async function UsageDashboard({
         {!publicView && !settings.enabled && (
           <UsageNotice title="Collection is switched off">
             <p>
-              Set <code>RAPPTOR_ANALYTICS=on</code> to start counting. Its current value is{' '}
-              <code>{process.env.RAPPTOR_ANALYTICS ?? '(unset)'}</code>. Previously recorded days are still shown below.
+              Set <code>RAPPTOR_ANALYTICS=on</code> to start counting. Current:{' '}
+              <code>{process.env.RAPPTOR_ANALYTICS ?? '(unset)'}</code>. Existing data remains below.
             </p>
           </UsageNotice>
         )}
         {!publicView && !database && (
           <UsageNotice title="No D1 binding">
             <p>
-              Usage counting needs the <code>RAPPTOR_DB</code> D1 binding. Bind it in <code>wrangler.toml</code>, then
-              apply the migrations with <code>npx wrangler d1 migrations apply RAPPTOR_DB --remote</code>.
+              Bind <code>RAPPTOR_DB</code> in <code>wrangler.toml</code>, then run{' '}
+              <code>npx wrangler d1 migrations apply RAPPTOR_DB --remote</code>.
             </p>
           </UsageNotice>
         )}
@@ -198,16 +194,15 @@ export default async function UsageDashboard({
           </UsageNotice>
         )}
         {publicView && (!database || failure) && (
-          <UsageNotice title="Usage data is unavailable">
-            <p>The public report cannot be loaded right now.</p>
+          <UsageNotice title="Usage unavailable">
+            <p>Public report unavailable.</p>
           </UsageNotice>
         )}
         {report && <UsageBody report={report} rangeDays={rangeDays} publicView={publicView} />}
         {report && (
           <p className="usage-footnote">
-            Range {report.startDay} to {report.endDay} (UTC){report.firstRecordedDay ? `, first recorded day ${report.firstRecordedDay}` : ''}.
-            Retention {settings.retentionDays} days. Location precision: {settings.precision}. Expired rows and daily salts
-            are removed on the next successful counted request or dashboard read.
+            UTC: {report.startDay} to {report.endDay}{report.firstRecordedDay ? `; first recorded ${report.firstRecordedDay}` : ''}.
+            {' '}Retention: {settings.retentionDays} days. Precision: {settings.precision}. Expired rows and salts are removed after the next counted request or dashboard read.
           </p>
         )}
       </section>

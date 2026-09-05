@@ -5,11 +5,25 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+DEFAULT_MAX_REQUEST_BYTES = 12 * 1024 * 1024
+
+
 def _bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _positive_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw.strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 @dataclass(frozen=True)
@@ -91,7 +105,7 @@ class ServiceSettings:
             model_dir=model_dir,
             model_version=os.getenv("RAPPTOR_MODEL_VERSION", "candidate"),
             device=os.getenv("RAPPTOR_DEVICE", "cuda:0"),
-            max_request_bytes=int(os.getenv("RAPPTOR_MAX_REQUEST_BYTES", str(12 * 1024 * 1024))),
+            max_request_bytes=_positive_int("RAPPTOR_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES),
             max_queue_length=int(os.getenv("RAPPTOR_MAX_QUEUE_LENGTH", "100")),
             max_predict_bases=int(os.getenv("RAPPTOR_MAX_PREDICT_BASES", "100000")),
             max_genome_bases=int(os.getenv("RAPPTOR_MAX_GENOME_BASES", "6000000")),

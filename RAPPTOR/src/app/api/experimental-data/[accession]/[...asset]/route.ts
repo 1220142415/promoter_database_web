@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { experimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
 import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
+import { normalizeDownloadFilename } from '@/features/genome-browser/track-download';
 import type { ExperimentalAssetTransform } from '@/types/experimental-tss';
 
 export const runtime = 'nodejs';
@@ -112,11 +113,15 @@ function validPartialResponse(requested: RequestedByteRange, response: Response)
 
 function responseHeaders(request: Request, upstream: Response, asset: Awaited<ReturnType<typeof experimentalTssRepository.resolveAsset>>) {
   if (!asset) return new Headers();
-  const download = new URL(request.url).searchParams.get('download') === '1';
+  const params = new URL(request.url).searchParams;
+  const download = params.get('download') === '1';
+  const filename = download && asset.kind === 'raw-bed' && params.has('filename')
+    ? normalizeDownloadFilename(params.get('filename'), asset.filename.endsWith('.gz') ? '.bed.gz' : '.bed', asset.filename)
+    : asset.filename;
   const headers = new Headers({
     'Accept-Ranges': upstream.headers.get('accept-ranges') || 'bytes',
     'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
-    'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${asset.filename}"`,
+    'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${filename}"`,
     'Content-Type': asset.contentType,
     'X-Content-Type-Options': 'nosniff',
   });

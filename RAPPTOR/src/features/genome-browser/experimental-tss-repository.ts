@@ -263,7 +263,7 @@ export function catalogFromExperimentalGenomeCollection(studyMetadata: unknown, 
     releaseKind: 'experimental_tss',
     releaseId: `experimentally-supported-genomes-${generatedAt || 'main'}`,
     generatedAt,
-    description: 'Experimentally supported genomes with RAPPtor predictions and Prodigal / eggNOG annotations.',
+    description: 'Experimentally supported genomes with RAPPTOR predictions and Prodigal / eggNOG annotations.',
     assetBase,
     summary: {
       studies: studies.length,

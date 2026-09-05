@@ -1,4 +1,4 @@
-"""Canonical RAPPtor model variants.
+"""Canonical RAPPTOR model variants.
 
 The public variants match the retained benchmark labels and architectures.
 """

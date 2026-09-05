@@ -191,8 +191,8 @@ export function createPrototypeBrowserAssembly(
       rawScoresBedGraphPlus: urls.rawScoresPlus,
       rawScoresBedGraphMinus: urls.rawScoresMinus,
       calledPeaksGff3: urls.calledPeaks,
-      rawScoresLabel: 'Illustrative raw scores (+ / − strands)',
-      calledPeaksLabel: 'Illustrative called peaks',
+      rawScoresLabel: 'Illustrative model scores (+ / − strands)',
+      calledPeaksLabel: 'Illustrative promoter predictions',
     },
   };
 }

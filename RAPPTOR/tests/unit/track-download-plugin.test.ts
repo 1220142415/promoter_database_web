@@ -17,6 +17,7 @@ vi.mock('@jbrowse/core/util', () => ({
 }));
 
 import RapptorTrackDownloadPlugin from '@/features/genome-browser/plugins/track-download-plugin';
+import TrackDownloadDialog, { type TrackDownloadDialogProps } from '@/features/genome-browser/components/track-download-dialog';
 
 describe('RAPPTOR JBrowse track download plugin', () => {
   it('extends supported displays and adds a download action only to marked tracks', () => {
@@ -80,7 +81,7 @@ describe('RAPPTOR JBrowse track download plugin', () => {
         {
           kind: 'scores-plus',
           accession: 'GCA_000411415.1',
-          label: 'RAPPTOR raw scores (+ strand)',
+          label: 'RAPPTOR raw model scores (+ strand)',
           regionExportBase: '',
           wholeAssetUrl: '/api/local-data/GCA_000411415.1/promoter-scores.plus.bw',
           visibleRegionDownload: false,
@@ -88,7 +89,7 @@ describe('RAPPTOR JBrowse track download plugin', () => {
         {
           kind: 'scores-minus',
           accession: 'GCA_000411415.1',
-          label: 'RAPPTOR raw scores (- strand)',
+          label: 'RAPPTOR raw model scores (- strand)',
           regionExportBase: '',
           wholeAssetUrl: '/api/local-data/GCA_000411415.1/promoter-scores.minus.bw',
           visibleRegionDownload: false,
@@ -118,7 +119,10 @@ describe('RAPPTOR JBrowse track download plugin', () => {
     expect(extension?.(element)).toBe(element);
   });
 
-  it('hides display selection from every track menu and downloads the original experimental BED', () => {
+  it.each([
+    '/api/experimental-data/GCF_000210855.2/studies/study/raw.bed',
+    '/api/cyanobacteria-data/ASM970v1/v-release/sources/experimentally-supported-tss.source.bed.gz',
+  ])('uses the shared download dialog for experimental tracks: %s', (url) => {
     let extension: ((element: { name: string; stateModel: { extend: (callback: (self: unknown) => unknown) => unknown } }) => unknown) | undefined;
     const pluginManager = {
       addToExtensionPoint: vi.fn((_name: string, callback: typeof extension) => { extension = callback; }),
@@ -132,24 +136,30 @@ describe('RAPPTOR JBrowse track download plugin', () => {
       stateModel: { extend: vi.fn((callback: typeof extender) => { extender = callback; return {}; }) },
     };
     extension?.(featureTrack as never);
-    const views = extender?.({ trackMenuItems: () => [{ label: 'About track' }, { label: 'Display types' }] });
+    const trackViews = extender?.({ trackMenuItems: () => [{ label: 'About track' }, { label: 'Display types' }] });
+    expect(trackViews?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track']);
 
-    mocks.getConf.mockReturnValue({
-      rapptorEvidenceType: 'experimental_tss',
-      rapptorExperimentalDownloads: [{
-        kind: 'raw-bed',
-        label: 'Original BED observations',
-        url: '/api/experimental-data/GCF_000210855.2/studies/study/raw.bed',
-      }],
-    });
-    const experimentalItems = views?.views.trackMenuItems() || [];
-    expect(experimentalItems.map((item) => item.label)).toEqual(['About track', 'Download original BED']);
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-    experimentalItems[1].onClick?.();
-    expect(click).toHaveBeenCalledOnce();
-    click.mockRestore();
+    extension?.({
+      name: 'LinearBasicDisplay',
+      stateModel: { extend: vi.fn((callback: typeof extender) => { extender = callback; return {}; }) },
+    } as never);
+    const views = extender?.({ trackMenuItems: () => [{ label: 'Existing action' }] });
+    const metadata = {
+      kind: 'raw-bed', accession: 'assembly', label: 'Experimental TSS · PMID 22135468',
+      regionExportBase: '', wholeAssetUrl: url, visibleRegionDownload: false,
+    };
+    mocks.getConf.mockReturnValue({ rapptorDownload: metadata });
+    const queueDialog = vi.fn();
+    mocks.getSession.mockReturnValue({ queueDialog });
+    const items = views?.views.trackMenuItems() || [];
+    expect(items.map((item) => item.label)).toEqual(['Existing action', 'Download track data']);
+    items[1].onClick?.();
+    expect(queueDialog).toHaveBeenCalledOnce();
+    const dialogFactory = queueDialog.mock.calls[0][0] as (done: () => void) => [unknown, TrackDownloadDialogProps];
+    const done = vi.fn();
+    expect(dialogFactory(done)).toEqual([TrackDownloadDialog, { handleClose: done, metadata, visibleRegion: null }]);
 
     mocks.getConf.mockReturnValue({ rapptorDownload: { kind: 'annotation' } });
-    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['About track']);
+    expect(views?.views.trackMenuItems().map((item) => item.label)).toEqual(['Existing action']);
   });
 });

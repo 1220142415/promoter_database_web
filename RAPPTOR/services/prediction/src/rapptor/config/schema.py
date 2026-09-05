@@ -74,7 +74,7 @@ class OutputConfig:
 
 @dataclass
 class ExperimentConfig:
-    """Top-level serializable configuration for one RAPPtor run."""
+    """Top-level serializable configuration for one RAPPTOR run."""
     data: DataConfig = field(default_factory=DataConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainConfig)

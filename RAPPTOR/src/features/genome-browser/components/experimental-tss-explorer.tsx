@@ -47,7 +47,7 @@ export default function ExperimentalTssExplorer({ initialResult }: { initialResu
         <button type="button" onClick={() => { setQuery(''); setYear(''); }} disabled={!query && !year}>Reset</button>
       </div>
 
-      <p className="experimental-result-count" aria-live="polite">Showing <strong>{items.length.toLocaleString()}</strong> of {initialResult.release.studies.toLocaleString()} study tracks</p>
+      <p className="experimental-result-count" aria-live="polite">Showing <strong>{items.length.toLocaleString()}</strong> of {initialResult.release.studies.toLocaleString()} studies</p>
       {items.length ? (
         <div className="experimental-study-list">
           {items.map((study) => (
@@ -59,7 +59,7 @@ export default function ExperimentalTssExplorer({ initialResult }: { initialResu
                 <p>{study.organismName}</p>
                 <div className="experimental-study-meta">
                   {study.publication.journal ? <span>{study.publication.journal}</span> : null}
-                  <span>{study.recordCount.toLocaleString()} raw observations</span>
+                  <span>{study.recordCount.toLocaleString()} observations</span>
                   <a href={`https://pubmed.ncbi.nlm.nih.gov/${study.pmid}/`} target="_blank" rel="noreferrer">PubMed</a>
                 </div>
               </div>

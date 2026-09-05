@@ -16,14 +16,14 @@ describe('RAPPTOR About track presentation', () => {
     renderAbout({
       type: 'FeatureTrack',
       trackId: 'internal-predicted-track',
-      name: 'RAPPTOR predicted promoters',
+      name: 'RAPPTOR promoter predictions',
       assemblyNames: ['GCF_000006985.1'],
       adapter: { type: 'Gff3Adapter', gffLocation: { uri: 'blob:private' } },
       metadata: {
         rapptorDownload: {
           kind: 'promoters',
           accession: 'GCF_000006985.1',
-          label: 'RAPPTOR predicted promoters',
+          label: 'RAPPTOR promoter predictions',
           wholeAssetUrl: '/api/private.gff3',
         },
         rapptorEvidenceType: 'prediction',
@@ -33,7 +33,7 @@ describe('RAPPTOR About track presentation', () => {
     });
 
     expect(screen.getByTestId('rapptor-about-promoters')).toBeInTheDocument();
-    expect(screen.getByText('Score cutoff')).toBeInTheDocument();
+    expect(screen.getByText('Model threshold')).toBeInTheDocument();
     expect(screen.getByText('0.90')).toBeInTheDocument();
     expect(screen.queryByText('Evidence')).not.toBeInTheDocument();
     expect(screen.queryByText('RAPPTOR prediction')).not.toBeInTheDocument();
@@ -94,11 +94,11 @@ describe('RAPPTOR About track presentation', () => {
         }],
       },
     });
-    expect(screen.getByTestId('rapptor-about-experimental')).toHaveTextContent('Published experimental observations');
+    expect(screen.getByTestId('rapptor-about-experimental')).toHaveTextContent('Published observations');
     expect(screen.getByText('8,876')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open PubMed record' })).toHaveAttribute('href', 'https://pubmed.ncbi.nlm.nih.gov/29150516/');
     expect(screen.getByRole('link', { name: 'Open DOI' })).toHaveAttribute('href', 'https://doi.org/10.1128/AEM.01966-17');
-    expect(screen.getByRole('link', { name: 'Download original BED' })).toHaveAttribute('href', expect.stringContaining('download=1'));
+    expect(screen.queryByRole('link', { name: /Download/ })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('experimental_tss');
     expect(document.body).not.toHaveTextContent('internal-experimental-track');
   });
@@ -138,11 +138,11 @@ describe('RAPPTOR About track presentation', () => {
     const Component = replaceRapptorAbout(Original, {
       config: {
         type: 'FeatureTrack',
-        name: 'RAPPTOR predicted promoters',
+        name: 'RAPPTOR promoter predictions',
         metadata: { rapptorEvidenceType: 'prediction' },
       },
     });
-    render(<Component config={{ type: 'FeatureTrack', name: 'RAPPTOR predicted promoters', metadata: { rapptorEvidenceType: 'prediction' } }} />);
+    render(<Component config={{ type: 'FeatureTrack', name: 'RAPPTOR promoter predictions', metadata: { rapptorEvidenceType: 'prediction' } }} />);
     expect(screen.getByTestId('rapptor-about-promoters')).toBeInTheDocument();
   });
 });

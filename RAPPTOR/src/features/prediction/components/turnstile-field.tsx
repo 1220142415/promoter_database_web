@@ -59,7 +59,7 @@ export default function TurnstileField({ capabilities, onToken }: { capabilities
     return (
       <div className={styles.localOnly} data-testid="demo-turnstile">
         <span aria-hidden="true">✓</span>
-        <div><strong>Demo request protection</strong><small>Turnstile is bypassed only because no model runs and no sequence is uploaded.</small></div>
+        <div><strong>Demo request protection</strong><small>Demo only; no sequence is uploaded.</small></div>
       </div>
     );
   }

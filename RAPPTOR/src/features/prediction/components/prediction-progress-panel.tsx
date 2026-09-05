@@ -34,7 +34,7 @@ export default function PredictionProgressPanel({
     <section className={`${styles.panel} ${failed ? styles.failed : ''}`} aria-label="Prediction progress" data-state={progress.state}>
       <div className={styles.heading}>
         <div>
-          <span>{progress.simulated ? 'Simulated queue preview' : 'Prediction job'}</span>
+          <span>{progress.simulated ? 'Simulated queue preview' : 'Prediction task'}</span>
           <strong>{failed ? 'Prediction failed' : steps[currentStep].label}</strong>
         </div>
         <span className={styles.percent}>{progress.percent === null ? 'In progress' : `${Math.round(progress.percent)}%`}</span>
@@ -54,13 +54,13 @@ export default function PredictionProgressPanel({
       </ol>
 
       {progress.percent === null
-        ? <progress aria-label="Prediction job progress" max={100} />
-        : <progress aria-label="Prediction job progress" max={100} value={progress.percent} />}
+        ? <progress aria-label="Prediction task progress" max={100} />
+        : <progress aria-label="Prediction task progress" max={100} value={progress.percent} />}
       <div className={styles.status} role="status" aria-live="polite">
         {failed ? <ErrorOutlineRoundedIcon aria-hidden="true" /> : null}
         <div><strong>{progress.message}</strong>{details.length ? <span>{details.join(' · ')}</span> : null}</div>
       </div>
-      {progress.simulated ? <p className={styles.simulatedNote}>No model was run. This brief progress sequence previews how a future queued prediction will report its current stage.</p> : null}
+      {progress.simulated ? <p className={styles.simulatedNote}>Demo only: simulated queue stages; no model was run.</p> : null}
       {failed ? <div className={styles.actions}>{onRetry ? <button type="button" onClick={onRetry}>Check status again</button> : null}<Link href="/predict">Return to prediction input</Link></div> : null}
     </section>
   );

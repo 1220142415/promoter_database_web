@@ -3,7 +3,7 @@ import PrototypePredictionResultView from '@/features/prediction/prototype-resul
 
 export const metadata: Metadata = {
   title: 'Prediction prototype result | RAPPTOR',
-  description: 'Deterministic RAPPTOR prediction interface fixture. No model is run.',
+  description: 'Demo only: deterministic fixture values; no model was run.',
 };
 
 export default async function PrototypePredictionResultPage({ params }: { params: Promise<{ runId: string }> }) {

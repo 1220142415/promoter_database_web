@@ -4,6 +4,7 @@ import type { ComponentType, ReactNode } from 'react';
 import Plugin from '@jbrowse/core/Plugin';
 import type PluginManager from '@jbrowse/core/PluginManager';
 import { getConf, readConfObject } from '@jbrowse/core/configuration';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -121,10 +122,6 @@ function safeHref(value: unknown) {
   return /^https?:\/\//iu.test(href) ? href : null;
 }
 
-function downloadHref(value: string) {
-  return `${value}${value.includes('?') ? '&' : '?'}download=1`;
-}
-
 function displayValue(value: ReactNode) {
   return value === null || value === undefined || value === '' ? null : value;
 }
@@ -153,7 +150,7 @@ function AboutSection({ title, children }: { title: string; children: ReactNode 
   );
 }
 
-function AboutLinkActions({ links }: { links: Array<{ href: string; label: string; download?: boolean }> }) {
+function AboutLinkActions({ links }: { links: Array<{ href: string; label: string }> }) {
   const visible = links.filter((link) => Boolean(link.href));
   if (!visible.length) return null;
   return (
@@ -162,10 +159,9 @@ function AboutLinkActions({ links }: { links: Array<{ href: string; label: strin
         <a
           key={link.label}
           className="rapptor-about-action"
-          href={link.download ? downloadHref(link.href) : link.href}
-          download={link.download ? true : undefined}
-          target={link.download ? undefined : '_blank'}
-          rel={link.download ? undefined : 'noreferrer'}
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
         >
           {link.label}
         </a>
@@ -182,8 +178,11 @@ function assemblyFacts(configSnapshot: JsonRecord, metadata: JsonRecord): Array<
 function processingFacts(metadata: JsonRecord): Array<[string, ReactNode]> {
   const processing = record(metadata.rapptorProcessing) || {};
   const cutoff = number(processing.cutoff ?? processing.scoreCutoff) ?? 0.9;
+  const label = metadata.rapptorEvidenceType === 'illustrative_prototype'
+    ? PORTAL_TERMS.exportCutoff
+    : PORTAL_TERMS.modelThreshold;
   return [
-    ['Score cutoff', cutoff.toFixed(2)],
+    [label, cutoff.toFixed(2)],
   ];
 }
 
@@ -221,10 +220,6 @@ function experimentalAbout(configSnapshot: JsonRecord, metadata: JsonRecord) {
   const pmid = text(study.pmid);
   const pubmedUrl = safeHref(study.pubmedUrl) || (pmid ? `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(pmid)}/` : null);
   const doiUrl = safeHref(study.doiUrl);
-  const downloadsMetadata = Array.isArray(metadata.rapptorExperimentalDownloads)
-    ? metadata.rapptorExperimentalDownloads.map(record).filter((value): value is JsonRecord => Boolean(value))
-    : [];
-  const rawBed = downloadsMetadata.find((item) => text(item.kind) === 'raw-bed' && safeHref(item.url));
   const authors = Array.isArray(study.authors)
     ? study.authors.map(text).filter((value): value is string => Boolean(value)).join('; ')
     : text(study.authors);
@@ -232,7 +227,7 @@ function experimentalAbout(configSnapshot: JsonRecord, metadata: JsonRecord) {
     <>
       <AboutFacts facts={[
         ...assemblyFacts(configSnapshot, metadata),
-        ['Evidence', 'Published experimental observations'],
+        ['Evidence', 'Published observations'],
         ['Study', text(study.title)],
         ['Year', text(study.year)],
         ['PMID', pmid],
@@ -243,7 +238,6 @@ function experimentalAbout(configSnapshot: JsonRecord, metadata: JsonRecord) {
       <AboutLinkActions links={[
         ...(pubmedUrl ? [{ href: pubmedUrl, label: 'Open PubMed record' }] : []),
         ...(doiUrl ? [{ href: doiUrl, label: 'Open DOI' }] : []),
-        ...(rawBed ? [{ href: safeHref(rawBed.url)!, label: 'Download original BED', download: true }] : []),
       ]} />
     </>
   );

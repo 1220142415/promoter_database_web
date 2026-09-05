@@ -78,6 +78,21 @@ describe('experimental data asset proxy', () => {
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="study.bed"');
   });
 
+  it('honors a sanitized BED download filename without changing the observations', async () => {
+    const body = 'NC_016810.1\t9\t10\tTSS\t.\t+\n';
+    resolveAsset.mockResolvedValue({
+      upstreamUrl: 'https://example.test/release/source.bed', filename: 'study.bed',
+      contentType: 'text/tab-separated-values; charset=utf-8', sha256: null, kind: 'raw-bed',
+    });
+    global.fetch = vi.fn(async () => new Response(body));
+    const response = await GET(new Request('http://localhost/test?download=1&filename=..%2Fmy%20study.txt'), context(['studies', 'study', 'raw.bed']));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="my_study.bed"');
+    expect(await response.text()).toBe(body);
+    const inline = await GET(new Request('http://localhost/test?filename=other.bed'), context(['studies', 'study', 'raw.bed']));
+    expect(inline.headers.get('content-disposition')).toBe('inline; filename="study.bed"');
+  });
+
   it('converts an existing study BED to browser-ready GFF3', async () => {
     resolveAsset.mockResolvedValue({
       upstreamUrl: 'https://example.test/existing-study.bed', filename: 'study.experimental-tss.gff3',

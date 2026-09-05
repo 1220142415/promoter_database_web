@@ -23,7 +23,7 @@ async function uploadCgrContext(page: Page, fileName = 'matching-context.fna') {
     mimeType: 'text/plain',
     buffer: Buffer.from(`>matching_context\n${'ACGT'.repeat(40)}\n`),
   });
-  await expect(page.getByText('CGR context ready: Matching genome FASTA.')).toBeVisible();
+  await expect(page.getByText('Genome context ready: Matching genome FASTA.')).toBeVisible();
 }
 
 test('the 100 bp example keeps the focused result compact and metadata-only', async ({ page }) => {
@@ -31,7 +31,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
   const predictionRequests = capturePredictionApiRequests(page);
 
   await page.goto('/predict');
-  await expect(page.getByRole('heading', { name: 'Prepare one input. RAPPTOR detects the analysis.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add input. RAPPTOR selects the analysis.' })).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByLabel('Raw DNA or FASTA')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Upload FASTA' })).toBeVisible();
@@ -40,16 +40,16 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
   await page.getByRole('button', { name: 'Use 100 bp example' }).click();
   const sequenceInput = page.getByLabel('Raw DNA or FASTA');
   await expect(sequenceInput).toHaveValue(/focused_candidate_100bp/);
-  await expect(page.getByText('Focused 100 bp window').first()).toBeVisible();
-  await expect(page.getByText(/Select a catalog genome or upload a genome FASTA for CGR/)).toBeVisible();
+  await expect(page.getByText('100 bp scoring').first()).toBeVisible();
+  await expect(page.getByText('Select a catalog genome or upload its FASTA.').first()).toBeVisible();
   await expect(page.getByLabel('Top results')).toHaveCount(0);
   const previewButton = page.getByRole('button', { name: 'Preview illustrative result' });
   await expect(previewButton).toBeEnabled();
   await previewButton.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Genome context for CGR is required' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Genome context (CGR) is required' })).toBeVisible();
   await expect(page).toHaveURL(/\/predict$/);
-  await page.getByRole('button', { name: 'Use this genome for CGR' }).click();
-  await expect(page.getByText('CGR context ready: Catalog genome.')).toBeVisible();
+  await page.getByRole('button', { name: 'Use this genome' }).click();
+  await expect(page.getByText('Genome context ready: Catalog genome.')).toBeVisible();
 
   await Promise.all([
     page.waitForURL(/\/predict\/demo\/prototype_/),
@@ -58,18 +58,18 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
 
   const progress = page.getByRole('region', { name: 'Prediction progress' });
   await expect(progress).toBeVisible();
-  await expect(page.getByRole('progressbar', { name: 'Prediction job progress' })).toBeVisible();
-  const beforeReload = Number(await page.getByRole('progressbar', { name: 'Prediction job progress' }).getAttribute('value') || 0);
+  await expect(page.getByRole('progressbar', { name: 'Prediction task progress' })).toBeVisible();
+  const beforeReload = Number(await page.getByRole('progressbar', { name: 'Prediction task progress' }).getAttribute('value') || 0);
   await page.waitForTimeout(650);
   await page.reload();
-  const afterReload = Number(await page.getByRole('progressbar', { name: 'Prediction job progress' }).getAttribute('value') || 0);
+  const afterReload = Number(await page.getByRole('progressbar', { name: 'Prediction task progress' }).getAttribute('value') || 0);
   expect(afterReload).toBeGreaterThanOrEqual(beforeReload);
   await expect(page.getByRole('heading', { name: 'Prediction result' })).toBeVisible();
-  await expect(page.getByText('Focused 100 bp scoring')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Focused 100 bp result' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('100 bp scoring')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '100 bp result' })).toBeVisible({ timeout: 10_000 });
   await expect(progress).toContainText('Result ready');
-  await expect(page.getByRole('meter', { name: /Forward strand.*illustrative raw score/ })).toBeVisible();
-  await expect(page.getByRole('meter', { name: /Reverse strand.*illustrative raw score/ })).toBeVisible();
+  await expect(page.getByRole('meter', { name: /Forward strand.*illustrative model score/ })).toBeVisible();
+  await expect(page.getByRole('meter', { name: /Reverse strand.*illustrative model score/ })).toBeVisible();
   await expect(page.getByText('100 bp anchor positions')).toHaveCount(0);
   await expect(page.getByText(/Anchor base/)).toHaveCount(0);
   await expect(page.getByTestId('prototype-prediction-browser')).toHaveCount(0);
@@ -97,13 +97,13 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
 
   await page.goto('/predict');
   await page.getByRole('button', { name: 'Use E. coli K-12 genome example' }).click();
-  await expect(page.getByText('Sequence / contig scan').first()).toBeVisible();
+  await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByText(/Escherichia coli str\. K-12/).first()).toBeVisible();
   await expect(page.getByText('Genome context required')).toBeVisible();
   await uploadCgrContext(page);
   await page.getByLabel('Strands').selectOption('forward');
-  await page.getByLabel('Score cutoff').fill('0.80');
-  await page.getByLabel('Step').selectOption('10');
+  await page.getByLabel('Export cutoff').fill('0.80');
+  await page.getByLabel('Stride').selectOption('10');
   await expect(page.getByLabel('Top results')).toHaveCount(0);
 
   await Promise.all([
@@ -112,15 +112,15 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
   ]);
 
   await expect(page.getByRole('region', { name: 'Prediction progress' })).toBeVisible();
-  await expect(page.getByRole('progressbar', { name: 'Prediction job progress' })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Prediction task progress' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Prediction result' })).toBeVisible();
-  await expect(page.getByText('Sequence / contig scan')).toBeVisible();
+  await expect(page.getByText('Sequence scan')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Genome browser' }).first()).toBeVisible({ timeout: 12_000 });
   await expect(page.getByRole('region', { name: 'Prediction progress' })).toContainText('Result ready');
   const browser = page.getByTestId('prototype-prediction-browser');
   await expect(browser).toBeVisible();
   await expect(browser).toContainText('Illustrative reference sequence');
-  await expect(browser).toContainText('Illustrative raw scores (+ / − strands)');
+  await expect(browser).toContainText('Illustrative model scores (+ / − strands)');
   await expect(page.locator('.portal-browser').first()).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Top called peaks')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Top called peak' })).toHaveCount(0);
@@ -152,7 +152,7 @@ test('a longer pasted sequence stays browser-local and falls back safely after r
 
   await page.goto('/predict');
   await page.getByLabel('Raw DNA or FASTA').fill(originalInput);
-  await expect(page.getByText('Sequence / contig scan').first()).toBeVisible();
+  await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByLabel('Top results')).toHaveCount(0);
   await expect(page.getByText('Genome context required')).toBeVisible();
   await uploadCgrContext(page);
@@ -215,7 +215,7 @@ test.describe('catalog failure and mobile focused result', () => {
     await page.locator('#prototype-context-catalog-search').fill('Escherichia coli');
     await page.getByRole('button', { name: 'Search catalog' }).last().click();
 
-    await expect(page.getByRole('alert').filter({ hasText: 'Your other inputs are still here' })).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: 'Your input is unchanged' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry search' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open Help' })).toHaveCount(0);
     await expect(sequenceInput).toHaveValue(originalSequence);
@@ -226,14 +226,14 @@ test.describe('catalog failure and mobile focused result', () => {
       mimeType: 'text/plain',
       buffer: Buffer.from(`>matching_contig\n${'ACGT'.repeat(40)}\n`),
     });
-    await expect(page.getByText('CGR context ready: Matching genome FASTA.')).toBeVisible();
+    await expect(page.getByText('Genome context ready: Matching genome FASTA.')).toBeVisible();
 
     await Promise.all([
       page.waitForURL(/\/predict\/demo\/prototype_/),
       page.getByRole('button', { name: 'Preview illustrative result' }).click(),
     ]);
     await expect(page.getByRole('heading', { name: 'Prediction result' })).toBeVisible();
-    await expect(page.getByRole('meter', { name: /Forward strand.*illustrative raw score/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('meter', { name: /Forward strand.*illustrative model score/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('100 bp anchor positions')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 

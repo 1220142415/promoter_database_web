@@ -40,22 +40,22 @@ class ValidatedFasta:
 
 def _normalize_sequence(raw: str, *, label: str, max_bases: int, max_ambiguous_fraction: float) -> tuple[str, int]:
     if not isinstance(raw, str):
-        raise InputValidationError(f"{label} must be a DNA string")
+        raise InputValidationError(f"{label} must be DNA text.")
     sequence = "".join(raw.split()).upper()
     if not sequence:
-        raise InputValidationError(f"{label} is empty")
+        raise InputValidationError(f"{label} is required.")
     if len(sequence) > max_bases:
-        raise InputValidationError(f"{label} exceeds the {max_bases:,}-base limit")
+        raise InputValidationError(f"{label} must be at most {max_bases:,} bp.")
     invalid = sorted(set(sequence).difference(IUPAC_DNA))
     if invalid:
-        raise InputValidationError(f"{label} contains unsupported characters: {''.join(invalid[:10])}")
+        raise InputValidationError(f"{label} contains unsupported characters: {''.join(invalid[:10])}.")
     ambiguous = sum(base not in CANONICAL_DNA for base in sequence)
     fraction = ambiguous / len(sequence)
     if fraction > max_ambiguous_fraction:
         raise InputValidationError(
-            f"{label} ambiguous-base fraction {fraction:.3f} exceeds limit {max_ambiguous_fraction:.3f}"
+            f"{label} has {fraction:.1%} ambiguous bases; maximum is {max_ambiguous_fraction:.1%}."
         )
-    # The current RAPPtor encoder maps non-ACGT symbols to an all-zero channel.
+    # The current RAPPTOR encoder maps non-ACGT symbols to an all-zero channel.
     # Normalize all supported IUPAC ambiguity codes to N explicitly.
     normalized = "".join(base if base in CANONICAL_DNA else "N" for base in sequence)
     return normalized, ambiguous
@@ -69,13 +69,13 @@ def validate_sequence(raw: str, *, label: str, min_bases: int, max_bases: int, m
         max_ambiguous_fraction=max_ambiguous_fraction,
     )
     if len(sequence) < min_bases:
-        raise InputValidationError(f"{label} must contain at least {min_bases} bases")
+        raise InputValidationError(f"{label} must contain at least {min_bases} bp.")
     return sequence
 
 
 def validate_fasta(raw: str, *, max_bases: int, max_ambiguous_fraction: float) -> ValidatedFasta:
     if not isinstance(raw, str) or not raw.strip():
-        raise InputValidationError("fasta is empty")
+        raise InputValidationError("FASTA is required.")
     records: list[FastaRecord] = []
     seen: set[str] = set()
     current_id: str | None = None
@@ -88,7 +88,7 @@ def validate_fasta(raw: str, *, max_bases: int, max_ambiguous_fraction: float) -
         if current_id is None:
             return
         if not current_lines:
-            raise InputValidationError(f"FASTA record {current_id!r} has no sequence")
+            raise InputValidationError(f"FASTA record {current_id!r} is empty.")
         remaining = max_bases - total_bases
         seq, ambiguous = _normalize_sequence(
             "".join(current_lines),
@@ -99,7 +99,7 @@ def validate_fasta(raw: str, *, max_bases: int, max_ambiguous_fraction: float) -
         total_bases += len(seq)
         total_ambiguous += ambiguous
         if total_bases > max_bases:
-            raise InputValidationError(f"FASTA exceeds the {max_bases:,}-base limit")
+            raise InputValidationError(f"FASTA must be at most {max_bases:,} bp.")
         records.append(FastaRecord(current_id, seq))
         current_id = None
         current_lines = []
@@ -112,26 +112,26 @@ def validate_fasta(raw: str, *, max_bases: int, max_ambiguous_fraction: float) -
             flush()
             header = line[1:].strip()
             if not header:
-                raise InputValidationError(f"FASTA header at line {line_number} is empty")
+                raise InputValidationError(f"FASTA header at line {line_number} is empty.")
             identifier = header.split()[0]
             if not HEADER_TOKEN.fullmatch(identifier):
-                raise InputValidationError(f"FASTA identifier {identifier!r} contains unsafe characters")
+                raise InputValidationError(f"FASTA identifier {identifier!r} contains unsupported characters.")
             if identifier in seen:
-                raise InputValidationError(f"duplicate FASTA identifier: {identifier}")
+                raise InputValidationError(f"Duplicate FASTA identifier: {identifier}.")
             seen.add(identifier)
             current_id = identifier
             current_lines = []
         else:
             if current_id is None:
-                raise InputValidationError(f"sequence data before first FASTA header at line {line_number}")
+                raise InputValidationError(f"Add a FASTA header before sequence data at line {line_number}.")
             current_lines.append(line)
     flush()
 
     if not records:
-        raise InputValidationError("FASTA contains no records")
+        raise InputValidationError("FASTA contains no records.")
     fraction = total_ambiguous / total_bases if total_bases else 0.0
     if fraction > max_ambiguous_fraction:
         raise InputValidationError(
-            f"FASTA ambiguous-base fraction {fraction:.3f} exceeds limit {max_ambiguous_fraction:.3f}"
+            f"FASTA has {fraction:.1%} ambiguous bases; maximum is {max_ambiguous_fraction:.1%}."
         )
     return ValidatedFasta(tuple(records), total_bases, total_ambiguous)

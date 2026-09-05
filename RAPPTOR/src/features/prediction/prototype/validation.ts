@@ -8,10 +8,13 @@ import {
   type PrototypeStrandMode,
   type PrototypeStrideBases,
 } from './types';
+import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 
 export const PROTOTYPE_CANDIDATE_MIN_BASES = 100 as const;
 export const PROTOTYPE_INLINE_MAX_BASES = 10_000 as const;
-export const PROTOTYPE_GENOME_MAX_BYTES = 12 * 1024 * 1024;
+// Keep the legacy export for callers and tests while sourcing the default from
+// the shared prediction limit.
+export const PROTOTYPE_GENOME_MAX_BYTES = DEFAULT_PREDICTION_MAX_REQUEST_BYTES;
 export const PROTOTYPE_GENOME_FILE_PATTERN = /\.(?:fa|fasta|fna)(?:\.gz)?$/i;
 
 export class PrototypeValidationError extends Error {
@@ -34,7 +37,7 @@ export function prototypeParameters(
     throw new PrototypeValidationError('Choose a supported strand option.');
   }
   if (!Number.isFinite(cutoff) || cutoff < 0 || cutoff > 1) {
-    throw new PrototypeValidationError('Score cutoff must be between 0 and 1.');
+    throw new PrototypeValidationError(`${mode === 'candidate' ? 'Model threshold' : 'Export cutoff'} must be between 0 and 1.`);
   }
   if (!PROTOTYPE_STRIDE_OPTIONS.includes(strideBases as PrototypeStrideBases)) {
     throw new PrototypeValidationError('Choose a supported scan stride.');
@@ -45,7 +48,7 @@ export function prototypeParameters(
 
 export function validatePrototypeCandidateLength(length: number) {
   if (length !== PROTOTYPE_CANDIDATE_MIN_BASES) {
-    throw new PrototypeValidationError('Focused candidate scoring requires exactly one 100 bp sequence.');
+    throw new PrototypeValidationError('100 bp scoring requires exactly one 100 bp sequence.');
   }
 }
 
@@ -57,13 +60,16 @@ export function validatePrototypeInlineLength(length: number) {
   }
 }
 
-export function validatePrototypeGenomeFile(file: Pick<File, 'name' | 'size'>) {
+export function validatePrototypeGenomeFile(
+  file: Pick<File, 'name' | 'size'>,
+  maxBytes = DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
+) {
   if (!PROTOTYPE_GENOME_FILE_PATTERN.test(file.name)) {
     throw new PrototypeValidationError('Choose a .fa, .fasta, or .fna file, optionally gzip-compressed.');
   }
   if (file.size <= 0) throw new PrototypeValidationError('Genome FASTA is empty.');
-  if (file.size > PROTOTYPE_GENOME_MAX_BYTES) {
-    throw new PrototypeValidationError('Genome FASTA must be 12 MiB or smaller.');
+  if (file.size > maxBytes) {
+    throw new PrototypeValidationError(`Genome FASTA must be ${formatPredictionMaxRequestBytes(maxBytes)} or smaller.`);
   }
 }
 

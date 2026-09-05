@@ -19,6 +19,7 @@ import {
   downloadPrototypeResult,
   type PrototypeDownloadFormat,
 } from './prototype-result-downloads';
+import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '@/components/portal-terminology';
 import styles from './prototype-result.module.css';
 
 const PrototypePredictionBrowser = dynamic(() => import('./prototype/prototype-browser'), {
@@ -31,7 +32,7 @@ function formatScore(value: number) {
 }
 
 function formatLength(value: number | null) {
-  return value === null ? 'Not provided' : `${value.toLocaleString()} nt`;
+  return value === null ? 'Not provided' : `${value.toLocaleString()} bp`;
 }
 
 function formatCreatedAt(value: string) {
@@ -48,8 +49,8 @@ function FocusedSequenceResult({ run, fixture }: { run: PrototypeCandidateRun; f
   return (
     <section className={styles.panel} aria-labelledby="focused-score-heading">
       <div className={styles.panelHeader}>
-        <h2 id="focused-score-heading">Focused 100 bp result</h2>
-        <p>Raw scores for each evaluated strand. The cutoff only marks whether a score passes.</p>
+        <h2 id="focused-score-heading">100 bp result</h2>
+        <p>Model scores by strand. The model threshold classifies each score only.</p>
       </div>
       <div className={styles.focusedComparison} data-count={windows.length}>
         {windows.map((window) => {
@@ -59,18 +60,18 @@ function FocusedSequenceResult({ run, fixture }: { run: PrototypeCandidateRun; f
             <article className={styles.focusedStrandRow} key={window.strand}>
               <div className={styles.focusedStrandHeading}>
                 <span>{strandName}</span>
-                <strong className={aboveCutoff ? styles.passes : styles.below}>{aboveCutoff ? 'Above cutoff' : 'At or below cutoff'}</strong>
+                <strong className={aboveCutoff ? styles.passes : styles.below}>{aboveCutoff ? 'Above threshold' : 'At or below threshold'}</strong>
               </div>
               <div className={styles.focusedStrandSummary}>
                 <strong>{formatScore(window.score)}</strong>
-                <small>Illustrative raw score</small>
+                <small>Illustrative model score</small>
               </div>
               <div className={styles.focusedMeterArea}>
-                <div className={styles.focusedMeter} role="meter" aria-label={`${strandName} illustrative raw score`} aria-valuemin={0} aria-valuemax={1} aria-valuenow={window.score}>
+                <div className={styles.focusedMeter} role="meter" aria-label={`${strandName} illustrative model score`} aria-valuemin={0} aria-valuemax={1} aria-valuenow={window.score}>
                   <i className={styles.focusedMeterFill} style={{ width: `${window.score * 100}%` }} />
                   <b className={styles.focusedCutoff} style={{ left: `${run.parameters.cutoff * 100}%` }} />
                 </div>
-                <div className={styles.focusedMeterLegend} aria-hidden="true"><span>0</span><span>Cutoff {run.parameters.cutoff.toFixed(2)}</span><span>1</span></div>
+                <div className={styles.focusedMeterLegend} aria-hidden="true"><span>0</span><span>Model threshold {run.parameters.cutoff.toFixed(2)}</span><span>1</span></div>
               </div>
             </article>
           );
@@ -82,8 +83,8 @@ function FocusedSequenceResult({ run, fixture }: { run: PrototypeCandidateRun; f
 
 function Downloads({ run, fixture }: { run: PrototypePredictionRun; fixture: PrototypePredictionFixture }) {
   const downloads: Array<{ format: PrototypeDownloadFormat; label: string; detail: string }> = [
-    { format: 'gff3', label: 'GFF3', detail: run.mode === 'candidate' ? 'Focused 100 bp strand windows' : 'Called peak features' },
-    { format: 'bedgraph', label: 'bedGraph', detail: run.mode === 'candidate' ? 'Raw strand scores' : 'Raw window-score tracks' },
+    { format: 'gff3', label: 'GFF3', detail: run.mode === 'candidate' ? '100 bp strand windows' : PORTAL_TERMS.promoterPredictions },
+    { format: 'bedgraph', label: 'bedGraph', detail: run.mode === 'candidate' ? PORTAL_TERMS.rawModelScores : 'Raw model-score tracks' },
   ];
   return (
     <div className={styles.downloads} aria-label="Prototype result downloads">
@@ -104,7 +105,7 @@ function MissingRun() {
         <ErrorOutlineRoundedIcon aria-hidden="true" />
         <p className="portal-kicker">Prototype result unavailable</p>
         <h1>This result is no longer in this tab</h1>
-        <p>Prototype runs live only in this tab&apos;s session storage. They disappear when the session is cleared, and a copied result URL does not contain the input. No model was run.</p>
+        <p>This run exists only in this tab&apos;s session storage. Clearing it removes the run, and copied URLs contain no input. No model was run.</p>
         <div className={styles.missingActions}>
           <Link className="portal-button portal-button-primary" href="/predict">Create another prototype run</Link>
         </div>
@@ -141,7 +142,7 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
   const progress = useMemo(() => run ? prototypePredictionProgressAt(run, clock || Date.now()) : null, [clock, run]);
 
   if (!loaded) {
-    return <main className={styles.missing}><div><p className="portal-kicker">Prototype result</p><h1>Loading result…</h1><p>No model was run. Loading the deterministic fixture stored for this tab.</p></div></main>;
+    return <main className={styles.missing}><div><p className="portal-kicker">Prototype result</p><h1>Loading result…</h1><p>{PORTAL_COPY.demoNotice} Loading the fixture stored for this tab.</p></div></main>;
   }
   if (!run || !fixture || !progress) return <MissingRun />;
 
@@ -153,16 +154,16 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
       <div className={`portal-shell ${styles.shell}`}>
         <header className={styles.intro}>
           <div className={styles.introCopy}>
-            <p className="portal-kicker">{run.mode === 'candidate' ? 'Focused 100 bp scoring' : 'Sequence / contig scan'}</p>
+            <p className="portal-kicker">{predictionModeLabel(run.mode === 'candidate' ? 'candidate' : 'genome-scan')}</p>
             <h1>Prediction result</h1>
-            <p>{run.mode === 'candidate' ? 'Compare strand-specific raw scores, cutoff states and anchor positions for one submitted window.' : 'Explore illustrative raw-score and called-peak tracks in the genome browser.'}</p>
+            <p>{run.mode === 'candidate' ? 'Compare model scores, classifications, and anchors by strand.' : 'Explore illustrative model-score and promoter-prediction tracks.'}</p>
           </div>
           <div className={styles.runMeta}><span>Prototype run</span><code>{run.runId}</code><small>{formatCreatedAt(run.createdAt)}</small></div>
         </header>
 
         <div className={styles.prototypeBanner} role="note">
           <ScienceRoundedIcon aria-hidden="true" />
-          <div><strong>No model was run</strong><span>Every value below is a deterministic interface fixture for previewing the workflow. It is not a biological prediction or experimental result.</span></div>
+          <div><strong>{PORTAL_COPY.demoNotice}</strong></div>
         </div>
 
         <PredictionProgressPanel mode={run.mode === 'candidate' ? 'focused' : 'scan'} snapshot={progress} />
@@ -170,10 +171,10 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
         {progress.state === 'succeeded' ? <>
         {run.mode === 'candidate' ? <FocusedSequenceResult run={run} fixture={fixture} /> : (
           <>
-            <section className={styles.summary} aria-label="Genome scan summary">
+            <section className={styles.summary} aria-label="Sequence scan summary">
               <div><span>Sequences</span><strong>{sequenceCount}</strong><small>Illustrative contigs</small></div>
-              <div><span>Raw score windows</span><strong>{fixture.windows.length.toLocaleString()}</strong><small>Illustrative fixture values</small></div>
-              <div><span>Called peaks</span><strong>{fixture.calledPeaks.length.toLocaleString()}</strong><small>Illustrative post-processing</small></div>
+              <div><span>Scored windows</span><strong>{fixture.windows.length.toLocaleString()}</strong><small>Illustrative values</small></div>
+              <div><span>Promoter predictions</span><strong>{fixture.calledPeaks.length.toLocaleString()}</strong><small>Illustrative post-processing</small></div>
             </section>
 
             <section className={styles.panel} aria-labelledby="genome-browser-heading">
@@ -188,24 +189,24 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
         <section className={styles.panel} aria-labelledby="download-heading">
           <div className={styles.panelHeader}>
             <h2 id="download-heading">Download tracks</h2>
-            <p>GFF3 contains strand-aware {run.mode === 'candidate' ? 'focused windows' : 'called peaks'} using 1-based coordinates. bedGraph contains strand-separated raw scores using zero-based, half-open intervals.</p>
+            <p>GFF3: strand-aware {run.mode === 'candidate' ? '100 bp windows' : 'promoter predictions'}, 1-based closed. bedGraph: strand-separated model scores, 0-based half-open.</p>
           </div>
           <Downloads run={run} fixture={fixture} />
         </section>
 
         <section className={styles.panel} aria-labelledby="run-context-heading">
-          <div className={styles.panelHeader}><h2 id="run-context-heading">Run context</h2><p>Only metadata is restored from session storage. A scan can show its submitted reference during this tab&apos;s navigation; after refresh, the browser uses an illustrative local fallback.</p></div>
+          <div className={styles.panelHeader}><h2 id="run-context-heading">Run context</h2><p>Session storage restores metadata only. This tab can show the submitted reference until refresh; then an illustrative local reference is used.</p></div>
           <dl className={styles.factGrid}>
-            <div><dt>Input</dt><dd>{run.mode === 'candidate' ? `${run.input.displayName} · ${run.input.length.toLocaleString()} nt` : run.input.scanSource.fileName || run.input.scanSource.displayName}</dd></div>
+            <div><dt>Input</dt><dd>{run.mode === 'candidate' ? `${run.input.displayName} · ${run.input.length.toLocaleString()} bp` : run.input.scanSource.fileName || run.input.scanSource.displayName}</dd></div>
             <div><dt>Genome context</dt><dd>{genomeContext.displayName} · {formatLength(genomeContext.totalLength)}</dd></div>
-            <div><dt>Analysis</dt><dd>{run.parameters.strandMode === 'both' ? 'Both strands' : 'Forward strand only'} · cutoff {run.parameters.cutoff.toFixed(2)} · step {run.parameters.strideBases} nt</dd></div>
-            <div><dt>Model</dt><dd>100 nt window · 80/20 anchor · CGR 128×128 · {run.modelSpec.version}</dd></div>
+            <div><dt>Analysis</dt><dd>{run.parameters.strandMode === 'both' ? 'Both strands' : 'Forward strand only'} · {thresholdLabel(run.mode === 'candidate' ? 'candidate' : 'genome-scan').toLowerCase()} {run.parameters.cutoff.toFixed(2)} · stride {run.parameters.strideBases} bp</dd></div>
+            <div><dt>Model</dt><dd>100 bp window · 80/20 anchor · CGR 128×128 · {run.modelSpec.version}</dd></div>
           </dl>
         </section>
 
         <aside className={styles.interpret} aria-labelledby="interpret-heading">
           <h2 id="interpret-heading">How to interpret this result</h2>
-          <p>{run.mode === 'candidate' ? 'Each raw score belongs to the same focused 100 bp input read in one orientation. The cutoff only labels the score state; no ranking or post-processing is applied.' : 'A higher raw score means an illustrative scan window ranks higher within the fixture. A called peak is a post-processed candidate anchor, not a separate model score.'} The result does not establish accuracy, experimental support, or a transcription start site.</p>
+          <p>{run.mode === 'candidate' ? 'Each strand has one score for the same 100 bp input. The model threshold changes classification only; no ranking or post-processing is applied.' : 'Higher scores rank windows within this fixture; promoter predictions are post-processed anchors, not new model scores.'} The result does not establish accuracy, experimental support, or a transcription start site.</p>
         </aside>
         </> : null}
       </div>

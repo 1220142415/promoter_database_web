@@ -18,6 +18,7 @@ import {
   type PredictionJob,
   type PredictionResult,
 } from '../types';
+import { PORTAL_COPY, PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from './prediction.module.css';
 
 function formatScore(value: number) {
@@ -88,9 +89,9 @@ export function predictionBrowserAssembly(assets: PredictionBrowserAssets | unde
     },
     trackLabels: {
       scores: assets.scores.minusBigWigUrl
-        ? 'RAPPTOR promoter probabilities (+ / − strands)'
-        : 'RAPPTOR promoter probabilities (+ strand)',
-      promoters: 'RAPPTOR model-positive promoter windows',
+        ? 'RAPPTOR model scores (+ / − strands)'
+        : 'RAPPTOR model scores (+ strand)',
+      promoters: `RAPPTOR ${PORTAL_TERMS.promoterPredictions.toLowerCase()}`,
     },
     predictionProcessing: { sigma: 1, distance: 10, cutoff: 0.9, positionBase: 0 },
   };
@@ -129,9 +130,9 @@ function ScoreChart({ result }: { result: PredictionResult }) {
 
   return (
     <figure className={styles.scoreChart}>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Promoter probability across candidate positions" data-testid="prediction-score-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Model score across candidate positions" data-testid="prediction-score-chart">
         {[0, .25, .5, .75, 1].map((score) => <g key={score}><line x1={padLeft} x2={width - padRight} y1={y(score)} y2={y(score)} /><text x={8} y={y(score) + 4}>{score.toFixed(2)}</text></g>)}
-        <text className={styles.yAxisLabel} x={15} y={height / 2} textAnchor="middle" transform={`rotate(-90 15 ${height / 2})`}>Probability</text>
+        <text className={styles.yAxisLabel} x={15} y={height / 2} textAnchor="middle" transform={`rotate(-90 15 ${height / 2})`}>{PORTAL_TERMS.modelScore}</text>
         {xTicks.map((tick) => <text key={tick} x={x(tick)} y={height - 23} textAnchor={tick === min ? 'start' : tick === max ? 'end' : 'middle'}>{tick}</text>)}
         <text x={width / 2} y={height - 8} textAnchor="middle">Prediction anchor coordinate (1-based)</text>
         <rect
@@ -155,8 +156,8 @@ function ScoreChart({ result }: { result: PredictionResult }) {
       <figcaption>
         <span><i className={styles.legendPlus} /> Forward strand</span>
         {result.input.strandMode === 'both' ? <span><i className={styles.legendMinus} /> Reverse strand</span> : null}
-        <span><i className={styles.legendBestWindow} /> Highest-scoring prediction anchor</span>
-        <span><i className={styles.legendThreshold} /> {result.probabilityThreshold.toFixed(1)} model threshold</span>
+        <span><i className={styles.legendBestWindow} /> {PORTAL_TERMS.highestModelScore} anchor</span>
+        <span><i className={styles.legendThreshold} /> {result.probabilityThreshold.toFixed(1)} {PORTAL_TERMS.modelThreshold.toLowerCase()}</span>
       </figcaption>
       <div className={styles.windowMap} data-testid="prediction-window-map">
         <div><span>Best window layout</span><strong>{result.bestWindow.promoterStart.toLocaleString()}–{result.bestWindow.promoterEnd.toLocaleString()} · anchor {bestAnchor.toLocaleString()} · {result.bestWindow.strand} strand</strong></div>
@@ -229,7 +230,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
       return (
         <main className={`portal-page ${styles.resultPage}`}>
           <div className="portal-shell">
-            <header className={`page-intro ${styles.resultIntro}`}><div><p className="portal-kicker">Prediction job</p><h1>Prediction could not be completed</h1></div></header>
+            <header className={`page-intro ${styles.resultIntro}`}><div><p className="portal-kicker">Prediction task</p><h1>Prediction could not be completed</h1></div></header>
             <PredictionProgressPanel mode="focused" snapshot={{ ...jobProgress, state: 'failed', stage: 'failed', message: error.message }} onRetry={error.retryable ? () => setRetryKey((value) => value + 1) : undefined} />
           </div>
         </main>
@@ -256,28 +257,28 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
       <div className="portal-shell">
         <header className={`page-intro ${styles.resultIntro}`}>
           <div className={styles.resultIntroCopy}>
-            <p className="portal-kicker">Candidate promoter scoring</p>
+            <p className="portal-kicker">{PORTAL_TERMS.scoring100Bp}</p>
             <h1>{demo ? 'Demo result preview' : 'Prediction result'}</h1>
             <p>Each 100 bp window uses base 80 as the prediction anchor: an 80 bp upstream-side segment followed by a 20 bp downstream-side segment.</p>
           </div>
-          <div className={styles.jobMeta}><span>JOB IDENTIFIER</span><code>{jobId}</code><span>{job?.modelVersion || 'Loading model metadata…'}</span></div>
+          <div className={styles.jobMeta}><span>TASK ID</span><code>{jobId}</code><span>{job?.modelVersion || 'Loading model metadata…'}</span></div>
         </header>
 
-        {demo ? <div className={styles.demoBanner} role="note"><ScienceRoundedIcon aria-hidden="true" /><div><strong>Demo preview — no model was executed</strong><span>Every score on this page is a deterministic interface fixture. It must not be interpreted as biological output.</span></div></div> : null}
+        {demo ? <div className={styles.demoBanner} role="note"><ScienceRoundedIcon aria-hidden="true" /><div><strong>{PORTAL_COPY.demoNotice}</strong></div></div> : null}
 
         <PredictionProgressPanel mode="focused" snapshot={jobProgress} />
 
         {result ? <div className={styles.resultContent}>
           <section className={styles.resultSummary} aria-label="Prediction summary" data-testid="prediction-summary">
-            <div><span>Highest promoter probability</span><strong>{formatScore(result.highestProbability)}</strong><small>Best hit: {result.bestWindow.strand} strand</small></div>
-            <div><span>Model classification</span><strong className={result.call === 'model-positive-candidate' ? styles.positive : ''}>{result.call === 'model-positive-candidate' ? 'RAPPtor model-positive candidate' : 'Below model threshold'}</strong><small>Score cutoff: &gt; {result.probabilityThreshold.toFixed(1)}</small></div>
+            <div><span>{PORTAL_TERMS.highestModelScore}</span><strong>{formatScore(result.highestProbability)}</strong><small>Best hit: {result.bestWindow.strand} strand</small></div>
+            <div><span>Model classification</span><strong className={result.call === 'model-positive-candidate' ? styles.positive : ''}>{result.call === 'model-positive-candidate' ? 'RAPPTOR-positive candidate' : 'Below model threshold'}</strong><small>Model threshold: &gt; {result.probabilityThreshold.toFixed(1)}</small></div>
             <div><span>Evaluated strands</span><strong>{result.input.strandMode === 'both' ? 'Both (+/−)' : 'Forward only'}</strong><small>{result.input.strandMode === 'both' ? 'Forward and reverse-complement' : '+ strand only'}</small></div>
             <div><span>Best promoter window</span><strong>{result.bestWindow.promoterStart.toLocaleString()}–{result.bestWindow.promoterEnd.toLocaleString()}</strong><small>Prediction anchor {predictionAnchorCoordinate(result.bestWindow.promoterStart, result.bestWindow.strand).toLocaleString()} · window base 80</small></div>
           </section>
 
           <section className={styles.panel}>
             <div className={styles.panelHeading}>
-              <div><p className="portal-kicker">Window scores</p><h2>Promoter probability by prediction anchor</h2></div>
+              <div><p className="portal-kicker">Window scores</p><h2>{PORTAL_TERMS.modelScoreByAnchor}</h2></div>
               {browserAssembly ? <div className={styles.resultViewTools}>
                 <div className={styles.viewSwitch} role="group" aria-label="Result visualization">
                   <button type="button" className={resultView === 'plot' ? styles.activeView : ''} aria-pressed={resultView === 'plot'} onClick={() => setResultView('plot')}>Score plot</button>
@@ -293,7 +294,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
 
           <section className={styles.panel}>
             <div className={styles.panelHeading}><div><p className="portal-kicker">Ranked windows</p><h2>Top promoter windows</h2></div><div className={styles.downloads}><button type="button" onClick={() => download(`${jobId}.json`, JSON.stringify(result, null, 2) + '\n', 'application/json')}><DownloadRoundedIcon /> JSON</button><button type="button" onClick={() => download(`${jobId}.tsv`, resultTsv(result), 'text/tab-separated-values')}><DownloadRoundedIcon /> TSV</button></div></div>
-            <div className={styles.tableWrap}><table className={styles.windowTable}><thead><tr><th>Rank</th><th>Probability</th><th>Classification</th><th>Strand</th><th>Prediction anchor</th><th>Promoter window (1-based)</th></tr></thead><tbody>{result.topWindows.map((window) => <tr key={`${window.strand}-${window.promoterStart}`}><td>{window.rank}</td><td>{formatScore(window.probability)}</td><td>{window.probability > result.probabilityThreshold ? 'Model-positive candidate' : 'Below threshold'}</td><td>{window.strand}</td><td>{predictionAnchorCoordinate(window.promoterStart, window.strand).toLocaleString()}</td><td>{window.promoterStart.toLocaleString()}–{window.promoterEnd.toLocaleString()}</td></tr>)}</tbody></table></div>
+            <div className={styles.tableWrap}><table className={styles.windowTable}><thead><tr><th>Rank</th><th>{PORTAL_TERMS.modelScore}</th><th>Classification</th><th>Strand</th><th>Prediction anchor</th><th>Promoter window (1-based)</th></tr></thead><tbody>{result.topWindows.map((window) => <tr key={`${window.strand}-${window.promoterStart}`}><td>{window.rank}</td><td>{formatScore(window.probability)}</td><td>{window.probability > result.probabilityThreshold ? 'Model-positive candidate' : 'Below threshold'}</td><td>{window.strand}</td><td>{predictionAnchorCoordinate(window.promoterStart, window.strand).toLocaleString()}</td><td>{window.promoterStart.toLocaleString()}–{window.promoterEnd.toLocaleString()}</td></tr>)}</tbody></table></div>
           </section>
 
           <section className={styles.runContext} aria-label="Prediction context">

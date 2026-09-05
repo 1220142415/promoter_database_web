@@ -5,7 +5,7 @@ export default function ReleaseState({ message }: { message: string }) {
     <main className="portal-shell portal-state-page">
       <div className="portal-state-icon" aria-hidden="true"><ConstructionRoundedIcon /></div>
       <p className="portal-kicker">Release unavailable</p>
-      <h1>The data release is not built</h1>
+      <h1>Data release not built</h1>
       <p>{message}</p>
     </main>
   );

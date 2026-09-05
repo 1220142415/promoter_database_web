@@ -1,4 +1,4 @@
-"""CGR conversion used to prepare RAPPtor image-conditioning inputs."""
+"""CGR conversion used to prepare RAPPTOR image-conditioning inputs."""
 
 from .converter import generate_cgr_from_fasta
 

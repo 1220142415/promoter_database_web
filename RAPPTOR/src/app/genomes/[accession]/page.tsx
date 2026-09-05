@@ -12,6 +12,7 @@ import { experimentalTssPublicEnabled } from '@/features/genome-browser/experime
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
 import type { JBrowseReleaseAssembly } from '@/types/release';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 const SHARE_PARAMETERS = ['view', 'ref', 'center', 'zoom', 'rev', 'tracks'] as const;
 const EXPERIMENTAL_COLLECTION_URL = 'https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/tree/main/experimentally_supported_genomes';
@@ -216,8 +217,8 @@ export async function generateMetadata({ params }: { params: Promise<{ accession
   const organism = match?.prediction?.genome.organismName || match?.experimental?.organismName;
   return match && organism
     ? { title: `${match.canonicalAccession} | RAPPTOR`, description: experimentalTssPublicEnabled()
-      ? `${organism} genome predictions and experimental evidence.`
-      : `${organism} genome predictions and NCBI annotations.` }
+      ? `${organism} promoter predictions and experimental evidence.`
+      : `${organism} promoter predictions and NCBI annotations.` }
     : { title: 'Genome not found | RAPPTOR' };
 }
 
@@ -283,7 +284,7 @@ export default async function GenomeDetailPage({
                   <h1>{organismName}</h1>
                   {strain ? <p className="detail-strain">Strain {strain}</p> : null}
                   <p className="detail-strain">
-                    {hasPredictions ? <span className="evidence-available">RAPPTOR predictions</span> : null}
+                    {hasPredictions ? <span className="evidence-available">RAPPTOR promoter predictions</span> : null}
                     {showExperimental && hasPredictions && experimental ? ' · ' : null}
                     {showExperimental && experimental ? <span className="evidence-available">Experimental TSS</span> : null}
                   </p>
@@ -293,7 +294,7 @@ export default async function GenomeDetailPage({
 
             {experimental ? (
               <div className="experimental-boundary-note" role="note">
-                <strong>{hasPredictions ? 'Predictions and experimental observations' : 'Experimental TSS only'}</strong>
+                <strong>{hasPredictions ? 'Promoter predictions and observations' : 'Experimental TSS only'}</strong>
                 <p>{hasPredictions
                   ? 'RAPPTOR promoter predictions and published 1 bp TSS observations are shown together as distinct evidence tracks; observations are not counted as model validation.'
                   : 'This assembly is not included in the active prediction release. Each flag is an original published 1 bp TSS observation.'}</p>
@@ -328,7 +329,7 @@ export default async function GenomeDetailPage({
             <MetadataMetric label="GC content" value={formatNumber(genome?.gcContent, '%')} />
             <MetadataMetric label="Contigs" value={formatNumber(genome?.contigCount ?? experimental?.contigCount)} />
             <MetadataMetric label="Completeness" value={formatNumber(genome?.completeness, '%')} />
-            <MetadataMetric label="Predicted promoters" value={hasPredictions ? formatNumber(predictedPromoterCount) : 'Not available'} />
+            <MetadataMetric label={PORTAL_TERMS.promoterPredictions} value={hasPredictions ? formatNumber(predictedPromoterCount) : 'Not available'} />
             <MetadataMetric label="NCBI annotation features" value={formatNumber(genome?.annotationFeatureCount)} />
             <MetadataMetric label="Promoter density" value={promoterDensityPerMb === null ? null : `${promoterDensityPerMb.toLocaleString(undefined, { maximumFractionDigits: 1 })} / Mb`} />
             {showExperimental ? <MetadataMetric label="Experimental studies" value={experimental ? experimental.studies.length : 0} /> : null}
@@ -358,11 +359,11 @@ export default async function GenomeDetailPage({
             ]} />
             <MetadataGroup title="Prediction data" facts={[
               { label: 'Prediction model', value: details?.promoter.sourceId || (hasPredictions ? 'RAPPTOR' : null) },
-              { label: 'Prediction generated at', value: formatDate(details?.promoter.generatedAt) },
+              { label: 'Generated', value: formatDate(details?.promoter.generatedAt) },
               { label: 'Taxonomy source', value: details?.taxonomySource },
               { label: 'RAPPTOR prediction release', value: usesExperimentalPredictions ? experimental?.releaseId : prediction?.releaseId || null, mono: true },
               { label: 'Prediction availability', value: usesExperimentalPredictions
-                ? 'Fine-resolution scan from experimental genome collection'
+                ? 'Available from experimental collection'
                 : prediction ? 'Available in active prediction release' : 'Not available' },
               { label: 'Dataset', value: details?.release.hfRepository
                 ? <a href={`https://huggingface.co/datasets/${details.release.hfRepository}`} target="_blank" rel="noreferrer">Open Hugging Face dataset</a>
@@ -370,8 +371,8 @@ export default async function GenomeDetailPage({
             ]} />
             <MetadataGroup title="Experimental release" facts={[
               { label: 'Experimental release', value: experimental?.releaseId, mono: true },
-              { label: 'Study tracks', value: experimental?.studies.length },
-              { label: 'Raw observations', value: experimental ? experimentalObservations : null },
+              { label: 'Studies', value: experimental?.studies.length },
+              { label: 'Observations', value: experimental ? experimentalObservations : null },
               { label: 'Evidence type', value: experimental ? 'Experimental TSS' : null },
             ]} />
           </div>

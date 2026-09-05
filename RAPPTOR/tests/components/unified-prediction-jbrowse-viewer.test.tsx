@@ -115,7 +115,7 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(config.assembly.sequence.metadata.rapptorDownload.kind).toBe('reference');
     expect(config.assembly.sequence.metadata.rapptorDownload.visibleRegionDownload).toBe(false);
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'RAPPTOR predicted promoters',
+      'RAPPTOR promoter predictions',
       'NCBI genome annotation',
     ]);
     expect(config.tracks.map((track) => track.metadata.rapptorDownload.kind)).toEqual(['promoters', 'ncbi']);
@@ -140,7 +140,7 @@ describe('prediction-only unified JBrowse configuration', () => {
   it('does not invent an NCBI track when the release has no NCBI asset', () => {
     render(<UnifiedJBrowseViewer prediction={assembly(false)} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as { tracks: ReadonlyArray<{ name: string }> };
-    expect(config.tracks.map((track) => track.name)).toEqual(['RAPPTOR predicted promoters']);
+    expect(config.tracks.map((track) => track.name)).toEqual(['RAPPTOR promoter predictions']);
   });
 
   it('adds one fixed-scale mirrored raw score track before promoter peaks', () => {
@@ -159,8 +159,8 @@ describe('prediction-only unified JBrowse configuration', () => {
       defaultSession: { view: { tracks: ReadonlyArray<{ displays: ReadonlyArray<{ heightPreConfig: number }> }> } };
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'RAPPTOR raw scores (+ / - strands)',
-      'RAPPTOR predicted promoters',
+      'RAPPTOR model scores (+ / − strands)',
+      'RAPPTOR promoter predictions',
       'NCBI genome annotation',
     ]);
     expect(config.tracks[0].type).toBe('MultiQuantitativeTrack');
@@ -194,14 +194,14 @@ describe('prediction-only unified JBrowse configuration', () => {
     plusOnly.assets.promoterScoresMinus = null;
     render(<UnifiedJBrowseViewer prediction={{
       ...plusOnly,
-      trackLabels: { scores: 'RAPPTOR promoter probabilities (+ strand)', promoters: 'RAPPTOR model-positive promoter windows' },
+      trackLabels: { scores: 'RAPPTOR model scores (+ strand)', promoters: 'RAPPTOR promoter predictions' },
     }} />);
     const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
       tracks: ReadonlyArray<{ name: string; type: string; adapter: Record<string, unknown> }>;
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'RAPPTOR promoter probabilities (+ strand)',
-      'RAPPTOR model-positive promoter windows',
+      'RAPPTOR model scores (+ strand)',
+      'RAPPTOR promoter predictions',
     ]);
     expect(config.tracks[0]).toMatchObject({
       type: 'QuantitativeTrack',
@@ -233,7 +233,7 @@ describe('prediction-only unified JBrowse configuration', () => {
         rawScoresBedGraphPlus: 'blob:prototype-plus',
         rawScoresBedGraphMinus: 'blob:prototype-minus',
         calledPeaksGff3: 'blob:prototype-peaks',
-        rawScoresLabel: 'Illustrative raw scores (+ / - strands)',
+        rawScoresLabel: 'Illustrative model scores (+ / - strands)',
         calledPeaksLabel: 'Illustrative called peaks',
       },
     };
@@ -248,14 +248,14 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(config.assembly.sequence.adapter).toMatchObject({ type: 'UnindexedFastaAdapter', fastaLocation: { uri: 'blob:prototype-reference' } });
     expect(config.tracks).toHaveLength(3);
     expect(config.tracks[0]).toMatchObject({
-      name: 'Illustrative raw scores (+ / - strands) · + strand',
+      name: 'Illustrative model scores (+ / - strands) · + strand',
       type: 'QuantitativeTrack',
       adapter: { type: 'BedGraphAdapter', bedGraphLocation: { uri: 'blob:prototype-plus' } },
       displays: [{ type: 'LinearWiggleDisplay', defaultRendering: 'xyplot', minScore: 0, maxScore: 1 }],
     });
     expect(config.tracks[0].metadata).not.toHaveProperty('rapptorMirroredScore');
     expect(config.tracks[1]).toMatchObject({
-      name: 'Illustrative raw scores (+ / - strands) · − strand',
+      name: 'Illustrative model scores (+ / - strands) · − strand',
       type: 'QuantitativeTrack',
       adapter: { type: 'BedGraphAdapter', bedGraphLocation: { uri: 'blob:prototype-minus' } },
       displays: [{ type: 'LinearWiggleDisplay', defaultRendering: 'xyplot', minScore: 0, maxScore: 1 }],
@@ -431,7 +431,7 @@ describe('prediction-only unified JBrowse configuration', () => {
       [`${mockAssemblyName}:1-10000`, mockAssemblyName],
     ]);
     expect(stateTree.session.view.zoomTo).not.toHaveBeenCalled();
-    expect(await screen.findByRole('status')).toHaveTextContent(/shared reference location.*default view/i);
+    expect(await screen.findByRole('status')).toHaveTextContent(/shared location unavailable.*default view/i);
   });
 
   it('falls back when JBrowse clamps a valid ref to a different center', async () => {
@@ -461,7 +461,7 @@ describe('prediction-only unified JBrowse configuration', () => {
       [`${mockAssemblyName}:99999`, mockAssemblyName],
       [`${mockAssemblyName}:1-10000`, mockAssemblyName],
     ]);
-    expect(await screen.findByRole('status')).toHaveTextContent(/center coordinate.*default view/i);
+    expect(await screen.findByRole('status')).toHaveTextContent(/center or orientation unavailable.*default view/i);
   });
 
   it('disables sharing and exposes the multi-region reason', async () => {

@@ -140,7 +140,7 @@ function demoJob(record: DemoJobRecord, jobId: string): PredictionJob {
     if (elapsed >= 1_500) {
       stateValue = 'succeeded';
       progress = 100;
-      message = 'Demo result is ready. No model was executed.';
+      message = 'Demo result ready; no model was run.';
     } else if (elapsed >= 500) {
       stateValue = 'running';
       progress = Math.min(88, 35 + Math.floor((elapsed - 500) / 18));

@@ -26,10 +26,7 @@ type DownloadableDisplay = {
 type TrackMetadata = {
   rapptorDownload?: unknown;
   rapptorDownloads?: unknown;
-  rapptorExperimentalDownloads?: unknown;
 };
-
-type ExperimentalBedDownload = { kind: 'raw-bed'; label: string; url: string };
 
 type DialogSession = {
   queueDialog: (
@@ -44,30 +41,6 @@ const DOWNLOADABLE_DISPLAYS = new Set([
   'MultiLinearWiggleDisplay',
 ]);
 
-function experimentalBedDownload(metadata: TrackMetadata) {
-  const downloads = Array.isArray(metadata.rapptorExperimentalDownloads)
-    ? metadata.rapptorExperimentalDownloads
-    : [];
-  return downloads.find((value): value is ExperimentalBedDownload => {
-    if (!value || typeof value !== 'object') return false;
-    const download = value as Partial<ExperimentalBedDownload>;
-    return download.kind === 'raw-bed'
-      && typeof download.label === 'string'
-      && typeof download.url === 'string'
-      && download.url.startsWith('/api/experimental-data/');
-  });
-}
-
-function downloadBed(url: string) {
-  const anchor = document.createElement('a');
-  anchor.href = `${url}${url.includes('?') ? '&' : '?'}download=1`;
-  anchor.download = '';
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-}
-
 export default class RapptorTrackDownloadPlugin extends Plugin {
   name = 'RAPPTORTrackDownloadPlugin';
 
@@ -80,12 +53,7 @@ export default class RapptorTrackDownloadPlugin extends Plugin {
           return {
             views: {
               trackMenuItems() {
-                const metadata = getConf(self, 'metadata') as TrackMetadata;
-                const items = superTrackMenuItems().filter((item) => item.label !== 'Display types');
-                const bedDownload = experimentalBedDownload(metadata);
-                return bedDownload
-                  ? [...items, { label: 'Download original BED', icon: DownloadRoundedIcon, priority: 50, onClick: () => downloadBed(bedDownload.url) }]
-                  : items;
+                return superTrackMenuItems().filter((item) => item.label !== 'Display types');
               },
             },
           };

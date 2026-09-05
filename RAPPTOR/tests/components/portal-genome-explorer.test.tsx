@@ -126,7 +126,7 @@ describe('portal genome explorer', () => {
     };
 
     render(<GenomeExplorer initialResult={result} />);
-    expect(screen.getByText('46,015 predictions')).toHaveClass('evidence-available');
+    expect(screen.getByText('46,015 promoter predictions')).toHaveClass('evidence-available');
     expect(screen.queryByText('No prediction release')).not.toBeInTheDocument();
   });
 

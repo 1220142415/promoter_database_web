@@ -1,1 +1,1 @@
-"""Queued prediction service for RAPPtor."""
+"""Queued prediction service for RAPPTOR."""

@@ -1,6 +1,27 @@
 import type { PredictionCapabilities, PredictionServiceMode } from './types';
 import { PREDICTION_ANCHOR_BASE, PREDICTION_CONTRACT_VERSION, PREDICTION_WINDOW_BASES } from './types';
 
+export const DEFAULT_PREDICTION_MAX_REQUEST_BYTES = 12 * 1024 * 1024;
+
+/** Return the configured request/upload limit shared with the prediction service. */
+export function predictionMaxRequestBytes(value?: string | number | null) {
+  const configured = value === undefined ? process.env.RAPPTOR_MAX_REQUEST_BYTES : value;
+  if (configured === undefined || configured === null) return DEFAULT_PREDICTION_MAX_REQUEST_BYTES;
+  const normalized = String(configured).trim();
+  if (!/^[0-9]+$/.test(normalized)) return DEFAULT_PREDICTION_MAX_REQUEST_BYTES;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_PREDICTION_MAX_REQUEST_BYTES;
+}
+
+export function formatPredictionMaxRequestBytes(value: number) {
+  const mebibyte = 1024 * 1024;
+  if (value % mebibyte === 0) return `${value / mebibyte} MiB`;
+  if (value % 1024 === 0) return `${value / 1024} KiB`;
+  return `${value.toLocaleString('en-US')} ${value === 1 ? 'byte' : 'bytes'}`;
+}
+
 const DEFAULT_CAPABILITIES = {
   contractVersion: PREDICTION_CONTRACT_VERSION,
   modelVersion: process.env.RAPPTOR_PREDICTION_MODEL_VERSION || 'rapptor-cgr-100bp-demo-v1',
@@ -12,13 +33,23 @@ const DEFAULT_CAPABILITIES = {
   acceptedGenomeFormats: ['.fa', '.fasta', '.fna', '.fa.gz', '.fasta.gz', '.fna.gz'],
   limits: {
     targetMaxBases: 10_000,
-    genomeMaxBytes: 50 * 1024 * 1024,
+    genomeMaxBytes: DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
   },
   retention: {
     inputHours: 24,
     resultDays: 7,
   },
 } satisfies Omit<PredictionCapabilities, 'available' | 'mode' | 'serviceStatus' | 'demoPreviewAvailable' | 'turnstileSiteKey' | 'unavailableReason'>;
+
+function capabilitiesWithConfiguredLimit() {
+  return {
+    ...DEFAULT_CAPABILITIES,
+    limits: {
+      ...DEFAULT_CAPABILITIES.limits,
+      genomeMaxBytes: predictionMaxRequestBytes(),
+    },
+  };
+}
 
 export function predictionMode(): PredictionServiceMode {
   return process.env.RAPPTOR_PREDICTION_MODE?.toLowerCase() === 'remote' ? 'remote' : 'demo';
@@ -28,7 +59,7 @@ export function predictionCapabilities(): PredictionCapabilities {
   const mode = predictionMode();
   if (mode === 'demo') {
     return {
-      ...DEFAULT_CAPABILITIES,
+      ...capabilitiesWithConfiguredLimit(),
       available: true,
       mode,
       serviceStatus: 'demo',
@@ -45,7 +76,7 @@ export function predictionCapabilities(): PredictionCapabilities {
   ].filter(([, value]) => !value).map(([name]) => name);
 
   return {
-    ...DEFAULT_CAPABILITIES,
+    ...capabilitiesWithConfiguredLimit(),
     available: missing.length === 0,
     mode,
     serviceStatus: missing.length === 0 ? 'ready' : 'unavailable',
@@ -57,7 +88,7 @@ export function predictionCapabilities(): PredictionCapabilities {
 
 export function demoPredictionCapabilities(): PredictionCapabilities {
   return {
-    ...DEFAULT_CAPABILITIES,
+    ...capabilitiesWithConfiguredLimit(),
     modelVersion: 'rapptor-cgr-100bp-demo-v1',
     available: true,
     mode: 'demo',

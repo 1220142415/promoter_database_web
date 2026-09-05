@@ -24,6 +24,7 @@ import {
 import { visibleTrackRegion, type TrackDownloadMetadata } from '@/features/genome-browser/track-download';
 import type { ExperimentalTssGenome, ExperimentalTssStudy } from '@/types/experimental-tss';
 import type { JBrowseReleaseAssembly } from '@/types/release';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 export interface BrowserRegion {
   refName: string;
@@ -119,8 +120,8 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   const assemblyName = prediction?.assemblyName || experimental?.assemblyName || experimental!.accession;
   const allowShareView = prediction?.allowShareView !== false;
   const shareUnavailableByDefault = allowShareView
-    ? 'Sharing is available for a single reference sequence after the browser loads.'
-    : 'Sharing is unavailable for browser-local prototype input.';
+    ? 'Share becomes available after one reference sequence loads.'
+    : 'Browser-local prototype input cannot be shared.';
   // The prediction assembly supplies the reference FASTA whenever both
   // evidence types are present, so its contig name is the only safe default
   // location. Experimental metadata may use an accession fallback that is
@@ -190,7 +191,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       const trackId = `${assemblyName}-promoter-scores`;
       const plusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresPlus);
       const minusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresMinus);
-      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR raw scores (+ / - strands)';
+      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR model scores (+ / − strands)';
       staticRegistry.scores = trackId;
       tracks.push({
         trackId,
@@ -235,7 +236,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     } else if (prediction?.assets.promoterScoresPlus) {
       const trackId = `${assemblyName}-promoter-scores`;
       const plusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresPlus);
-      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR raw scores (+ strand)';
+      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR model scores (+ strand)';
       staticRegistry.scores = trackId;
       tracks.push({
         trackId,
@@ -268,7 +269,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       const minusUrl = prediction.prototypeTracks.rawScoresBedGraphMinus
         ? resolveAsset(prediction.assetBase, prediction.prototypeTracks.rawScoresBedGraphMinus)
         : null;
-      const scoreTrackLabel = prediction.prototypeTracks.rawScoresLabel || 'Illustrative raw scores';
+      const scoreTrackLabel = prediction.prototypeTracks.rawScoresLabel || 'Illustrative model scores';
       const plusTrackId = `${assemblyName}-prototype-raw-scores-plus`;
       const plusTrackName = minusUrl ? `${scoreTrackLabel} · + strand` : scoreTrackLabel;
       staticRegistry.scores = plusTrackId;
@@ -338,7 +339,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     if (promoterData) {
       const trackId = `${assemblyName}-predicted-promoters`;
       const dataUrl = resolveAsset(promoterBase, promoterData);
-      const promoterTrackLabel = prediction?.trackLabels?.promoters || 'RAPPTOR predicted promoters';
+      const promoterTrackLabel = prediction?.trackLabels?.promoters || `RAPPTOR ${PORTAL_TERMS.promoterPredictions.toLowerCase()}`;
       const promoterUnindexed = experimentalPromoters ? !promoterIndex : predictionUnindexed || !promoterIndex;
       staticRegistry.promoters = trackId;
       tracks.push({
@@ -392,7 +393,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     if (!promoterData && prediction?.prototypeTracks?.calledPeaksGff3) {
       const trackId = `${assemblyName}-prototype-called-peaks`;
       const dataUrl = resolveAsset(prediction.assetBase, prediction.prototypeTracks.calledPeaksGff3);
-      const calledPeaksLabel = prediction.prototypeTracks.calledPeaksLabel || 'Illustrative called peaks';
+      const calledPeaksLabel = prediction.prototypeTracks.calledPeaksLabel || 'Illustrative promoter predictions';
       staticRegistry.promoters = trackId;
       tracks.push({
         trackId,
@@ -444,10 +445,18 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       tracks.push({
         trackId,
         name: `Experimental TSS · ${study.year} · PMID ${study.pmid}`,
-        description: [study.publication.title, study.publication.journal, `${study.recordCount.toLocaleString('en-US')} original observations`]
+        description: [study.publication.title, study.publication.journal, `${study.recordCount.toLocaleString('en-US')} observations`]
           .filter(Boolean).join(' · '),
         metadata: {
           rapptorEvidenceType: 'experimental_tss',
+          rapptorDownload: {
+            kind: 'raw-bed',
+            accession: study.accession,
+            label: `Experimental TSS · ${study.year} · PMID ${study.pmid}`,
+            regionExportBase: '',
+            wholeAssetUrl: resolveAsset(experimental!.assetBase, study.assets.rawBed),
+            visibleRegionDownload: false,
+          } satisfies TrackDownloadMetadata,
           rapptorStudy: {
             studyId: study.studyId,
             pmid: study.pmid,
@@ -545,7 +554,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const definitionsByToken = new Map(definitions.map((definition) => [definition.token, definition]));
     const initialWarnings = parsedShare.kind === 'absent' ? [] : [...parsedShare.warnings];
     if (parsedShare.kind === 'invalid') {
-      initialWarnings.unshift('This shared view link is invalid. The genome default view is shown instead.');
+      initialWarnings.unshift('Invalid share link. Showing the default genome view.');
     }
     const requestedTracks = parsedShare.kind === 'valid' ? parsedShare.state.tracks : null;
     const selectedSessionTracks = requestedTracks === null
@@ -555,7 +564,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       : requestedTracks.flatMap(({ token, height }) => {
           const definition = definitionsByToken.get(token);
           if (!definition) {
-            initialWarnings.push(`The ${token.replace('study:', 'study ')} track is not available for this genome.`);
+            initialWarnings.push(`${token.replace('study:', 'Study ')} track unavailable for this genome.`);
             return [];
           }
           return [{
@@ -634,7 +643,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         }
         if (!allowShareView) {
           setShareAvailable(false);
-          setShareUnavailableReason('Sharing is unavailable for browser-local prototype input.');
+          setShareUnavailableReason('Browser-local prototype input cannot be shared.');
           return;
         }
         const extracted = extractJBrowseShareState(view, registry);
@@ -670,7 +679,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
             const actualZoom = Number.isFinite(appliedZoom) ? appliedZoom : view.bpPerPx;
             const tolerance = Math.max(1e-9, sharedState.bpPerPx * 1e-6);
             if (Math.abs(actualZoom - sharedState.bpPerPx) > tolerance) {
-              warnings.push('This device cannot reproduce the exact shared zoom level; the nearest supported zoom is shown.');
+              warnings.push('Exact shared zoom unavailable; showing the nearest level.');
             }
             const center = view.pxToBp(view.width / 2);
             const centerMatches = !center.oob
@@ -679,16 +688,16 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
               && Math.abs(center.coord - sharedState.center) <= 1
               && (center.reversed === true) === sharedState.reversed;
             if (!centerMatches) {
-              warnings.push('The shared center coordinate or orientation is unavailable. The genome default view is shown instead.');
+              warnings.push('Shared center or orientation unavailable; showing the default view.');
               await view.navToLocString(defaultLocus, assemblyName);
             }
           }
         } catch {
-          if (sharedState) warnings.push('The shared reference location is unavailable. The genome default view is shown instead.');
+          if (sharedState) warnings.push('Shared location unavailable; showing the default view.');
           try {
             await view.navToLocString(defaultLocus, assemblyName);
           } catch {
-            warnings.push('The genome default location could not be opened.');
+            warnings.push('Default genome location could not be opened.');
           }
         }
         return warnings;
@@ -712,9 +721,9 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const updateFailures = () => {
       const failures = inspectUnifiedJBrowseFailures(viewState, assemblyName, sequenceTrackId, trackLabels);
       setReferenceFailureMessage(failures.referenceFailed
-        ? 'Genome browser unavailable: the reference sequence could not be loaded.' : '');
+        ? 'Browser unavailable: reference sequence failed to load.' : '');
       setPartialViewMessage(!failures.referenceFailed && failures.optionalTrackLabels.length
-        ? `Partial view: ${failures.optionalTrackLabels.join(', ')} could not be loaded. The reference sequence and other available evidence remain usable.`
+        ? `Partial view: ${failures.optionalTrackLabels.join(', ')} failed to load. Other tracks remain available.`
         : '');
     };
     updateFailures();
@@ -757,7 +766,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         disabled={!shareAvailable}
         aria-label="Share current view"
         aria-describedby={!shareAvailable ? 'unified-browser-share-unavailable' : undefined}
-        title={shareAvailable ? 'Copy this position, zoom, direction and evidence track layout' : shareUnavailableReason}
+        title={shareAvailable ? 'Copy position, zoom, direction, and track layout' : shareUnavailableReason}
       >
         <ShareRoundedIcon aria-hidden="true" />
         <span>Share view</span>
@@ -782,7 +791,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         </label>
       ) : null}
       {referenceFailureMessage
-        ? <div className="browser-unavailable" role="alert"><strong>{referenceFailureMessage}</strong><p>Check the reference FASTA and its FAI/GZI indexes before retrying.</p></div>
+        ? <div className="browser-unavailable" role="alert"><strong>{referenceFailureMessage}</strong><p>Check the FASTA and FAI/GZI indexes, then retry.</p></div>
         : <div className="portal-browser"><RapptorJBrowseLinearView viewState={viewState} /></div>}
     </div>
   );

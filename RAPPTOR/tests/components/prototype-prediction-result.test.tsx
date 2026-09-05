@@ -58,13 +58,13 @@ describe('prototype prediction result', () => {
     render(<PrototypePredictionResultView runId={queuedRun.runId} />);
 
     expect(screen.getByRole('region', { name: 'Prediction progress' })).toHaveTextContent('Waiting in queue');
-    expect(screen.getByRole('progressbar', { name: 'Prediction job progress' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Focused 100 bp result' })).not.toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Prediction task progress' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '100 bp result' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download/ })).not.toBeInTheDocument();
 
     await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
     expect(screen.getByRole('region', { name: 'Prediction progress' })).toHaveTextContent('Result ready');
-    expect(screen.getByRole('heading', { name: 'Focused 100 bp result' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '100 bp result' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Download (GFF3|bedGraph)/i })).toHaveLength(2);
   });
 
@@ -73,16 +73,16 @@ describe('prototype prediction result', () => {
     render(<PrototypePredictionResultView runId={candidateRun.runId} />);
 
     expect(await screen.findByRole('heading', { name: 'Prediction result' })).toBeInTheDocument();
-    expect(screen.getByText('Focused 100 bp scoring')).toBeInTheDocument();
-    expect(screen.getByText('No model was run')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Focused 100 bp result' })).toBeInTheDocument();
-    expect(screen.getAllByText('Illustrative raw score')).toHaveLength(2);
-    expect(screen.getByRole('meter', { name: /Forward strand.*illustrative raw score/ })).toBeInTheDocument();
-    expect(screen.getByRole('meter', { name: /Reverse strand.*illustrative raw score/ })).toBeInTheDocument();
+    expect(screen.getByText('100 bp scoring')).toBeInTheDocument();
+    expect(screen.getByText('Demo only: deterministic fixture values; no model was run.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '100 bp result' })).toBeInTheDocument();
+    expect(screen.getAllByText('Illustrative model score')).toHaveLength(2);
+    expect(screen.getByRole('meter', { name: /Forward strand.*illustrative model score/ })).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: /Reverse strand.*illustrative model score/ })).toBeInTheDocument();
     expect(screen.queryByText('100 bp anchor positions')).not.toBeInTheDocument();
     expect(screen.queryByText(/Anchor base/)).not.toBeInTheDocument();
-    expect(screen.getAllByText('At or below cutoff')).toHaveLength(2);
-    expect(screen.getByText(/cutoff only labels the score state/i)).toBeInTheDocument();
+    expect(screen.getAllByText('At or below threshold')).toHaveLength(2);
+    expect(screen.getByText(/threshold changes classification only/i)).toBeInTheDocument();
     expect(screen.queryByText(/raw score curve|top windows|called peak|top results/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Read the interpretation guide' })).not.toBeInTheDocument();
@@ -94,7 +94,7 @@ describe('prototype prediction result', () => {
     render(<PrototypePredictionResultView runId={genomeRun.runId} />);
 
     expect(await screen.findByRole('heading', { name: 'Prediction result' })).toBeInTheDocument();
-    expect(screen.getByText('Sequence / contig scan')).toBeInTheDocument();
+    expect(screen.getByText('Sequence scan')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Genome browser' })).toBeInTheDocument();
     expect(await screen.findByTestId('prototype-genome-browser')).toHaveTextContent('Reference sequence · Raw score · Called peak');
     expect(screen.getAllByRole('button', { name: /Download (GFF3|bedGraph)/i })).toHaveLength(2);
@@ -106,6 +106,6 @@ describe('prototype prediction result', () => {
     render(<PrototypePredictionResultView runId="prototype_missing-run-001" />);
     expect(await screen.findByRole('heading', { name: 'This result is no longer in this tab' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create another prototype run' })).toHaveAttribute('href', '/predict');
-    expect(screen.getByText(/copied result URL does not contain the input/i)).toBeInTheDocument();
+    expect(screen.getByText(/copied URLs contain no input/i)).toBeInTheDocument();
   });
 });

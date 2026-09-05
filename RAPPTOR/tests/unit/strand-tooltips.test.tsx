@@ -49,9 +49,9 @@ describe('strand tooltips', () => {
     } as ComponentProps<typeof StrandFeatureTooltip>;
     const { rerender } = render(<StrandFeatureTooltip {...plusProps} />);
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('contig_1:20..119');
-    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('predicted anchor (80th base): contig_1:99');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction anchor (base 80): contig_1:99');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: +');
-    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('score: 0.95');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('model score: 0.95');
 
     const unknownProps = {
       clientMouseCoord: [10, 10],
@@ -86,8 +86,8 @@ describe('strand tooltips', () => {
       },
     } as ComponentProps<typeof StrandFeatureTooltip>;
     render(<StrandFeatureTooltip {...props} />);
-    expect(screen.getByTestId('strand-feature-tooltip')).not.toHaveTextContent('predicted anchor');
+    expect(screen.getByTestId('strand-feature-tooltip')).not.toHaveTextContent('prediction anchor');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: -');
-    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('score: 0.91');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('model score: 0.91');
   });
 });

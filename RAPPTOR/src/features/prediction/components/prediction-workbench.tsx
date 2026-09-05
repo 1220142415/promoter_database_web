@@ -10,6 +10,8 @@ import {
 } from '../history';
 import PredictionProgressPanel from './prediction-progress-panel';
 import { normalizePredictionProgress, type PredictionProgressSnapshot } from '../progress';
+import { formatPredictionMaxRequestBytes, predictionMaxRequestBytes } from '../capabilities';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from './prediction.module.css';
 
 const PredictionBrowser = dynamic(() => import('./prediction-browser'), { ssr: false });
@@ -61,11 +63,16 @@ function firstRefName(fasta: string) {
 }
 
 function formatBytes(value: number) {
-  const units = ['B', 'KB', 'MB', 'GB'];
+  const units = ['B', 'KiB', 'MiB', 'GiB'];
   let size = value;
   let unit = 0;
   while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
   return `${size.toFixed(unit ? 1 : 0)} ${units[unit]}`;
+}
+
+function statusLabel(status: JobState['status']) {
+  if (status === 'succeeded') return 'Ready';
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function formatExpiry(value?: string | null) {
@@ -74,7 +81,7 @@ function formatExpiry(value?: string | null) {
   return Number.isNaN(expiry.getTime()) ? null : expiry.toLocaleString();
 }
 
-export default function PredictionWorkbench({ siteKey, modelVersion, localTest = false }: { siteKey: string; modelVersion: string; localTest?: boolean }) {
+export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBytes = predictionMaxRequestBytes(), localTest = false }: { siteKey: string; modelVersion: string; maxGenomeBytes?: number; localTest?: boolean }) {
   const [mode, setMode] = useState<'genome_scan' | 'predict'>('genome_scan');
   const [fasta, setFasta] = useState('');
   const [fileName, setFileName] = useState('');
@@ -209,7 +216,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
 
   async function readFile(file: File | undefined) {
     if (!file) return;
-    if (file.size > 12 * 1024 * 1024) { setMessage('FASTA exceeds the 12 MiB request limit.'); return; }
+    if (file.size > maxGenomeBytes) { setMessage(`FASTA exceeds the ${formatPredictionMaxRequestBytes(maxGenomeBytes)} request limit.`); return; }
     setFasta(await file.text());
     setFileName(file.name);
     setRefName('');
@@ -338,10 +345,10 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
   const serviceAvailable = Boolean(siteKey) || localTest;
   const serviceTone = serviceAvailable ? styles.statusReady : styles.statusUnavailable;
   const serviceLabel = serviceAvailable ? 'SERVICE READY' : 'SERVICE UNAVAILABLE';
-  const serviceTitle = serviceAvailable ? 'Prediction service is configured' : 'Prediction is not enabled in this deployment';
+  const serviceTitle = serviceAvailable ? 'Prediction service ready' : 'Prediction unavailable';
   const serviceBody = serviceAvailable
-    ? 'Validated inputs will be submitted to the configured RAPPtor inference service.'
-    : 'The form is available for review, but Turnstile and prediction service settings are not configured.';
+    ? 'Validated input goes to the configured RAPPTOR service.'
+    : 'Turnstile and prediction service settings are not configured.';
   const activeJob = job?.status === 'queued' || job?.status === 'running';
   const selectedEntry = history.find((entry) => entry.jobId === job?.job_id);
   const artifactsExpireAt = formatExpiry(job?.artifacts_expires_at);
@@ -354,7 +361,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
       : job.status === 'queued'
         ? 'Waiting for an available worker.'
         : job.status === 'succeeded'
-          ? 'Prediction result is ready.'
+          ? 'Result ready.'
           : `Current stage: ${(job.progress?.stage || 'running').replaceAll('_', ' ')}.`,
     contig: job.progress?.contig,
     strand: job.progress?.strand === '+' || job.progress?.strand === '-' ? job.progress.strand : undefined,
@@ -373,33 +380,33 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
           <div className={styles.workspaceMain}>
             {showNew ? <div className={styles.workbench}>
               <div className={styles.workbenchHeader}>
-                <div><span>INPUT WORKBENCH</span><strong>Candidate sequence and matching genome context</strong></div>
+                <div><span>INPUT WORKBENCH</span><strong>Prediction input and genome context</strong></div>
                 <p><strong>100 bp</strong> windows · base 80 anchor</p>
               </div>
 
               <div className={styles.inputGrid}>
                 <fieldset className={styles.card}>
-                  <legend><span>1</span><div>Prediction input<small>Whole-genome scan or target sequence</small></div></legend>
+                  <legend><span>1</span><div>Prediction input<small>{PORTAL_TERMS.sequenceScan} or target sequence</small></div></legend>
                   <div className={styles.tabs} role="group" aria-label="Prediction mode">
-                    <button type="button" className={mode === 'genome_scan' ? styles.activeTab : ''} aria-pressed={mode === 'genome_scan'} onClick={() => setMode('genome_scan')}>Whole-genome scan</button>
+                    <button type="button" className={mode === 'genome_scan' ? styles.activeTab : ''} aria-pressed={mode === 'genome_scan'} onClick={() => setMode('genome_scan')}>{PORTAL_TERMS.sequenceScan}</button>
                     <button type="button" className={mode === 'predict' ? styles.activeTab : ''} aria-pressed={mode === 'predict'} onClick={() => setMode('predict')}>Target sequence</button>
                   </div>
                   {mode === 'predict' ? <>
                     <label className="sr-only" htmlFor="prediction-target-sequence">Target sequence</label>
                     <textarea id="prediction-target-sequence" value={sequence} onChange={(event) => setSequence(event.target.value)} rows={7} spellCheck={false} placeholder="ACGT…" />
                     <div className={styles.inputStatus}><span>Minimum 100 bases · ACGTN accepted · U becomes T</span></div>
-                  </> : <div className={styles.contextWarning}><strong>Whole-genome scan</strong><span>Every 100 bp window is scored at stride 1. No cutoff or top-k truncation is applied.</span></div>}
-                  <label className={styles.checkbox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span><strong>Complete-genome context confirmed</strong><small>This genome is the complete sequence used to calculate the 128×128 CGR context.</small></span></label>
+                  </> : <div className={styles.contextWarning}><strong>{PORTAL_TERMS.sequenceScan}</strong><span>Every 100 bp window is scored at stride 1; no cutoff or top-k is applied.</span></div>}
+                  <label className={styles.checkbox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span><strong>Complete genome confirmed</strong><small>Used to calculate the 128×128 CGR context.</small></span></label>
                 </fieldset>
 
                 <fieldset className={styles.card}>
-                  <legend><span>2</span><div>Genome context for CGR<small>Required for both prediction modes</small></div></legend>
+                  <legend><span>2</span><div>{PORTAL_TERMS.genomeContextCgr}<small>Required for both prediction modes</small></div></legend>
                   <div className={styles.uploadZone}>
                     <button type="button" onClick={() => document.getElementById('prediction-genome-file')?.click()}><span><strong>{fasta ? 'Complete-genome FASTA selected' : 'Choose complete-genome FASTA'}</strong><small>{fasta ? `${fastaBases(fasta).toLocaleString()} bases · ${firstRefName(fasta) || 'No header'}` : 'FASTA, FASTA.gz, or plain text'}</small></span></button>
                     <input id="prediction-genome-file" className="sr-only" type="file" accept=".fa,.fasta,.fna,.txt,text/plain" onChange={(event) => void readFile(event.target.files?.[0])} />
-                    {fasta ? <button className={styles.removeFile} type="button" onClick={() => { setFasta(''); setFileName(''); setRefName(''); }}>Remove file</button> : <p>The raw genome is sent only to the configured prediction service.</p>}
+                    {fasta ? <button className={styles.removeFile} type="button" onClick={() => { setFasta(''); setFileName(''); setRefName(''); }}>Remove file</button> : <p>The genome is sent only to the configured prediction service.</p>}
                   </div>
-                  {mode === 'genome_scan' && <div className={styles.outputPlan}><strong>Result</strong><span>One GFF3 download. BigWig files are used internally by the in-page genome view and are not listed as downloads.</span></div>}
+                  {mode === 'genome_scan' && <div className={styles.outputPlan}><strong>Result</strong><span>One GFF3 download. BigWig powers the genome view and is not listed for download.</span></div>}
                 </fieldset>
               </div>
 
@@ -410,11 +417,11 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
               </div>
               {!serviceAvailable && <div className={styles.formError} role="alert"><span>Prediction verification is not configured for this deployment.</span></div>}
               {message && <div className={styles.formError} role="alert"><span>{message}</span></div>}
-              <p className={styles.disclaimer}>RAPPTOR outputs are model predictions, not experimental validation. Genome scans use stride 1 with no cutoff or top-k truncation.</p>
+              <p className={styles.disclaimer}>RAPPTOR outputs are model predictions, not experimental validation. Sequence scans use stride 1 without cutoff or top-k.</p>
             </div> : job ? <section ref={jobView} className={styles.jobDetail} tabIndex={-1} aria-live="polite">
               <div className={styles.jobDetailHeader}>
                 <div><span>SELECTED PREDICTION</span><strong>{selectedEntry?.label || refName || `Job ${job.job_id.slice(0, 8)}`}</strong></div>
-                <i data-status={job.status}>{job.status}</i>
+                <i data-status={job.status}>{statusLabel(job.status)}</i>
               </div>
               {message && <div className={styles.formError} role="alert"><span>{message}</span></div>}
               {jobProgress ? <PredictionProgressPanel mode={(selectedEntry?.mode || mode) === 'genome_scan' ? 'scan' : 'focused'} snapshot={jobProgress} /> : null}
@@ -426,21 +433,21 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
                     <div><span>Target bases</span><strong>{summary.sequence_bases?.toLocaleString() ?? '—'}</strong><small>Submitted target sequence</small></div>
                     <div><span>Context bases</span><strong>{summary.genome_context_bases?.toLocaleString() ?? '—'}</strong><small>Genome context used for CGR</small></div>
                     <div><span>Windows scored</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Stride 1 model windows</small></div>
-                    <div><span>Maximum score</span><strong>{summary.max_score?.toFixed(4) ?? '—'}</strong><small>Highest predicted probability</small></div>
+                    <div><span>Highest model score</span><strong>{summary.max_score?.toFixed(4) ?? '—'}</strong><small>Highest score in the result</small></div>
                   </> : <>
                     <div><span>Genome bases</span><strong>{summary.total_bases?.toLocaleString() ?? '—'}</strong><small>Uploaded assembly length</small></div>
                     <div><span>Windows scored</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Plus and minus strands combined</small></div>
-                    <div><span>Scan stride</span><strong>{summary.stride?.toLocaleString() ?? '—'}</strong><small>Bases between adjacent windows</small></div>
+                    <div><span>{PORTAL_TERMS.stride}</span><strong>{summary.stride?.toLocaleString() ?? '—'}</strong><small>Bases between adjacent windows</small></div>
                     <div><span>Contigs</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>FASTA records scanned</small></div>
                   </>}
                 </div>
               </section>}
 
               {artifacts.length > 0 && <section className={styles.jobSection}>
-                <div className={styles.panelHeading}><div><p className="portal-kicker">Prediction download</p><h2>GFF3 result</h2></div><p>{artifactsExpireAt ? <>Available until <time dateTime={job.artifacts_expires_at!}>{artifactsExpireAt}</time></> : 'Earlier run · no expiry assigned'}</p></div>
+                <div className={styles.panelHeading}><div><p className="portal-kicker">Download</p><h2>GFF3 result</h2></div><p>{artifactsExpireAt ? <>Available until <time dateTime={job.artifacts_expires_at!}>{artifactsExpireAt}</time></> : 'Earlier task · no expiry assigned'}</p></div>
                 {gffArtifacts.length > 0
                   ? <div className={styles.downloads}>{gffArtifacts.map((artifact) => <a key={artifact.filename} href={`/api/predictions/jobs/${job.job_id}/artifacts/${artifact.filename}`} download><span><strong>{artifact.filename}</strong><small>GFF3 · {formatBytes(artifact.size_bytes)}</small></span><code>{artifact.sha256.slice(0, 12)}…</code></a>)}</div>
-                  : <p className={styles.artifactNotice}>This earlier run did not request GFF3. Rerun once to receive the GFF3 result; its BigWig tracks remain available in the genome browser below.</p>}
+                  : <p className={styles.artifactNotice}>This task did not request GFF3. Run it again for GFF3; its BigWig tracks remain in the genome browser.</p>}
               </section>}
 
               {job.status === 'succeeded' && hasBrowserFiles && refName && <section className={styles.jobSection}>
@@ -451,14 +458,14 @@ export default function PredictionWorkbench({ siteKey, modelVersion, localTest =
           </div>
 
           <aside className={styles.recentPanel} aria-label="Recent predictions">
-            <div className={styles.recentHeading}><div><p className="portal-kicker">Stored in this browser</p><h2>Recent sequences</h2></div><button type="button" className={styles.clearHistory} disabled={!history.length || activeJob} title={activeJob ? 'The running task is kept so its result remains accessible.' : undefined} onClick={clearHistory}>Clear</button></div>
+            <div className={styles.recentHeading}><div><p className="portal-kicker">Stored in this browser</p><h2>Recent predictions</h2></div><button type="button" className={styles.clearHistory} disabled={!history.length || activeJob} title={activeJob ? 'The running task is kept so its result remains accessible.' : undefined} onClick={clearHistory}>Clear</button></div>
             <p className={styles.historyNote}>Only access details are saved locally; sequence content is not stored.</p>
             <div className={styles.historyList}>
-              <button type="button" className={`${styles.newPrediction} ${showNew ? styles.activeRecent : ''}`} aria-current={showNew ? 'page' : undefined} onClick={() => { setShowNew(true); setMessage(''); }}><strong>＋ New prediction</strong><small>Start a genome scan or target-sequence test</small></button>
+              <button type="button" className={`${styles.newPrediction} ${showNew ? styles.activeRecent : ''}`} aria-current={showNew ? 'page' : undefined} onClick={() => { setShowNew(true); setMessage(''); }}><strong>＋ New prediction</strong><small>Start a sequence scan or target-sequence test</small></button>
               {history.map((entry) => <div key={entry.jobId} className={!showNew && job?.job_id === entry.jobId ? styles.activeRecent : ''}>
                 <button type="button" className={styles.historyOpen} aria-current={!showNew && job?.job_id === entry.jobId ? 'page' : undefined} disabled={openingJob === entry.jobId} onClick={() => void openHistory(entry)}>
-                  <span><strong>{entry.label}</strong><small>{entry.mode === 'genome_scan' ? 'Genome scan' : 'Target sequence'} · {entry.bases > 0 ? `${entry.bases.toLocaleString()} bases` : 'Bases unavailable'}<br />{new Date(entry.submittedAt).toLocaleString()}</small></span>
-                  <div className={styles.historyAction}><i data-status={entry.status}>{entry.status}</i><b>{openingJob === entry.jobId ? 'Opening…' : !showNew && job?.job_id === entry.jobId ? 'Selected' : activeJob && job?.job_id === entry.jobId ? 'View progress' : 'View'}</b></div>
+                  <span><strong>{entry.label}</strong><small>{entry.mode === 'genome_scan' ? PORTAL_TERMS.sequenceScan : 'Target sequence'} · {entry.bases > 0 ? `${entry.bases.toLocaleString()} bases` : 'Bases unavailable'}<br />{new Date(entry.submittedAt).toLocaleString()}</small></span>
+                  <div className={styles.historyAction}><i data-status={entry.status}>{statusLabel(entry.status)}</i><b>{openingJob === entry.jobId ? 'Opening…' : !showNew && job?.job_id === entry.jobId ? 'Selected' : activeJob && job?.job_id === entry.jobId ? 'View progress' : 'View'}</b></div>
                 </button>
                 <button type="button" className={styles.historyRemove} disabled={activeJob && job?.job_id === entry.jobId} aria-label={`Remove ${entry.label} from browser history`} onClick={() => removeHistory(entry.jobId)}>Remove</button>
               </div>)}

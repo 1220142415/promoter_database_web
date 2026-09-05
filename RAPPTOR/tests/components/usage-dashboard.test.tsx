@@ -87,7 +87,7 @@ describe('usage dashboard', () => {
   it('summarises visitors and locations without a pages module', async () => {
     await renderDashboard('7');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Who is using RAPPTOR' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'How RAPPTOR is used' })).toBeInTheDocument();
     expect(readUsageReport).toHaveBeenCalledWith(expect.anything(), 7);
     expect(screen.getByText('16')).toBeInTheDocument();
     expect(screen.getByText('70')).toBeInTheDocument();
@@ -127,9 +127,9 @@ describe('usage dashboard', () => {
     expect(screen.getByRole('heading', { name: 'Collection is switched off' }).parentElement).toHaveTextContent(
       'Set RAPPTOR_ANALYTICS=on to start counting',
     );
-    expect(screen.getByText(/Approximate daily uniques, summed over the range/)).toBeInTheDocument();
-    expect(screen.getByText(/random daily salt/)).toBeInTheDocument();
-    expect(screen.getByText(/next successful counted request or dashboard read/)).toBeInTheDocument();
+    expect(screen.getByText(/Approximate daily uniques, summed by day/)).toBeInTheDocument();
+    expect(screen.getByText(/unlinkable daily token/)).toBeInTheDocument();
+    expect(screen.getByText(/next counted request or dashboard read/)).toBeInTheDocument();
   });
 
   it('explains what to do when D1 is not bound', async () => {
@@ -155,7 +155,7 @@ describe('usage dashboard', () => {
     process.env.RAPPTOR_USAGE_PUBLIC_PAGE = 'on';
     await renderPublicDashboard('7');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Who is using RAPPTOR' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'How RAPPTOR is used' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '30 days' })).toHaveAttribute('href', '/usage?days=30');
     expect(screen.queryByRole('link', { name: 'Download CSV' })).not.toBeInTheDocument();
   });

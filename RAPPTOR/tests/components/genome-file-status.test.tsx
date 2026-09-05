@@ -16,7 +16,7 @@ describe('genome file status', () => {
     />);
 
     expect(screen.getByRole('progressbar', { name: 'Reference: Downloading 42%' })).toHaveAttribute('aria-valuenow', '42');
-    expect(screen.getByRole('progressbar', { name: 'Promoters: Decompressing' })).not.toHaveAttribute('aria-valuenow');
-    expect(screen.getByLabelText('Genome files')).toHaveTextContent('ScoresFailed');
+    expect(screen.getByRole('progressbar', { name: 'Promoter predictions: Decompressing' })).not.toHaveAttribute('aria-valuenow');
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('Model scoresFailed');
   });
 });

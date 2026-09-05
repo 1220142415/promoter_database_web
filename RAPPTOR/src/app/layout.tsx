@@ -6,7 +6,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: { default: 'RAPPTOR | Bacterial promoter resource', template: '%s' },
-  description: 'Genome-resolved bacterial promoter predictions, reference assemblies and contextual NCBI annotations.',
+  description: 'Genome-resolved promoter predictions, reference assemblies, and NCBI annotations.',
   keywords: ['bacterial promoters', 'RAPPTOR', 'GTDB taxonomy', 'genome browser', 'JBrowse 2'],
 };
 
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {children}
         <footer className="portal-footer">
           <div className="portal-shell">
-            <div><strong>RAPPTOR</strong><p>Bacterial promoter predictions and genome-resolved evidence.</p></div>
+          <div><strong>RAPPTOR</strong><p>Promoter predictions and genome-resolved evidence.</p></div>
             <nav aria-label="Footer navigation"><Link href="/genomes">Genomes</Link><Link href="/cyanobacteria">Cyanobacteria</Link>{showExperimental ? <Link href="/experimental-tss">Experimental TSS</Link> : null}{showUsage && <Link href="/usage">Usage</Link>}</nav>
           </div>
         </footer>

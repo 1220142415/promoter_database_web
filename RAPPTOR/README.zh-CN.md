@@ -1,6 +1,6 @@
 # RAPPTOR
 
-RAPPTOR 是面向 2026-08-07 GTDB 测试数据集的基因组优先型资源门户。网站提供可检索的基因组目录、按 accession 隔离的 JBrowse 2 视图和可复现下载，不把全部启动子峰导入数据库。
+RAPPTOR 是面向 2026-08-07 GTDB 测试数据集的基因组优先型资源门户。网站提供可检索的基因组目录、按 accession 隔离的 JBrowse 2 视图和可复现下载，不把全部启动子预测导入数据库。
 
 目录职责、运行时请求流程和新文件放置规则见
 [`docs/architecture.md`](docs/architecture.md)。
@@ -19,11 +19,13 @@ RAPPTOR 是面向 2026-08-07 GTDB 测试数据集的基因组优先型资源门�
 
 1. 在 Genome catalog 中按 accession、物种名或 taxonomy 搜索。
 2. 按 phylum、基因组来源或 NCBI 注释可用性筛选。
-3. 打开一个 assembly，在 JBrowse 中查看参考序列、预测启动子和可选 NCBI 注释。
+3. 打开一个 assembly，在 JBrowse 中查看参考序列、启动子预测和可选 NCBI 注释。
 4. 下载该 assembly 的索引文件和 metadata。
 5. 在 Data & methods 页面查看来源、证据边界、文件格式、manifest 和 checksum。
 
-RAPPTOR 预测峰与 NCBI 基因结构注释是不同的信息层。网站不推断启动子对应基因，也不把预测峰写成实验 TSS。
+RAPPTOR 启动子预测与 NCBI 基因结构注释是不同的信息层。网站不推断启动子对应基因，也不把预测结果写成实验 TSS。
+
+预测上传与服务请求共用 `RAPPTOR_MAX_REQUEST_BYTES`。Web 与 Python 服务必须设置为同一个正整数字节值；未设置或无效时均使用 12 MiB（`12582912` 字节）。
 
 ## 环境要求
 
@@ -56,7 +58,7 @@ node scripts/data/build-gtdb-release.mjs --tool-mode native --force
 node scripts/data/validate-gtdb-release.mjs
 ```
 
-如需加入 step=50 的 RAPPTOR cutoff 前原始分数，先安装离线转换依赖，再传入每个待发布 accession 恰好一个 Parquet 的目录：
+如需加入 stride=50 的 RAPPTOR 原始模型分数，先安装离线转换依赖，再传入每个待发布 accession 恰好一个 Parquet 的目录：
 
 ```bash
 python3 -m pip install pyarrow pyBigWig
@@ -75,8 +77,8 @@ reference.fa.gz.fai
 reference.fa.gz.gzi
 predicted-promoters.gff3.gz
 predicted-promoters.gff3.gz.tbi
-promoter-scores.plus.bw          # 提供原始分数时生成
-promoter-scores.minus.bw         # 提供原始分数时生成
+promoter-scores.plus.bw          # 提供模型分数时生成
+promoter-scores.minus.bw         # 提供模型分数时生成
 ncbi-annotations.gff3.gz       # 仅可用时存在
 ncbi-annotations.gff3.gz.tbi   # 仅可用时存在
 metadata.json

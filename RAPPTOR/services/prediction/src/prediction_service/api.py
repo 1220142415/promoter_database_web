@@ -23,7 +23,7 @@ from .tickets import TicketRejected, consume_ticket, parse_ticket_header
 from .validation import InputValidationError, validate_fasta, validate_sequence
 
 
-app = FastAPI(title="RAPPtor Prediction Service", version="0.1.0")
+app = FastAPI(title="RAPPTOR Prediction Service", version="0.1.0")
 
 ARTIFACT_CONTENT_TYPES = {
     ".bw": "application/x-bigwig",
@@ -112,7 +112,7 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     request = payload.model_dump()
     batch_size = int(payload.batch_size or SETTINGS.default_batch_size)
     if batch_size > SETTINGS.max_batch_size:
-        raise InputValidationError(f"batch_size exceeds limit {SETTINGS.max_batch_size}")
+        raise InputValidationError(f"Batch size must be at most {SETTINGS.max_batch_size}.")
     request["batch_size"] = batch_size
 
     if payload.mode == "predict":
@@ -143,9 +143,9 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     )
     stride = int(payload.stride or SETTINGS.default_scan_stride)
     if stride < SETTINGS.min_scan_stride:
-        raise InputValidationError(f"genome_scan stride must be >= {SETTINGS.min_scan_stride}")
+        raise InputValidationError(f"Stride must be at least {SETTINGS.min_scan_stride} bp.")
     if stride > SETTINGS.max_scan_stride:
-        raise InputValidationError(f"stride exceeds limit {SETTINGS.max_scan_stride}")
+        raise InputValidationError(f"Stride must be at most {SETTINGS.max_scan_stride} bp.")
     request["fasta"] = validated.to_fasta()
     genome_context = None
     if payload.genome_context is not None:
@@ -233,7 +233,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
         _http_error(400, "INVALID_INPUT", str(exc))
 
     if len(json.dumps(request_payload).encode("utf-8")) > SETTINGS.max_request_bytes:
-        _http_error(413, "INPUT_TOO_LARGE", "request exceeds service byte limit")
+        _http_error(413, "INPUT_TOO_LARGE", "Request exceeds the configured size limit.")
 
     ticket = parse_ticket_header(authorization)
     try:
@@ -248,9 +248,9 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
         connection.ping()
         queue = get_queue(connection)
         if queue.count >= SETTINGS.max_queue_length:
-            _http_error(429, "RATE_LIMITED", "global prediction queue is full")
+            _http_error(429, "RATE_LIMITED", "Prediction queue is full.")
     except RedisError:
-        _http_error(503, "QUEUE_UNAVAILABLE", "Redis queue is unavailable")
+        _http_error(503, "QUEUE_UNAVAILABLE", "Prediction queue is unavailable.")
 
     job_id = uuid.uuid4().hex
     access_token = new_access_token()
@@ -306,7 +306,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
             },
         )
     except Exception:
-        _http_error(503, "QUEUE_UNAVAILABLE", "failed to enqueue prediction job")
+        _http_error(503, "QUEUE_UNAVAILABLE", "Prediction could not be queued.")
 
     callback_recorded = await deliver_job_event_async(callback_payload) if SETTINGS.job_callback_url else False
     job.meta["permanent_record"] = "recorded" if callback_recorded else "pending"
@@ -324,13 +324,13 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
 def get_job(job_id: str, x_job_token: str | None = Header(default=None, alias="X-Job-Token")):
     try:
         if len(job_id) != 32 or any(c not in "0123456789abcdef" for c in job_id):
-            _http_error(404, "JOB_NOT_FOUND", "job not found")
+            _http_error(404, "JOB_NOT_FOUND", "Job not found.")
         connection = get_redis_connection()
         job = Job.fetch(job_id, connection=connection)
     except Exception:
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     if not token_matches(x_job_token or "", job.meta.get("access_token_sha256")):
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     status = _status_name(job)
     result = job.meta.get("result") if status == "succeeded" else None
     error = job.meta.get("error") if status == "failed" else None
@@ -352,25 +352,25 @@ def get_job(job_id: str, x_job_token: str | None = Header(default=None, alias="X
 def download_result(job_id: str, x_job_token: str | None = Header(default=None, alias="X-Job-Token")):
     try:
         if len(job_id) != 32 or any(c not in "0123456789abcdef" for c in job_id):
-            _http_error(404, "JOB_NOT_FOUND", "job not found")
+            _http_error(404, "JOB_NOT_FOUND", "Job not found.")
         connection = get_redis_connection()
         job = Job.fetch(job_id, connection=connection)
     except Exception:
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     if not token_matches(x_job_token or "", job.meta.get("access_token_sha256")):
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     if _status_name(job) != "succeeded":
-        _http_error(409, "JOB_NOT_COMPLETE", "job result is not available yet")
+        _http_error(409, "JOB_NOT_COMPLETE", "Result is not ready.")
     result = job.meta.get("result") or {}
     filename = result.get("filename")
     if not isinstance(filename, str) or "/" in filename or "\\" in filename:
-        _http_error(500, "RESULT_UNAVAILABLE", "job result metadata is invalid")
+        _http_error(500, "RESULT_UNAVAILABLE", "Result metadata is invalid.")
     try:
         result_path = JobStorage(SETTINGS.data_root).job_dir(job_id) / filename
     except ValueError:
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     if not result_path.is_file():
-        _http_error(503, "RESULT_UNAVAILABLE", "job result file is unavailable")
+        _http_error(503, "RESULT_UNAVAILABLE", "Result file is unavailable.")
     media_type = ARTIFACT_CONTENT_TYPES.get(result_path.suffix, "application/octet-stream")
     return FileResponse(result_path, media_type=media_type, filename=result_path.name)
 
@@ -385,26 +385,26 @@ def download_artifact(
     """Serve a completed artifact with HTTP Range support for JBrowse."""
     try:
         if len(job_id) != 32 or any(c not in "0123456789abcdef" for c in job_id):
-            _http_error(404, "JOB_NOT_FOUND", "job not found")
+            _http_error(404, "JOB_NOT_FOUND", "Job not found.")
         connection = get_redis_connection()
         job = Job.fetch(job_id, connection=connection)
     except Exception:
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     if not token_matches(x_job_token or "", job.meta.get("access_token_sha256")):
-        _http_error(404, "JOB_NOT_FOUND", "job not found")
+        _http_error(404, "JOB_NOT_FOUND", "Job not found.")
     if _status_name(job) != "succeeded":
-        _http_error(409, "JOB_NOT_COMPLETE", "job result is not available yet")
+        _http_error(409, "JOB_NOT_COMPLETE", "Result is not ready.")
     result = job.meta.get("result") or {}
     artifacts = result.get("artifacts") or []
     artifact = next((item for item in artifacts if item.get("filename") == filename), None)
     if not isinstance(artifact, dict):
-        _http_error(404, "ARTIFACT_NOT_FOUND", "artifact not found")
+        _http_error(404, "ARTIFACT_NOT_FOUND", "Artifact not found.")
     try:
         path = JobStorage(SETTINGS.data_root).job_dir(job_id) / filename
     except ValueError:
-        _http_error(404, "ARTIFACT_NOT_FOUND", "artifact not found")
+        _http_error(404, "ARTIFACT_NOT_FOUND", "Artifact not found.")
     if not path.is_file() or path.name != filename:
-        _http_error(404, "ARTIFACT_NOT_FOUND", "artifact not found")
+        _http_error(404, "ARTIFACT_NOT_FOUND", "Artifact not found.")
     size = path.stat().st_size
     parsed = _parse_range(request.headers.get("range"), size)
     if parsed == "invalid":

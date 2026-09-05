@@ -30,13 +30,13 @@ Completeness cannot be inferred reliably from sequence text alone. The API
 validates format, alphabet, ambiguity, byte size, and configured base limits,
 then records that the caller asserted complete-genome input.
 
-## Genome-scan outputs
+## Sequence-scan outputs
 
-`genome_scan` accepts a configured-range `stride` and an optional
+`genome_scan` accepts a configured `stride` and optional
 `score_cutoff` in `[0, 1]`. The cutoff uses the strict rule
 `score > score_cutoff` and applies only to sparse GFF3/JSON records. BigWig and
-Parquet always retain every scanned window, so changing a display/export cutoff
-never destroys the underlying probability track. `top_k` remains unsupported.
+Parquet retain every window, so an export cutoff never changes the raw model-score
+tracks. `top_k` remains unsupported.
 
 ```json
 {
@@ -51,6 +51,9 @@ never destroys the underlying probability track. `top_k` remains unsupported.
 
 `GET /v1/models/current` publishes the active stride limits, cutoff range and
 operator, affected formats, and default output formats for frontend clients.
+
+Set `RAPPTOR_MAX_REQUEST_BYTES` to the same positive byte value in the web app
+and this service. Both default to `12582912` bytes (12 MiB).
 
 Completed jobs return an artifact manifest. Each artifact can be read from:
 

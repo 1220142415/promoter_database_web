@@ -181,7 +181,7 @@ class PromoterModel(nn.Module):
 
     def forward(self, x, genome_emb=None, return_embedding=False, return_attn: bool = False):
         if self.use_cgr_image and genome_emb is None:
-            raise ValueError("RAPPtor requires a CGR image when use_cgr_image=True")
+            raise ValueError("RAPPTOR requires a CGR image when use_cgr_image=True")
 
         x = self.conv_in(x)
         x = x.transpose(1, 2)

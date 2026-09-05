@@ -72,7 +72,7 @@ describe('prediction result view', () => {
     expect(await screen.findByText('Both (+/−)')).toBeInTheDocument();
     expect(screen.getAllByText('9–108')).toHaveLength(2);
     expect(screen.getByRole('heading', { name: 'Top promoter windows' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Promoter probability by prediction anchor' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Model score by anchor' })).toBeInTheDocument();
     expect(screen.queryByText(/window intervals ×/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Anchor rule')).not.toBeInTheDocument();
     expect(screen.queryByText('Demo limitation')).not.toBeInTheDocument();

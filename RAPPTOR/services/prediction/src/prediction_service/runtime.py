@@ -98,7 +98,7 @@ class ModelRuntime:
 
     def score_sequence(self, sequence: str, cgr_tensor: torch.Tensor | None, *, stride: int, batch_size: int) -> np.ndarray:
         if self.use_cgr_image and cgr_tensor is None:
-            raise ValueError("CGR-conditioned RAPPtor requires a genome CGR tensor")
+            raise ValueError("CGR-conditioned RAPPTOR requires a genome CGR tensor")
         args = SimpleNamespace(
             length=self.seq_length,
             stride=int(stride),

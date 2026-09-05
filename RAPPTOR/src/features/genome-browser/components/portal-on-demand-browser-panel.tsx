@@ -20,6 +20,7 @@ import {
 import type { PlannedGenomeAssets } from '@/features/storage/hf-batch-assets';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import type { JBrowseReleaseAssembly } from '@/types/release';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 type Props = {
   accession: string;
@@ -54,7 +55,7 @@ function resolveAsset(base: string, path: string) {
 }
 
 function progressLabel(progress: GenomeAssetProgress): GenomeFileProgress {
-  if (progress.phase === 'caching') return { label: 'Saving cache', value: 100 };
+  if (progress.phase === 'caching') return { label: 'Caching', value: 100 };
   if (progress.phase === 'cached') return { label: 'Reading cache', value: 100 };
   if (progress.total && progress.total > 0) {
     const value = Math.min(100, Math.round(progress.loaded * 100 / progress.total));
@@ -177,7 +178,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       ]);
       const header = await reference.slice(0, 256 * 1024).text();
       const refName = firstFastaRefName(header);
-      if (!refName) throw new Error('The reference assembly does not contain a FASTA sequence header.');
+      if (!refName) throw new Error('Reference FASTA has no sequence header.');
 
       const fastaUrl = objectUrl(reference, 'text/plain');
       const promoterUrl = objectUrl(promoterGff, 'text/plain');
@@ -229,9 +230,9 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
     <>
       <GenomeFileStatus states={fileStates} progress={fileProgress} />
       <div className="browser-unavailable browser-on-demand">
-        <strong>{status === 'loading' ? 'Preparing genome browser' : 'Genome browser could not be loaded'}</strong>
+        <strong>{status === 'loading' ? PORTAL_TERMS.preparingBrowser : PORTAL_TERMS.browserUnavailable}</strong>
         {status === 'loading'
-          ? <p>Loading this genome from the local browser cache or release storage.</p>
+          ? <p>Loading from browser cache or release storage.</p>
           : <><p className="browser-load-error" role="alert">{error}</p><button type="button" className="browser-load-button" onClick={() => void prepare()}><PlayArrowRoundedIcon aria-hidden="true" />Retry</button></>}
       </div>
     </>

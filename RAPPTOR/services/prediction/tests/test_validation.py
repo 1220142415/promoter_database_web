@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 from prediction_service.cgr import load_cgr_tensor
-from prediction_service.config import SETTINGS
+from prediction_service.config import DEFAULT_MAX_REQUEST_BYTES, SETTINGS, ServiceSettings
 from prediction_service.runtime import validate_model_assets
 from prediction_service.schemas import JobSubmission
 from prediction_service.validation import InputValidationError, validate_fasta, validate_sequence
@@ -33,6 +33,17 @@ def test_job_callback_requires_url_and_secret_together():
         replace(SETTINGS, job_callback_url="https://example.test/callback", job_callback_secret=None)
 
 
+@pytest.mark.parametrize("value", ["", "invalid", "0", "-1"])
+def test_invalid_max_request_bytes_uses_default(monkeypatch, value):
+    monkeypatch.setenv("RAPPTOR_MAX_REQUEST_BYTES", value)
+    assert ServiceSettings.from_env().max_request_bytes == DEFAULT_MAX_REQUEST_BYTES
+
+
+def test_custom_max_request_bytes(monkeypatch):
+    monkeypatch.setenv("RAPPTOR_MAX_REQUEST_BYTES", "20971520")
+    assert ServiceSettings.from_env().max_request_bytes == 20 * 1024 * 1024
+
+
 def test_sequence_normalizes_iupac_to_n():
     seq = validate_sequence("ACGTry", label="x", min_bases=1, max_bases=100, max_ambiguous_fraction=0.5)
     assert seq == "ACGTNN"
@@ -44,12 +55,12 @@ def test_sequence_rejects_invalid_character():
 
 
 def test_fasta_rejects_duplicate_ids():
-    with pytest.raises(InputValidationError, match="duplicate"):
+    with pytest.raises(InputValidationError, match="Duplicate FASTA identifier"):
         validate_fasta(">a\nACGT\n>a\nACGT\n", max_bases=100, max_ambiguous_fraction=1.0)
 
 
 def test_fasta_rejects_unsafe_id():
-    with pytest.raises(InputValidationError, match="unsafe"):
+    with pytest.raises(InputValidationError, match="contains unsupported characters"):
         validate_fasta(">../../x\nACGT\n", max_bases=100, max_ambiguous_fraction=1.0)
 
 

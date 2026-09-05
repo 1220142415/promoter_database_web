@@ -35,7 +35,7 @@ describe('track download helpers', () => {
     const scores: TrackDownloadMetadata = {
       ...metadata,
       kind: 'scores-minus',
-      label: 'RAPPTOR raw scores (- strand)',
+      label: 'RAPPTOR raw model scores (- strand)',
       wholeAssetUrl: '/api/local-data/GCA_000411415.1/promoter-scores.minus.bw',
       visibleRegionDownload: false,
     };

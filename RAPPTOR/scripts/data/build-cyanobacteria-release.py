@@ -65,7 +65,7 @@ GENOMES = {
         "annotation": {
             "source": "NCBI",
             "label": "NCBI genome annotation",
-            "description": "NCBI gene, CDS, rRNA and tRNA features across the chromosome and six plasmids.",
+            "description": "NCBI gene, CDS, rRNA, and tRNA features on the chromosome and six plasmids.",
             "featureCounts": {"gene": 6_050, "CDS": 6_107, "rRNA": 12, "tRNA": 70},
             "limitations": None,
         },
@@ -87,7 +87,7 @@ GENOMES = {
             "expectedUniqueTssCount": 13_705,
             "expectedStrands": {"plus": 6_929, "minus": 6_776},
             "expectedSequenceCount": 7,
-            "methodBoundary": "Study-level TSS observations under the conditions reported by the source publication; not universal promoter validation.",
+            "methodBoundary": "Study-level TSS under the reported conditions; not universal promoter validation.",
             "hfPath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed",
             "hfAssetSha256": "f47d7a2623ceb9c9d4b164ea69827ae41671f0ce97a5e8fe47fbc5c0e8a3f283",
             "sourceManifestSha256": "1c27312b8a5fedd9973df058672e7da14d0e9ecfb67e0d019df20d556f85dac5",
@@ -110,13 +110,11 @@ GENOMES = {
             "source": "Prodigal",
             "label": "Prodigal CDS prediction",
             "description": (
-                "Prodigal v2.6.3 protein-coding CDS predictions produced in single-genome mode "
-                "with translation table 11."
+                "Prodigal v2.6.3 CDS predictions (single-genome mode; translation table 11)."
             ),
             "featureCounts": {"CDS": 6_856},
             "limitations": (
-                "Prodigal does not provide functional product annotation and does not predict "
-                "rRNA or tRNA features."
+                "No functional products, rRNA, or tRNA are predicted."
             ),
         },
         "candidate": "gff3_cutoff_0/Cf6912.smoothed_peaks_gt_0.gff3",
@@ -139,7 +137,7 @@ GENOMES = {
         "annotation": {
             "source": "NCBI",
             "label": "NCBI genome annotation",
-            "description": "NCBI gene, CDS, rRNA and tRNA features for sequence CP003597.1.",
+            "description": "NCBI gene, CDS, rRNA, and tRNA features for CP003597.1.",
             "featureCounts": {"gene": 5_466, "CDS": 5_408, "rRNA": 9, "tRNA": 46},
             "limitations": None,
         },
@@ -663,11 +661,11 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
         "finalSubsetVerified": True,
         "annotationFeatureCounts": dict(annotation_counts),
         "annotationCircularOriginSplitFeatures": annotation_origin_splits,
-        "predictionFeatureType": "promoter",
-        "predictionWindow": PREDICTION_WINDOW,
     }
     if experimental_observed:
         observed["experimentalTss"] = experimental_observed
+    observed["predictionFeatureType"] = "promoter"
+    observed["predictionWindow"] = PREDICTION_WINDOW
     metadata = genome_catalog_entry(genome_id, config, observed)
     metadata["coordinateSystems"] = {
         "sourceGff3": "1-based closed",
@@ -675,8 +673,8 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
         "browserDisplay": "1-based coordinates",
     }
     metadata["evidenceBoundary"] = (
-        "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. "
-        "Genome annotations provide context and do not validate a promoter call."
+        "RAPPTOR promoter predictions are computational, not experimental TSS. "
+        "Genome annotations provide context; they do not validate predictions."
     )
     metadata["sources"] = {
         "reference": {
@@ -728,11 +726,7 @@ def release_catalog(genomes: list[dict], generated_at: str) -> dict:
         "releaseId": RELEASE_ID,
         "generatedAt": generated_at,
         "title": "RAPPTOR cyanobacterial promoter predictions",
-        "description": (
-            "Three cyanobacterial reference genomes with scored candidate peaks, 100 bp promoter predictions "
-            "spanning 80 bp upstream and 20 bp downstream of score > 0.9 peaks, genome annotations and "
-            "study-linked experimental TSS evidence where available."
-        ),
+        "description": "Three genomes with RAPPTOR promoter predictions and genome annotations.",
         "assetBaseUrl": HF_ASSET_BASE,
         "manifest": "manifest.tsv",
         "checksums": "checksums.sha256",
@@ -820,6 +814,18 @@ def validate_release(root: Path) -> dict:
     return {"files": len(manifest), "bytes": sum(size for size, _digest in manifest.values())}
 
 
+def release_generated_at(project_root: Path) -> str:
+    generated = project_root / "src" / "generated" / "cyanobacteria-release.json"
+    if generated.is_file():
+        try:
+            current = json.loads(generated.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ReleaseValidationError(f"Invalid generated release JSON: {generated}") from error
+        if current.get("releaseId") == RELEASE_ID and isinstance(current.get("generatedAt"), str):
+            return current["generatedAt"]
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def build(project_root: Path, source_root: Path, reference_root: Path, release_id: str, force: bool) -> Path:
     if release_id != RELEASE_ID:
         raise ReleaseValidationError(f"This release contract is fixed to {RELEASE_ID}")
@@ -837,7 +843,7 @@ def build(project_root: Path, source_root: Path, reference_root: Path, release_i
         for genome_id, config in GENOMES.items():
             print(f"Building {genome_id}...", flush=True)
             genomes.append(build_genome(genome_id, config, source_root, reference_root, staging))
-        generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        generated_at = release_generated_at(project_root)
         catalog = release_catalog(genomes, generated_at)
         (staging / "release.json").write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
         write_manifests(staging)

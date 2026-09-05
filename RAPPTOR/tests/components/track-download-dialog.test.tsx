@@ -9,7 +9,7 @@ import type { TrackDownloadMetadata } from '@/features/genome-browser/track-down
 const promoterMetadata: TrackDownloadMetadata = {
   kind: 'promoters',
   accession: 'GCA_000411415.1',
-  label: 'RAPPTOR predicted promoter peaks',
+  label: 'RAPPTOR promoter predictions',
   regionExportBase: '/api/local-region',
   wholeAssetUrl: '/api/local-data/GCA_000411415.1/predicted-promoters.gff3.gz',
 };
@@ -28,6 +28,34 @@ afterEach(() => {
 });
 
 describe('track download dialog', () => {
+  it.each([
+    ['/api/experimental-data/GCF_000210855.2/studies/study/raw.bed', '.bed'],
+    ['/api/cyanobacteria-data/ASM970v1/v-release/sources/experimentally-supported-tss.source.bed.gz', '.bed.gz'],
+  ])('downloads original BED with the correct source extension: %s', async (wholeAssetUrl, extension) => {
+    const user = userEvent.setup();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const handleClose = vi.fn();
+    render(<TrackDownloadDialog
+      metadata={{ ...promoterMetadata, kind: 'raw-bed', wholeAssetUrl, regionExportBase: '', visibleRegionDownload: false }}
+      visibleRegion={null} handleClose={handleClose}
+    />);
+    expect(screen.getByRole('dialog', { name: 'Download track data' })).toBeVisible();
+    expect(screen.getByRole('radio', { name: /Visible region/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Whole genome' })).toBeChecked();
+    expect(screen.getByLabelText('Download format')).toHaveTextContent('BED (original)');
+    expect(screen.getByLabelText('Filename')).toHaveValue(wholeAssetUrl.split('/').at(-1));
+    await user.clear(screen.getByLabelText('Filename'));
+    await user.type(screen.getByLabelText('Filename'), '../my study.txt');
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    const anchor = click.mock.contexts[0] as unknown as HTMLAnchorElement;
+    const url = new URL(anchor.href);
+    expect(url.pathname).toBe(wholeAssetUrl);
+    expect(url.searchParams.get('filename')).toBe(`my_study${extension}`);
+    expect(url.searchParams.get('download')).toBe('1');
+    expect(anchor.download).toBe(`my_study${extension}`);
+    expect(handleClose).toHaveBeenCalledOnce();
+  });
+
   it('downloads one visible annotation track with a sanitized editable filename', async () => {
     const user = userEvent.setup();
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
@@ -67,7 +95,7 @@ describe('track download dialog', () => {
       />,
     );
 
-    await user.click(screen.getByRole('radio', { name: 'Whole assembly' }));
+    await user.click(screen.getByRole('radio', { name: 'Whole genome' }));
     expect(screen.getByLabelText('Filename')).toHaveValue('RAPPTOR-promoters_GCA_000411415.1.gff3.gz');
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
@@ -87,7 +115,7 @@ describe('track download dialog', () => {
     );
 
     expect(screen.getByRole('radio', { name: /Visible region/ })).toBeDisabled();
-    expect(screen.getByRole('radio', { name: 'Whole assembly' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Whole genome' })).toBeChecked();
     expect(screen.getByLabelText('Download format')).toHaveTextContent('FASTA');
     expect(screen.getByLabelText('Filename')).toHaveValue('reference_GCA_000411415.1.fa.gz');
   });

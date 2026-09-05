@@ -7,7 +7,7 @@ import type { BrowserRegion } from '@/features/genome-browser/components/unified
 
 const UnifiedJBrowseViewer = dynamic(() => import('@/features/genome-browser/components/unified-jbrowse-viewer'), {
   ssr: false,
-  loading: () => <div className="browser-loading" role="status">Loading genome browser...</div>,
+  loading: () => <div className="browser-loading" role="status">Loading genome browser…</div>,
 });
 
 export default function UnifiedBrowserPanel({

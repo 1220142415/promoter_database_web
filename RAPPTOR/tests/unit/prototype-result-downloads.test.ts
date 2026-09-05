@@ -52,8 +52,8 @@ describe('prototype result downloads', () => {
     const bedLines = prototypeResultBedGraph(fixture).trim().split('\n').filter((line) => !line.startsWith('track ')).map((line) => line.split('\t'));
     expect(bedLines).toHaveLength(2);
     expect(bedLines.map((columns) => [columns[1], columns[2]])).toEqual([['79', '80'], ['20', '21']]);
-    expect(prototypeResultBedGraph(fixture)).toContain('raw scores (+)');
-    expect(prototypeResultBedGraph(fixture)).toContain('raw scores (-)');
+    expect(prototypeResultBedGraph(fixture)).toContain('model scores (+)');
+    expect(prototypeResultBedGraph(fixture)).toContain('model scores (-)');
   });
 
   it('exports scan called peaks as 1 bp GFF3 features and raw scores as zero-based bedGraph intervals', () => {

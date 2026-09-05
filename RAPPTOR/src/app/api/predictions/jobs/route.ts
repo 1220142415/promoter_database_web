@@ -1,6 +1,6 @@
-export const dynamic = 'force-dynamic';
+import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
 
-const MAX_SUBMISSION_BYTES = 12 * 1024 * 1024;
+export const dynamic = 'force-dynamic';
 
 function serviceUrl(path: string) {
   const base = process.env.RAPPTOR_PREDICTION_SERVICE_URL?.trim().replace(/\/+$/, '');
@@ -8,6 +8,7 @@ function serviceUrl(path: string) {
 }
 
 export async function POST(request: Request) {
+  const maxSubmissionBytes = predictionMaxRequestBytes();
   const url = serviceUrl('/v1/jobs');
   if (!url) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is not configured.' } }, { status: 503 });
   const authorization = request.headers.get('authorization');
@@ -15,11 +16,11 @@ export async function POST(request: Request) {
     return Response.json({ error: { code: 'INVALID_TICKET', message: 'Prediction ticket is required.' } }, { status: 401 });
   }
   const contentLength = Number(request.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_SUBMISSION_BYTES) {
+  if (Number.isFinite(contentLength) && contentLength > maxSubmissionBytes) {
     return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction request is too large.' } }, { status: 413 });
   }
   const body = await request.arrayBuffer();
-  if (body.byteLength > MAX_SUBMISSION_BYTES) {
+  if (body.byteLength > maxSubmissionBytes) {
     return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction request is too large.' } }, { status: 413 });
   }
   try {

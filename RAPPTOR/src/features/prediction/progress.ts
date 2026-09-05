@@ -29,8 +29,8 @@ const SCAN_DURATION_MS = 6_000;
 const FOCUSED_TIMELINE: TimelineSegment[] = [
   { stage: 'queued', start: 0, end: 600, from: 1, to: 8, message: 'Waiting for an available worker.' },
   { stage: 'preparing_cgr', start: 600, end: 1_500, from: 8, to: 32, message: 'Preparing the illustrative genome CGR.' },
-  { stage: 'inference', start: 1_500, end: 3_300, from: 32, to: 88, message: 'Scoring the focused 100 bp window.' },
-  { stage: 'writing_outputs', start: 3_300, end: FOCUSED_DURATION_MS, from: 88, to: 99, message: 'Preparing the focused result.' },
+  { stage: 'inference', start: 1_500, end: 3_300, from: 32, to: 88, message: 'Scoring the 100 bp window.' },
+  { stage: 'writing_outputs', start: 3_300, end: FOCUSED_DURATION_MS, from: 88, to: 99, message: 'Preparing the result.' },
 ];
 
 const SCAN_TIMELINE: TimelineSegment[] = [
@@ -60,7 +60,7 @@ export function predictionProgressSteps(mode: PredictionProgressMode) {
   return [
     { key: 'queued', label: 'Waiting in queue' },
     { key: 'preparing_cgr', label: 'Preparing genome CGR' },
-    { key: 'compute', label: mode === 'focused' ? 'Scoring focused window' : 'Scanning sequences' },
+    { key: 'compute', label: mode === 'focused' ? 'Scoring 100 bp window' : 'Scoring sequence windows' },
     { key: 'writing_outputs', label: mode === 'focused' ? 'Preparing result' : 'Preparing browser tracks' },
     { key: 'complete', label: 'Result ready' },
   ] as const;

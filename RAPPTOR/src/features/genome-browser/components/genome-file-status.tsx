@@ -3,6 +3,7 @@ import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutlineRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import CircularProgress from '@mui/material/CircularProgress';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 export type GenomeFileState = 'available' | 'preparing' | 'unavailable' | 'failed' | 'incompatible';
 export type GenomeFileKind = 'reference' | 'promoters' | 'scores' | 'experimentalTss' | 'annotation';
@@ -18,7 +19,7 @@ const stateLabels: Record<GenomeFileState, string> = {
   preparing: 'Preparing',
   unavailable: 'Not available',
   failed: 'Failed',
-  incompatible: 'incompatible',
+  incompatible: 'Incompatible',
 };
 
 const stateIcons = {
@@ -32,8 +33,8 @@ const stateIcons = {
 export default function GenomeFileStatus({ states, progress = {} }: Props) {
   const files = [
     { kind: 'reference' as const, label: 'Reference', state: states.reference },
-    { kind: 'promoters' as const, label: 'Promoters', state: states.promoters },
-    ...(states.scores ? [{ kind: 'scores' as const, label: 'Scores', state: states.scores }] : []),
+    { kind: 'promoters' as const, label: PORTAL_TERMS.promoterPredictions, state: states.promoters },
+    ...(states.scores ? [{ kind: 'scores' as const, label: 'Model scores', state: states.scores }] : []),
     ...(states.experimentalTss ? [{ kind: 'experimentalTss' as const, label: 'Experimental TSS', state: states.experimentalTss }] : []),
     { kind: 'annotation' as const, label: 'Annotation', state: states.annotation },
   ];

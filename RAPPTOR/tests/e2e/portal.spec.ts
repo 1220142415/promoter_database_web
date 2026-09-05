@@ -11,7 +11,8 @@ test('home renders release aggregates without legacy bulk API requests', async (
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'RAPPTOR' })).toBeVisible();
-  await expect(page.getByLabel('Release statistics')).toContainText(releaseSummary.totalGenomes.toLocaleString('en-US'));
+  const totalCatalogGenomes = releaseSummary.totalCatalogGenomes ?? releaseSummary.totalGenomes;
+  await expect(page.getByLabel('Release statistics')).toContainText(totalCatalogGenomes.toLocaleString('en-US'));
   expect(legacyRequests).toEqual([]);
   expect(genomeAssetRequests).toEqual([]);
 });
@@ -54,7 +55,7 @@ test('catalog search opens genomes with and without NCBI release assets', async 
   ]);
   await expect(page.getByText('Assembly GCA_000411415.1', { exact: true })).toBeVisible();
   await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
-  await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPTOR predicted promoters');
+  await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPTOR promoter predictions');
   await expect(page.getByTestId('jbrowse-viewer')).toContainText('NCBI genome annotation');
   await expect(page.getByTestId('jbrowse-viewer')).not.toContainText('Object.defineProperty');
   await expect(page.getByRole('heading', { name: 'Downloads' })).toHaveCount(0);
@@ -72,7 +73,7 @@ test('catalog search opens genomes with and without NCBI release assets', async 
     predictionOnlyGenome.click(),
   ]);
   await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
-  await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPTOR predicted promoters');
+  await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPTOR promoter predictions');
   await expect(page.getByTestId('jbrowse-viewer')).not.toContainText('NCBI genome annotation');
   await expect(page.getByRole('heading', { name: 'Downloads' })).toHaveCount(0);
   expect(runtimeErrors).toEqual([]);
@@ -193,7 +194,7 @@ test('catalog cascades taxonomy filters and sorts promoter counts in both direct
   await expect(page.getByRole('link', { name: 'GCA_000411415.1' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear filters' }).click();
-  const promoterSortButton = page.getByRole('button', { name: /Predicted promoters/ });
+  const promoterSortButton = page.getByRole('button', { name: /Promoter predictions/ });
   const promoterSortResponse = (direction: 'asc' | 'desc') => page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname === '/api/genomes'
@@ -203,11 +204,12 @@ test('catalog cascades taxonomy filters and sorts promoter counts in both direct
   });
 
   await Promise.all([promoterSortResponse('desc'), promoterSortButton.click()]);
-  await expect(page.getByRole('columnheader', { name: 'Predicted promoters' })).toHaveAttribute('aria-sort', 'descending');
-  const descendingFirst = Number((await page.locator('tbody td.numeric-cell').first().innerText()).replaceAll(',', ''));
+  await expect(page.getByRole('columnheader', { name: 'Promoter predictions' })).toHaveAttribute('aria-sort', 'descending');
+  const firstPromoterCell = page.locator('tbody td[data-predicted-promoters]').first();
+  const descendingFirst = Number(await firstPromoterCell.getAttribute('data-predicted-promoters'));
 
   await Promise.all([promoterSortResponse('asc'), promoterSortButton.click()]);
-  const ascendingFirst = Number((await page.locator('tbody td.numeric-cell').first().innerText()).replaceAll(',', ''));
+  const ascendingFirst = Number(await firstPromoterCell.getAttribute('data-predicted-promoters'));
   expect(ascendingFirst).toBeLessThan(descendingFirst);
 });
 
@@ -246,7 +248,7 @@ test.describe('mobile navigation', () => {
       page.getByRole('link', { name: 'GCA_000421325.1' }).click(),
     ]);
     await expect(page.getByTestId('jbrowse-viewer')).toBeVisible();
-    await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPTOR predicted promoters');
+    await expect(page.getByTestId('jbrowse-viewer')).toContainText('RAPPTOR promoter predictions');
     await expect(page.getByRole('heading', { name: 'Downloads' })).toHaveCount(0);
     expect(runtimeErrors).toEqual([]);
   });

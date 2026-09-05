@@ -37,7 +37,7 @@ export interface TrackDownloadDialogProps {
 function scopeLabel(region: TrackDownloadRegion | null) {
   return region
     ? `Visible region — ${region.refName}:${region.start.toLocaleString()}-${region.end.toLocaleString()}`
-    : 'Visible region — unavailable across multiple reference sequences';
+    : 'Visible region unavailable for multiple sequences';
 }
 
 export default function TrackDownloadDialog({ handleClose, metadata, visibleRegion }: TrackDownloadDialogProps) {
@@ -92,7 +92,7 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
       <DialogContent className="track-download-dialog">
         <p className="track-download-track-name">{metadata.label}</p>
         <FormControl component="fieldset" className="track-download-fieldset">
-          <FormLabel component="legend">Region to save</FormLabel>
+          <FormLabel component="legend">Region</FormLabel>
           <RadioGroup
             value={scope}
             onChange={(event) => changeScope(event.target.value as TrackDownloadScope)}
@@ -101,19 +101,19 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
               value="visible"
               disabled={!visibleRegion}
               control={<Radio size="small" />}
-              label={scopeLabel(visibleRegion)}
+              label={metadata.visibleRegionDownload === false ? 'Visible region unavailable for this track' : scopeLabel(visibleRegion)}
             />
             <FormControlLabel
               value="whole"
               control={<Radio size="small" />}
-              label="Whole assembly"
+              label="Whole genome"
             />
           </RadioGroup>
         </FormControl>
 
         <div className="track-download-format" aria-label="Download format">
           <span>Format</span>
-          <strong>{settings.format === 'fasta' ? 'FASTA' : settings.format === 'bigwig' ? 'BigWig' : 'GFF3'}</strong>
+          <strong>{settings.format === 'fasta' ? 'FASTA' : settings.format === 'bigwig' ? 'BigWig' : settings.format === 'bed' ? 'BED (original)' : 'GFF3'}</strong>
         </div>
 
         <TextField
@@ -122,14 +122,14 @@ export default function TrackDownloadDialog({ handleClose, metadata, visibleRegi
           onChange={(event) => setFilename(event.target.value)}
           fullWidth
           size="small"
-          helperText={`The downloaded file will use ${requiredExtension}. Unsupported characters are replaced.`}
+          helperText={`Uses ${requiredExtension}; invalid characters are replaced.`}
           inputProps={{ maxLength: 220 }}
         />
         {downloadError ? <p className="browser-load-error" role="alert">{downloadError}</p> : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} color="inherit">Cancel</Button>
-        <Button onClick={() => void download()} disabled={downloading} variant="contained" startIcon={<DownloadRoundedIcon />}>{downloading ? 'Preparing' : 'Download'}</Button>
+        <Button onClick={() => void download()} disabled={downloading} variant="contained" startIcon={<DownloadRoundedIcon />}>{downloading ? 'Preparing…' : 'Download'}</Button>
       </DialogActions>
     </Dialog>
   );

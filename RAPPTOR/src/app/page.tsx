@@ -7,6 +7,7 @@ import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import releaseSummary from '@/generated/release-summary.json';
 import { experimentalTssPublicEnabled } from '@/features/genome-browser/experimental-tss-public';
 import type { ActiveReleaseSummary } from '@/types/release';
+import { PORTAL_COPY, PORTAL_TERMS } from '@/components/portal-terminology';
 
 const catalog = releaseSummary as ActiveReleaseSummary;
 
@@ -31,7 +32,7 @@ export default function HomePage() {
           <div className="portal-hero-copy">
             <p className="portal-kicker">Bacterial promoter resource</p>
             <h1>RAPPTOR</h1>
-            <p className="portal-hero-lead">Genome-resolved promoter predictions, reference assemblies and contextual NCBI annotations in a release-ready research portal.</p>
+            <p className="portal-hero-lead">{PORTAL_COPY.homeLead}</p>
             <div className="portal-actions">
               <Link href="/genomes" className="portal-button portal-button-primary">Explore genomes <ArrowForwardRoundedIcon fontSize="small" /></Link>
               {showExperimental ? <Link href="/experimental-tss" className="portal-button">Experimental TSS <ArrowForwardRoundedIcon fontSize="small" /></Link> : null}
@@ -40,7 +41,7 @@ export default function HomePage() {
           <div className="sequence-figure" role="img" aria-label="Genome sequence and promoter track overview">
             <div className="sequence-ruler"><span>0 bp</span><span>5 kb</span><span>10 kb</span></div>
             <div className="sequence-track sequence-reference"><span>REFERENCE</span><i /><i /><i /><i /></div>
-            <div className="sequence-track sequence-promoters"><span>PREDICTED PROMOTERS</span><b style={{ left: '12%', width: '8%' }} /><b style={{ left: '31%', width: '13%' }} /><b style={{ left: '58%', width: '6%' }} /><b style={{ left: '77%', width: '15%' }} /></div>
+            <div className="sequence-track sequence-promoters"><span>PROMOTER PREDICTIONS</span><b style={{ left: '12%', width: '8%' }} /><b style={{ left: '31%', width: '13%' }} /><b style={{ left: '58%', width: '6%' }} /><b style={{ left: '77%', width: '15%' }} /></div>
             <div className="sequence-track sequence-annotation"><span>GENOME ANNOTATION</span><em style={{ left: '5%', width: '18%' }} /><em style={{ left: '29%', width: '22%' }} /><em style={{ left: '64%', width: '27%' }} /></div>
             <div className="sequence-locus"><span>Genome-resolved</span><strong>{totalCatalogGenomes.toLocaleString()} assemblies</strong></div>
           </div>
@@ -50,10 +51,10 @@ export default function HomePage() {
       <section className="portal-metrics" aria-label="Release statistics">
         <div className="portal-shell metrics-grid">
           <div><PublicRoundedIcon aria-hidden="true" /><span>Catalog genomes</span><strong>{totalCatalogGenomes.toLocaleString()}</strong></div>
-          <div><DataObjectRoundedIcon aria-hidden="true" /><span>Predicted promoters</span><strong>{totalCatalogPredictedPromoters.toLocaleString()}</strong></div>
-          <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations cataloged</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
+          <div><DataObjectRoundedIcon aria-hidden="true" /><span>{PORTAL_TERMS.promoterPredictions}</span><strong>{totalCatalogPredictedPromoters.toLocaleString()}</strong></div>
+          <div><ScienceRoundedIcon aria-hidden="true" /><span>NCBI annotations</span><strong>{catalog.totalAnnotatedGenomes.toLocaleString()}</strong></div>
           {showExperimental ? <div><ScienceRoundedIcon aria-hidden="true" /><span>Experimental genomes</span><strong>{(catalog.totalExperimentalGenomes || 0).toLocaleString()}</strong></div> : null}
-          {showExperimental ? <div><DataObjectRoundedIcon aria-hidden="true" /><span>Experimental observations</span><strong>{catalog.totalExperimentalTss.toLocaleString()}</strong></div> : null}
+          {showExperimental ? <div><DataObjectRoundedIcon aria-hidden="true" /><span>{PORTAL_TERMS.observations}</span><strong>{catalog.totalExperimentalTss.toLocaleString()}</strong></div> : null}
           {showExperimental ? <div><PublicRoundedIcon aria-hidden="true" /><span>Source publications</span><strong>{(catalog.totalEvidencePublications || 0).toLocaleString()}</strong></div> : null}
         </div>
       </section>
@@ -63,10 +64,10 @@ export default function HomePage() {
           <div className="section-heading">
             <p className="portal-kicker">Interactive prediction</p>
             <h2 id="prediction-entry-heading">Predict promoters from your sequence</h2>
-            <p>Enter a 100 bp sequence, a longer sequence, or genome contigs. RAPPTOR selects the appropriate analysis automatically.</p>
+            <p>Add input. RAPPTOR selects the analysis.</p>
           </div>
           <div className="section-heading">
-            <p>Set the strand, score cutoff and number of results to display, then inspect illustrative output before a live RAPPtor service is connected.</p>
+            <p>Set the strand and model threshold, then inspect illustrative output before a live RAPPTOR service is connected.</p>
             <div className="portal-actions">
               <Link href="/predict" className="portal-button portal-button-primary">Open prediction tool <ArrowForwardRoundedIcon fontSize="small" /></Link>
             </div>
@@ -97,9 +98,9 @@ export default function HomePage() {
         <div className="portal-shell">
           <div className="data-access-heading">
             <div><p className="portal-kicker">Data access</p><h2>Release files</h2></div>
-            <p>Release <strong>{releaseLabel}</strong>, generated {formatDate(catalog.generatedAt)}. {catalog.resourceStatus === 'staged'
+            <p><strong>{releaseLabel}</strong> · Generated {formatDate(catalog.generatedAt)}. {catalog.resourceStatus === 'staged'
               ? 'Genome metadata and feature counts are available while indexed resources are prepared.'
-              : 'Open a genome to inspect and download its reference, promoter and available annotation tracks.'}</p>
+              : 'Open a genome to inspect and download its reference, promoter, and annotation tracks.'}</p>
           </div>
           {catalog.resourceStatus === 'staged'
             ? <p className="data-access-note">Genome metadata and feature counts are published. Reference and indexed track files are still being prepared.</p>

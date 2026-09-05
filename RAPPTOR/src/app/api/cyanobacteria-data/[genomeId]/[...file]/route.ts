@@ -60,7 +60,9 @@ function responseHeaders(request: Request, file: string, size: number, range: { 
   const requestedFilename = new URL(request.url).searchParams.get('filename');
   const basename = file.split('/').at(-1) || 'download';
   const firstDot = basename.indexOf('.');
-  const extension = firstDot >= 0 ? basename.slice(firstDot) : '';
+  const extension = basename.endsWith('.bed.gz') ? '.bed.gz'
+    : basename.endsWith('.bed') ? '.bed'
+      : firstDot >= 0 ? basename.slice(firstDot) : '';
   const downloadFilename = normalizeDownloadFilename(requestedFilename, extension, basename);
   const start = range?.start ?? 0;
   const end = range?.end ?? Math.max(0, size - 1);

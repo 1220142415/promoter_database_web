@@ -13,6 +13,7 @@ import type { DemoPredictionSubmission, GenomeContext, PredictionCapabilities, P
 import { PREDICTION_CONTRACT_VERSION } from '../types';
 import { parseTargetSequence, PredictionValidationError, validateTargetAgainstCapabilities } from '../validation';
 import TurnstileField from './turnstile-field';
+import { PORTAL_COPY, PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from './prediction.module.css';
 
 const EXAMPLE_SEQUENCE = '>example_candidate_112bp\nTTGACATGATCGATCGTACGATCGATGCTAGCTAGGCTAACGTTACGATCGATCGGATCCGATCGTTATAATGCGTACGATCGATCGATCGTAGCTAGCTAGCGATCGATCG';
@@ -29,9 +30,9 @@ function formatBytes(value: number) {
 }
 
 function serviceCopy(capabilities: PredictionCapabilities) {
-  if (capabilities.serviceStatus === 'ready') return { label: 'LIVE SERVICE', title: 'Cloud prediction is available', body: 'Validated inputs will be submitted to the configured RAPPtor inference service.', tone: styles.statusReady };
-  if (capabilities.serviceStatus === 'unavailable') return { label: 'SERVICE UNAVAILABLE', title: 'Cloud inference is not connected', body: capabilities.unavailableReason || 'Cloud prediction is not available in this deployment yet.', tone: styles.statusUnavailable };
-  return { label: 'DEMO PREVIEW', title: 'Explore the complete prediction workflow', body: 'No model runs. Raw sequence and genome files stay in this browser; only checksums and input metadata are used.', tone: styles.statusDemo };
+  if (capabilities.serviceStatus === 'ready') return { label: 'LIVE SERVICE', title: 'Cloud prediction ready', body: 'Validated input goes to the configured RAPPTOR service.', tone: styles.statusReady };
+  if (capabilities.serviceStatus === 'unavailable') return { label: 'SERVICE UNAVAILABLE', title: 'Cloud prediction unavailable', body: capabilities.unavailableReason || 'Cloud prediction is unavailable in this deployment.', tone: styles.statusUnavailable };
+  return { label: 'DEMO PREVIEW', title: 'Preview the workflow', body: 'Demo only. DNA stays in this browser; only checksums and input metadata are used.', tone: styles.statusDemo };
 }
 
 export default function PredictionForm({ capabilities }: { capabilities: PredictionCapabilities }) {
@@ -67,7 +68,7 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
   const genomeFileError = useMemo(() => {
     if (!genomeFile) return null;
     if (!GENOME_FILE_PATTERN.test(genomeFile.name)) return 'Choose a .fa, .fasta or .fna file, optionally gzip-compressed.';
-    if (genomeFile.size > capabilities.limits.genomeMaxBytes) return `Genome FASTA exceeds ${formatBytes(capabilities.limits.genomeMaxBytes)}.`;
+    if (genomeFile.size > capabilities.limits.genomeMaxBytes) return `Genome FASTA must be ${formatBytes(capabilities.limits.genomeMaxBytes)} or smaller.`;
     return null;
   }, [capabilities.limits.genomeMaxBytes, genomeFile]);
 
@@ -96,7 +97,7 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
         if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
           setCatalogResults([]);
           setCatalogSearched(true);
-          setCatalogError('Genome catalog could not be searched. Check the connection and try again.');
+          setCatalogError('Genome catalog unavailable. Check the connection and retry.');
         }
       } finally {
         setCatalogLoading(false);
@@ -211,8 +212,8 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
     <section className={styles.section} id="predict" aria-labelledby="prediction-heading">
       <div className="portal-shell">
         <div className={styles.heading}>
-          <div><p className="portal-kicker">Interactive prediction</p><h2 id="prediction-heading">Predict a promoter candidate</h2></div>
-          <p>Score a candidate region against the CGR context of the genome it came from. RAPPTOR scores are computational predictions, not experimental validation.</p>
+          <div><p className="portal-kicker">Interactive prediction</p><h2 id="prediction-heading">Predict a promoter</h2></div>
+          <p>Score a candidate using its genome&apos;s CGR context. RAPPTOR predictions are computational, not experimental.</p>
         </div>
 
         <div className={`${styles.serviceBar} ${status.tone}`} role="status">
@@ -222,7 +223,7 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
 
         <div className={styles.workbench}>
           <div className={styles.workbenchHeader}>
-            <div><span>INPUT WORKBENCH</span><strong>Candidate sequence and matching genome context</strong></div>
+            <div><span>INPUT WORKBENCH</span><strong>Candidate and genome context</strong></div>
             <p><strong>{capabilities.windowBases} bp</strong> windows · base {capabilities.predictionAnchorBase} anchor</p>
           </div>
 
@@ -245,8 +246,8 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
             </fieldset>
 
             <fieldset className={styles.card}>
-              <legend><span>2</span><div>Genome context for CGR<small>Must contain the candidate sequence</small></div></legend>
-              <div className={styles.contextWarning}><strong>Why this matters</strong><span>An unrelated reference genome produces a biologically mismatched CGR representation.</span></div>
+              <legend><span>2</span><div>{PORTAL_TERMS.genomeContextCgr}<small>Must contain the candidate sequence</small></div></legend>
+              <div className={styles.contextWarning}><strong>Why this matters</strong><span>An unrelated genome produces a mismatched CGR context.</span></div>
               <div className={styles.tabs} role="tablist" aria-label="Genome context source">
                 <button type="button" role="tab" aria-selected={genomeMode === 'catalog'} className={genomeMode === 'catalog' ? styles.activeTab : ''} onClick={() => chooseGenomeMode('catalog')}>Catalog assembly</button>
                 <button type="button" role="tab" aria-selected={genomeMode === 'upload'} className={genomeMode === 'upload' ? styles.activeTab : ''} onClick={() => chooseGenomeMode('upload')}>Upload genome FASTA</button>
@@ -269,15 +270,15 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
                   <input ref={genomeFileRef} className="sr-only" type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={(event) => { setGenomeFile(event.target.files?.[0] || null); setError(null); }} />
                   <button type="button" onClick={() => genomeFileRef.current?.click()}><CloudUploadRoundedIcon aria-hidden="true" /><span><strong>{genomeFile ? genomeFile.name : 'Choose genome or contigs FASTA'}</strong><small>{genomeFile ? formatBytes(genomeFile.size) : `FASTA or FASTA.gz · up to ${formatBytes(capabilities.limits.genomeMaxBytes)}`}</small></span></button>
                   {genomeFile ? <button className={styles.removeFile} type="button" onClick={() => setGenomeFile(null)}>Remove file</button> : null}
-                  {genomeFileError ? <p className={styles.fileError}>{genomeFileError}</p> : <p>Demo preview computes a checksum locally; the raw file is never uploaded.</p>}
+                  {genomeFileError ? <p className={styles.fileError}>{genomeFileError}</p> : <p>The demo computes a local checksum; the file is not uploaded.</p>}
                 </div>
               )}
             </fieldset>
           </div>
 
           <div className={styles.submitRow}>
-            {capabilities.serviceStatus === 'ready' ? <TurnstileField capabilities={capabilities} onToken={handleTurnstile} /> : <div className={styles.localOnly} data-testid="demo-turnstile"><CheckCircleRoundedIcon aria-hidden="true" /><div><strong>Local-only demo preparation</strong><span>No raw candidate or genome sequence is submitted.</span></div></div>}
-            <div className={styles.submitCopy}><strong>{primaryMode === 'demo' ? 'Preview the result interface' : 'Anonymous cloud submission'}</strong><span>{primaryMode === 'demo' ? 'The next page uses deterministic fixture scores and is not biological output.' : 'Turnstile, service quotas and queue capacity apply.'}</span></div>
+            {capabilities.serviceStatus === 'ready' ? <TurnstileField capabilities={capabilities} onToken={handleTurnstile} /> : <div className={styles.localOnly} data-testid="demo-turnstile"><CheckCircleRoundedIcon aria-hidden="true" /><div><strong>Browser-only demo</strong><span>No candidate or genome sequence is submitted.</span></div></div>}
+            <div className={styles.submitCopy}><strong>{primaryMode === 'demo' ? 'Preview the result' : 'Anonymous cloud submission'}</strong><span>{primaryMode === 'demo' ? PORTAL_COPY.demoNotice : 'Turnstile, quotas, and queue capacity apply.'}</span></div>
             <button className={`portal-button portal-button-primary ${styles.submitButton}`} type="button" onClick={() => void submit(primaryMode)} disabled={primaryDisabled}>{submittingMode === primaryMode ? 'Preparing…' : primaryMode === 'demo' ? 'Preview demo result' : 'Submit prediction'}</button>
           </div>
 

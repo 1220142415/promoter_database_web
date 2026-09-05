@@ -7,6 +7,7 @@ import GenomeFileStatus from '@/features/genome-browser/components/genome-file-s
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
 import { cyanobacteriaAssetVersion, cyanobacteriaRelease, getCyanobacteriaGenome } from '@/features/cyanobacteria/catalog';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
+import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 function formatNumber(value: number, suffix = '') {
   return `${new Intl.NumberFormat('en-US').format(value)}${suffix}`;
@@ -84,8 +85,8 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
     annotationTrackKind: 'annotation' as const,
     assets: genome.assets,
     trackLabels: {
-      scores: 'Raw prediction scores (+ / - strands)',
-      promoters: 'Predicted promoters (score > 0.9)',
+      scores: 'RAPPTOR model scores (+ / − strands)',
+      promoters: PORTAL_TERMS.promoterPredictions,
       experimentalTss: genome.experimentalEvidence?.label,
       annotation: genome.annotation.label,
     },
@@ -101,7 +102,7 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
   const experimental = experimentalAssembly(genome);
   const downloads: Array<readonly [string, string, string]> = [
     ['Reference sequence', genome.assets.fasta, 'BGZF-compressed FASTA and browser indexes'],
-    ['Final promoter predictions', genome.assets.predictedPromoters, 'Score > 0.9 promoter_peak records'],
+    [PORTAL_TERMS.promoterPredictions, genome.assets.predictedPromoters, 'Model score > 0.9 records'],
     ...(genome.experimentalEvidence && genome.assets.experimentalTss
       ? [[genome.experimentalEvidence.label, genome.assets.experimentalTss, 'Study-linked experimentally supported TSS observations'] as const]
       : []),
@@ -136,7 +137,7 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
           <div className="genome-metrics-grid" aria-label="Cyanobacteria genome key metrics">
             <div className="genome-metric"><span>Genome size</span><strong>{formatNumber(genome.genomeSizeBp, ' bp')}</strong></div>
             <div className="genome-metric"><span>GC content</span><strong>{genome.gcContent.toFixed(2)}%</strong></div>
-            <div className="genome-metric"><span>Predicted promoters</span><strong>{formatNumber(genome.predictedPromoterCount)}</strong></div>
+            <div className="genome-metric"><span>{PORTAL_TERMS.promoterPredictions}</span><strong>{formatNumber(genome.predictedPromoterCount)}</strong></div>
             {genome.experimentalEvidence ? <div className="genome-metric"><span>Experimental TSS observations</span><strong>{formatNumber(genome.experimentalEvidence.observationCount)}</strong></div> : null}
           </div>
 

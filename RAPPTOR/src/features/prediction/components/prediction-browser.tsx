@@ -33,7 +33,7 @@ export default function PredictionBrowser({ jobId, refName }: { jobId: string; r
         ncbiAnnotationsIndex: null,
       },
       trackLabels: {
-        scores: 'RAPPTOR raw scores (+ / - strands)',
+        scores: 'RAPPTOR model scores (+ / − strands)',
         annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
     };

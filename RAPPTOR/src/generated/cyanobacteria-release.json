@@ -2,7 +2,7 @@
   "releaseId": "2026-08-27",
   "generatedAt": "2026-08-27T14:22:30.157945Z",
   "title": "RAPPTOR cyanobacterial promoter predictions",
-  "description": "Three cyanobacterial reference genomes with scored candidate peaks, 100 bp promoter predictions spanning 80 bp upstream and 20 bp downstream of score > 0.9 peaks, genome annotations and study-linked experimental TSS evidence where available.",
+  "description": "Three genomes with RAPPTOR promoter predictions and genome annotations.",
   "assetBaseUrl": "https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/1f43a48b29419a4a95d2970931fdd787d496953a/cyanobacteria/releases/2026-08-27",
   "manifest": "manifest.tsv",
   "checksums": "checksums.sha256",
@@ -36,7 +36,7 @@
       "annotation": {
         "source": "NCBI",
         "label": "NCBI genome annotation",
-        "description": "NCBI gene, CDS, rRNA and tRNA features across the chromosome and six plasmids.",
+        "description": "NCBI gene, CDS, rRNA, and tRNA features on the chromosome and six plasmids.",
         "featureCounts": {
           "gene": 6050,
           "CDS": 6107,
@@ -76,7 +76,7 @@
         "observationCount": 13705,
         "uniqueTssCount": 13705,
         "crossStudySupportedTssCount": 0,
-        "methodBoundary": "Study-level TSS observations under the conditions reported by the source publication; not universal promoter validation.",
+        "methodBoundary": "Study-level TSS under the reported conditions; not universal promoter validation.",
         "hfPath": "experimentally_supported_tss_by_study/2011_22135468_GCF_000009705.1.bed"
       },
       "validation": {
@@ -171,7 +171,7 @@
         "bigWig": "0-based half-open single-base intervals",
         "browserDisplay": "1-based coordinates"
       },
-      "evidenceBoundary": "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. Genome annotations provide context and do not validate a promoter call.",
+      "evidenceBoundary": "RAPPTOR promoter predictions are computational, not experimental TSS. Genome annotations provide context; they do not validate predictions.",
       "sources": {
         "reference": {
           "originalFileName": "reference.fa",
@@ -236,11 +236,11 @@
       "annotation": {
         "source": "Prodigal",
         "label": "Prodigal CDS prediction",
-        "description": "Prodigal v2.6.3 protein-coding CDS predictions produced in single-genome mode with translation table 11.",
+        "description": "Prodigal v2.6.3 CDS predictions (single-genome mode; translation table 11).",
         "featureCounts": {
           "CDS": 6856
         },
-        "limitations": "Prodigal does not provide functional product annotation and does not predict rRNA or tRNA features."
+        "limitations": "No functional products, rRNA, or tRNA are predicted."
       },
       "assets": {
         "fasta": "reference.fa.gz",
@@ -305,7 +305,7 @@
         "bigWig": "0-based half-open single-base intervals",
         "browserDisplay": "1-based coordinates"
       },
-      "evidenceBoundary": "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. Genome annotations provide context and do not validate a promoter call.",
+      "evidenceBoundary": "RAPPTOR promoter predictions are computational, not experimental TSS. Genome annotations provide context; they do not validate predictions.",
       "sources": {
         "reference": {
           "originalFileName": "reference.fa",
@@ -358,7 +358,7 @@
       "annotation": {
         "source": "NCBI",
         "label": "NCBI genome annotation",
-        "description": "NCBI gene, CDS, rRNA and tRNA features for sequence CP003597.1.",
+        "description": "NCBI gene, CDS, rRNA, and tRNA features for CP003597.1.",
         "featureCounts": {
           "gene": 5466,
           "CDS": 5408,
@@ -433,7 +433,7 @@
         "bigWig": "0-based half-open single-base intervals",
         "browserDisplay": "1-based coordinates"
       },
-      "evidenceBoundary": "RAPPTOR promoter peaks are computational predictions, not experimental transcription start sites. Genome annotations provide context and do not validate a promoter call.",
+      "evidenceBoundary": "RAPPTOR promoter predictions are computational, not experimental TSS. Genome annotations provide context; they do not validate predictions.",
       "sources": {
         "reference": {
           "originalFileName": "reference.fa",

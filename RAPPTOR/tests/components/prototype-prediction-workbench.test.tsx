@@ -36,7 +36,7 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
     }),
   })));
   await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.2');
-  await waitFor(() => expect(screen.getByText('CGR context ready: Catalog genome.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument());
 }
 
 describe('prototype prediction workbench', () => {
@@ -46,24 +46,24 @@ describe('prototype prediction workbench', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     expect(screen.getByText('Prediction input required')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
-    expect(screen.getAllByText('Focused 100 bp window')).not.toHaveLength(0);
+    expect(screen.getAllByText('100 bp scoring')).not.toHaveLength(0);
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
     expect(screen.queryByText('How was this analysis selected?')).not.toBeInTheDocument();
     expect(screen.queryByText('Parameters and summary')).not.toBeInTheDocument();
-    const stride = screen.getByRole('combobox', { name: 'Step' });
+    const stride = screen.getByRole('combobox', { name: 'Stride' });
     expect(stride).toHaveValue('1');
     expect(screen.getByText('A 100 bp input contains one window.')).toBeInTheDocument();
     await user.selectOptions(stride, '10');
-    expect(screen.getByText('Select a catalog genome or upload a genome FASTA for CGR.')).toBeInTheDocument();
+    expect(screen.getByText('Select a catalog genome or upload its FASTA in Step 2.')).toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Preview illustrative result' });
     expect(submit).toBeEnabled();
     expect(screen.getByText('Genome context required')).toBeInTheDocument();
-    expect(screen.getByText(/Complete Step 2 by selecting a catalog genome/)).toBeInTheDocument();
+    expect(screen.getAllByText('Select a catalog genome or upload its FASTA.')[0]).toBeInTheDocument();
     await user.click(submit);
-    expect(screen.getByRole('alert')).toHaveTextContent('Genome context for CGR is required');
+    expect(screen.getByRole('alert')).toHaveTextContent('Genome context (CGR) is required');
     expect(push).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Use this genome for CGR' }));
-    expect(screen.getByText('CGR context ready: Catalog genome.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
+    expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument();
     expect(submit).toBeEnabled();
     expect(submit).toHaveTextContent('Preview illustrative result');
     expect(screen.getByText('Ready to preview')).toBeInTheDocument();
@@ -82,13 +82,13 @@ describe('prototype prediction workbench', () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    expect(screen.getAllByText('Sequence / contig scan')).not.toHaveLength(0);
+    expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     expect(screen.getAllByText(/Escherichia coli str\. K-12/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Step' })).toHaveValue('1');
-    expect(screen.getByText('Bases between consecutive 100 nt windows.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Stride' })).toHaveValue('1');
+    expect(screen.getByText('Bases between consecutive 100 bp windows.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Use this genome for CGR' }));
+    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
   });
 
@@ -105,11 +105,11 @@ describe('prototype prediction workbench', () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    expect(screen.getAllByText('Sequence / contig scan')).not.toHaveLength(0);
+    expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     await selectCgrCatalog(user);
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
     await user.type(screen.getByLabelText('Raw DNA or FASTA'), 'ACGT'.repeat(25));
-    expect(screen.getAllByText('Focused 100 bp window')).not.toHaveLength(0);
+    expect(screen.getAllByText('100 bp scoring')).not.toHaveLength(0);
     expect(screen.getByRole('combobox', { name: 'Accession, organism, or strain' })).toHaveAttribute('id', 'prototype-context-catalog-search');
     expect(screen.getByText('Genome context required')).toBeInTheDocument();
   });
@@ -121,14 +121,14 @@ describe('prototype prediction workbench', () => {
     Object.defineProperty(primaryFile, 'text', { value: async () => `>uploaded_scan\n${'ACGT'.repeat(40)}` });
     const primaryInput = container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0];
     await user.upload(primaryInput, primaryFile);
-    expect((await screen.findAllByText('Sequence / contig scan')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Sequence scan')).length).toBeGreaterThan(0);
     expect(screen.getByText('Genome context required')).toBeInTheDocument();
 
     const contextFile = new File([`>matching_context\n${'TGCA'.repeat(40)}`], 'matching-context.fna', { type: 'text/plain' });
     Object.defineProperty(contextFile, 'text', { value: async () => `>matching_context\n${'TGCA'.repeat(40)}` });
     const contextInput = container.querySelectorAll<HTMLInputElement>('input[type="file"]')[1];
     await user.upload(contextInput, contextFile);
-    expect(await screen.findByText('CGR context ready: Matching genome FASTA.')).toBeInTheDocument();
+    expect(await screen.findByText('Genome context ready: Matching genome FASTA.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
   });
 
@@ -140,7 +140,7 @@ describe('prototype prediction workbench', () => {
     await user.click(input);
     await user.paste(`>pasted_contig\n${'ACGT'.repeat(40)}\n>second_contig\n${'TGCA'.repeat(35)}`);
 
-    expect(screen.getAllByText('Sequence / contig scan')).not.toHaveLength(0);
+    expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
     expect(screen.getByText('Genome context required')).toBeInTheDocument();
     await selectCgrCatalog(user);
@@ -165,13 +165,13 @@ describe('prototype prediction workbench', () => {
     render(<PrototypePredictionWorkbench />);
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
     await selectCgrCatalog(user);
-    const cutoff = screen.getByRole('spinbutton', { name: /^Score cutoff/ });
+    const cutoff = screen.getByRole('spinbutton', { name: /^Model threshold/ });
     await user.clear(cutoff);
-    expect(screen.getByText('Enter a value from 0 to 1.')).toBeInTheDocument();
+    expect(screen.getAllByText('Enter a value from 0 to 1.').length).toBeGreaterThan(0);
     const submit = screen.getByRole('button', { name: 'Preview illustrative result' });
     expect(submit).toBeEnabled();
     await user.click(submit);
-    expect(screen.getByRole('alert')).toHaveTextContent('Enter a score cutoff from 0 to 1');
+    expect(screen.getByRole('alert')).toHaveTextContent('Model threshold must be between 0 and 1');
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -199,10 +199,10 @@ describe('prototype prediction workbench', () => {
     render(<PrototypePredictionWorkbench localTest />);
 
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    await user.click(screen.getByRole('button', { name: 'Use this genome for CGR' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Step' }), '10');
-    await user.clear(screen.getByRole('spinbutton', { name: /^Score cutoff/ }));
-    await user.type(screen.getByRole('spinbutton', { name: /^Score cutoff/ }), '0.8');
+    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Stride' }), '10');
+    await user.clear(screen.getByRole('spinbutton', { name: /^Export cutoff/ }));
+    await user.type(screen.getByRole('spinbutton', { name: /^Export cutoff/ }), '0.8');
     await user.selectOptions(screen.getByRole('combobox', { name: /^Strands/ }), 'forward');
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
 

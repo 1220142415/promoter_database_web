@@ -23,9 +23,9 @@ describe('portal home', () => {
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Catalog genomes80,850');
     expect(screen.getByLabelText('Release statistics')).not.toHaveTextContent('GTDB + collected assemblies');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('306,900,844');
-    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations cataloged53,285');
+    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('NCBI annotations53,285');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Experimental genomes90');
-    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Experimental observations440,947');
+    expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Observations440,947');
     expect(screen.getByLabelText('Release statistics')).toHaveTextContent('Source publications78');
     expect(screen.getByLabelText('Release statistics')).not.toHaveTextContent('Current release');
     expect(screen.getByLabelText('Release statistics')).not.toHaveTextContent('gtdb-r214-2026-08-13');

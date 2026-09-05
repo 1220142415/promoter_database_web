@@ -1,1 +1,1 @@
-"""Minimal RAPPtor model, CGR, configuration, and inference runtime."""
+"""Minimal RAPPTOR model, CGR, configuration, and inference runtime."""

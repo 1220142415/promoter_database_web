@@ -378,7 +378,7 @@ function renderPromoterFeature(
       data-strand={strandLabel(strand)}
       data-screen-direction={direction}
     >
-      <title>{formal ? 'Predicted promoter (100 bp); anchor at 80th base' : 'Predicted promoter peak'}</title>
+      <title>{formal ? 'Promoter prediction (100 bp); anchor at base 80' : 'Promoter prediction anchor'}</title>
       {showBody ? <rect data-role="promoter-body" {...bodyRect} fill={color} fillOpacity={1} /> : null}
       {flagged && anchorVisible ? promoterFlag(anchorX!, top, direction, color, formal ? '80th-base' : 'predicted-peak') : null}
       {!flagged && arrowGeometry.placement

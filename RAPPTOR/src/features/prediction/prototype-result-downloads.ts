@@ -29,7 +29,7 @@ function focusedWindowsForDownload(fixture: PrototypePredictionFixture) {
 export function prototypeResultBedGraph(fixture: PrototypePredictionFixture) {
   const strands = (['+', '-'] as const).filter((strand) => fixture.scoreSeries.some((window) => window.strand === strand));
   return strands.flatMap((strand) => [
-    `track type=bedGraph name="RAPPTOR prototype raw scores (${strand})" description="Illustrative fixture; no model was run"`,
+    `track type=bedGraph name="RAPPTOR prototype model scores (${strand})" description="Illustrative fixture; no model was run"`,
     ...fixture.scoreSeries
       .filter((window) => window.strand === strand)
       .sort((left, right) => left.sequenceId.localeCompare(right.sequenceId) || left.anchor - right.anchor)

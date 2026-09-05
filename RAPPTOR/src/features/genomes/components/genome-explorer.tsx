@@ -24,6 +24,7 @@ import type {
   UnifiedGenomeSearchQuery,
   UnifiedGenomeSearchResponse,
 } from '@/types/unified-genome';
+import { PORTAL_COPY, PORTAL_TERMS } from '@/components/portal-terminology';
 
 const TAXONOMY_RANKS = [
   { key: 'domain', label: 'Domain', allLabel: 'All domains' },
@@ -131,7 +132,7 @@ export default function PortalGenomeExplorer({
         headers: { Accept: 'application/json' },
       });
       const body = await response.json() as UnifiedGenomeSearchResponse | { error?: string };
-      if (!response.ok) throw new Error('error' in body && body.error ? body.error : 'Genome catalog request failed.');
+      if (!response.ok) throw new Error('error' in body && body.error ? body.error : PORTAL_COPY.catalogUnavailable);
       const nextResult = body as UnifiedGenomeSearchResponse;
       setResult(nextResult);
       setStaleTaxonomyFrom(null);
@@ -147,7 +148,7 @@ export default function PortalGenomeExplorer({
       }
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') return;
-      setError(cause instanceof Error ? cause.message : 'Genome catalog request failed.');
+      setError(cause instanceof Error ? cause.message : PORTAL_COPY.catalogUnavailable);
     } finally {
       if (requestRef.current === controller) {
         requestRef.current = null;
@@ -311,7 +312,7 @@ export default function PortalGenomeExplorer({
             <th className="catalog-sortable-heading" aria-sort={sortField === 'organism' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}>{sortHeader('organism', 'Organism')}</th>
             <th>Taxonomy</th>
             <th className="catalog-sortable-heading" aria-sort={sortField === 'genome-size' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}>{sortHeader('genome-size', 'Assembly size')}</th>
-            <th className="catalog-sortable-heading" aria-sort={sortField === 'promoters' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}>{sortHeader('promoters', 'Predicted promoters')}</th>
+            <th className="catalog-sortable-heading" aria-sort={sortField === 'promoters' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}>{sortHeader('promoters', PORTAL_TERMS.promoterPredictions)}</th>
             <th>Annotation</th>
           </tr></thead>
           <tbody>
@@ -323,7 +324,7 @@ export default function PortalGenomeExplorer({
                 <td><span>{formatCount(genome.genomeSizeBp)} bp</span><small>{formatCount(genome.contigCount)} contigs</small></td>
                 <td data-predicted-promoters={genome.predictedPromoterCount} data-evidence-state={genome.evidenceState}>
                   <span className={genome.predictionAvailable ? 'evidence-available' : 'evidence-muted'}>
-                    {genome.predictionAvailable ? `${genome.predictedPromoterCount.toLocaleString()} predictions` : 'No prediction data'}
+                    {genome.predictionAvailable ? `${genome.predictedPromoterCount.toLocaleString()} promoter predictions` : 'No predictions'}
                   </span>
                   {showExperimental ? <small className={genome.experimentalAccession ? 'evidence-available' : 'evidence-muted'}>
                     {genome.experimentalAccession

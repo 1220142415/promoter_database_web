@@ -146,8 +146,8 @@ describe('unified JBrowse viewer', () => {
       defaultSession: { view: { tracks: Array<{ configuration: string }> } };
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'RAPPTOR raw scores (+ / - strands)',
-      'RAPPTOR predicted promoters',
+      'RAPPTOR model scores (+ / − strands)',
+      'RAPPTOR promoter predictions',
       'Experimental TSS · 2012 · PMID 22251276',
       'Experimental TSS · 2013 · PMID 22538806',
       'NCBI genome annotation',
@@ -174,6 +174,12 @@ describe('unified JBrowse viewer', () => {
     });
     expect(config.tracks[2].metadata).toMatchObject({
       rapptorEvidenceType: 'experimental_tss',
+      rapptorDownload: {
+        kind: 'raw-bed', accession,
+        label: 'Experimental TSS · 2012 · PMID 22251276',
+        wholeAssetUrl: `/api/experimental-data/${accession}/studies/earlier-study/raw.bed`,
+        visibleRegionDownload: false,
+      },
       rapptorExperimentalDownloads: [
         { kind: 'raw-bed', label: 'Original BED observations' },
       ],
@@ -197,7 +203,7 @@ describe('unified JBrowse viewer', () => {
       assembly: { sequence: { adapter: { type: string } } };
     };
     expect(config.tracks.map((track) => track.name)).toEqual([
-      'RAPPTOR predicted promoters',
+      'RAPPTOR promoter predictions',
       'Experimental TSS · 2012 · PMID 22251276',
       'Experimental TSS · 2013 · PMID 22538806',
       'Prodigal / eggNOG CDS annotations',
@@ -230,9 +236,9 @@ describe('unified JBrowse viewer', () => {
         displays: [{ blockState: new Map([['block', { error: new Error('track failed') }]]) }],
       }] } },
     }, accession, `${accession}-reference-sequence`, new Map([
-      [`${accession}-predicted-promoters`, 'RAPPTOR predicted promoters'],
+      [`${accession}-predicted-promoters`, 'RAPPTOR promoter predictions'],
     ]));
-    expect(failures).toEqual({ referenceFailed: false, optionalTrackLabels: ['RAPPTOR predicted promoters'] });
+    expect(failures).toEqual({ referenceFailed: false, optionalTrackLabels: ['RAPPTOR promoter predictions'] });
   });
 
   it('shows a partial-view notice while keeping JBrowse mounted for an optional track failure', async () => {
@@ -243,7 +249,7 @@ describe('unified JBrowse viewer', () => {
     }] as never;
     vi.mocked(createViewState).mockReturnValue(tree as never);
     render(<UnifiedJBrowseViewer prediction={prediction()} />);
-    await waitFor(() => expect(screen.getByText(/Partial view: RAPPTOR predicted promoters could not be loaded/)).toBeVisible());
+    await waitFor(() => expect(screen.getByText(/Partial view: RAPPTOR promoter predictions failed to load/)).toBeVisible());
     expect(screen.getByTestId('mock-unified-jbrowse')).toBeInTheDocument();
   });
 
@@ -254,7 +260,7 @@ describe('unified JBrowse viewer', () => {
     tree.assemblyManager = { get: () => ({ error: new Error('reference failed') }) };
     vi.mocked(createViewState).mockReturnValue(tree as never);
     render(<UnifiedJBrowseViewer prediction={prediction()} />);
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('reference sequence could not be loaded'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('reference sequence failed to load'));
     expect(screen.queryByTestId('mock-unified-jbrowse')).not.toBeInTheDocument();
   });
 });

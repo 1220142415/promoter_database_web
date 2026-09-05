@@ -87,9 +87,9 @@ export const StrandFeatureTooltip = observer(function StrandFeatureTooltip({ mod
       <div data-testid="strand-feature-tooltip">
         {featureTitle(feature)}<br />
         {coordinateLabel(feature)}<br />
-        {anchor === undefined ? null : <>predicted anchor (80th base): {refName}:{anchor.toLocaleString('en-US')}<br /></>}
+        {anchor === undefined ? null : <>prediction anchor (base 80): {refName}:{anchor.toLocaleString('en-US')}<br /></>}
         strand: {strandLabel(feature.get('strand'))}
-        {score === undefined ? null : <><br />score: {score}</>}
+        {score === undefined ? null : <><br />{promoter ? 'model score' : 'score'}: {score}</>}
       </div>
     </BaseTooltip>
   );
@@ -113,7 +113,7 @@ export default class RapptorStrandFeaturePlugin extends Plugin {
   install(pluginManager: PluginManager) {
     pluginManager.addRendererType((pm) => new SvgFeatureRenderer({
       name: PROMOTER_FEATURE_RENDERER,
-      displayName: 'Predicted promoter anchors and arrows',
+      displayName: 'Promoter prediction anchors and arrows',
       ReactComponent: PromoterFeatureRendering,
       configSchema: promoterRendererConfig,
       pluginManager: pm,

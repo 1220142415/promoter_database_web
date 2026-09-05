@@ -151,8 +151,9 @@ async function runtimeD1UnifiedGenomeAliases() {
   try {
     const { getCloudflareContext } = await import('@opennextjs/cloudflare');
     const database = getCloudflareContext().env.RAPPTOR_DB;
-    return database ? readD1UnifiedGenomeAliases(database) : [];
+    return database ? await readD1UnifiedGenomeAliases(database) : [];
   } catch {
+    // D1 aliases are optional outside a fully migrated production catalog.
     return [];
   }
 }

@@ -1,5 +1,7 @@
+import { after } from 'next/server';
 import { usageDatabase } from '@/features/usage/store';
 import { parsePredictionJobEvent, writePredictionJobEvent } from '@/features/prediction/jobs';
+import { sendPredictionNotification } from '@/features/prediction/notifications';
 import { PredictionTicketConfigurationError, readPredictionTicketSettings, serviceSecretMatches } from '@/features/prediction/tickets';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +24,15 @@ export async function POST(request: Request) {
     const database = usageDatabase();
     if (!database) return Response.json({ accepted: false }, { status: 503 });
     if (!await writePredictionJobEvent(database, event)) return Response.json({ accepted: false }, { status: 409 });
+    if (event.status === 'succeeded' || event.status === 'failed') {
+      after(async () => {
+        try {
+          await sendPredictionNotification(database, event.jobId, { apiKey: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM });
+        } catch {
+          console.error(JSON.stringify({ event: 'prediction_notification_failed', jobId: event.jobId }));
+        }
+      });
+    }
     return Response.json({ accepted: true }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {
     if (cause instanceof PredictionTicketConfigurationError) return Response.json({ accepted: false }, { status: 503 });

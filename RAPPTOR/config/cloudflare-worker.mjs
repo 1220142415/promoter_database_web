@@ -1,5 +1,6 @@
 import openNextWorker from '../.open-next/worker.js';
 import { purgeExpiredUsage } from '../src/features/usage/retention.ts';
+import { purgeExpiredPredictionNotifications, retryPredictionNotifications } from '../src/features/prediction/notifications.ts';
 
 const DEFAULT_RETENTION_DAYS = 400;
 
@@ -47,7 +48,18 @@ const worker = {
     return fetchWithCatalogCache(request, env, context);
   },
   scheduled(controller, env, context) {
-    context.waitUntil(runRetentionCleanup(env, controller.scheduledTime));
+    if (controller.cron === '17 3 * * *') {
+      context.waitUntil(runRetentionCleanup(env, controller.scheduledTime));
+    }
+    if (env.RAPPTOR_DB) {
+      context.waitUntil((async () => {
+        const now = new Date(controller.scheduledTime);
+        await purgeExpiredPredictionNotifications(env.RAPPTOR_DB, now);
+        await retryPredictionNotifications(env.RAPPTOR_DB, { apiKey: env.RESEND_API_KEY, from: env.RESEND_FROM }, now);
+      })().catch(() => {
+        console.error(JSON.stringify({ event: 'prediction_notification_cron_failed' }));
+      }));
+    }
   },
 };
 

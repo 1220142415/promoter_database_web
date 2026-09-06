@@ -40,15 +40,21 @@ verified Resend sender domain:
 
 The password must never be committed or pasted into chat.
 
-In Authentication → Emails → Templates → Magic link or OTP, keep the OTP
-placeholder in the body:
+In Authentication → Emails → Templates, configure **both** of these templates
+as code emails:
+
+- Confirm sign up: used the first time a new email requests a code.
+- Magic link or OTP: used when an existing user requests another code.
+
+Keep the OTP placeholder in both template bodies:
 
 ```text
 {{ .Token }}
 ```
 
-Without that placeholder, the application cannot receive the code required by
-the passwordless login form.
+Without that placeholder, Supabase falls back to a confirmation link for new
+users or sends a message that does not contain the code required by the
+passwordless login form.
 
 ## Cloudflare Worker secrets
 

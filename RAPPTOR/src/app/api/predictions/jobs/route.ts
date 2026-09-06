@@ -1,9 +1,9 @@
 import { after } from 'next/server';
 import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
-import { requirePredictionAuth } from '@/features/auth/supabase';
+import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
 import { releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
-import { registerPredictionNotification, sendPredictionNotification } from '@/features/prediction/notifications';
+import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 
 export const dynamic = 'force-dynamic';
 

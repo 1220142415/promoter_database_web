@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, POST } from '@/app/api/prediction-auth/route';
-import { requirePredictionAuth, withSessionCookie, type AuthSession } from '@/features/auth/supabase';
+import { requirePredictionAuth, withSessionCookie, type AuthSession } from '@/features/email-system/supabase';
 
 const originalUrl = process.env.SUPABASE_URL;
 const originalKey = process.env.SUPABASE_ANON_KEY;

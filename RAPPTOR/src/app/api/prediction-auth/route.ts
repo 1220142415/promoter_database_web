@@ -1,4 +1,4 @@
-import { isEmail, NO_STORE, readJsonObject } from '@/features/auth/http';
+import { isEmail, NO_STORE, readJsonObject } from '@/features/email-system/http';
 import {
   parseAuthSession,
   publicUser,
@@ -8,7 +8,7 @@ import {
   supabaseUser,
   withClearedSession,
   withSessionCookie,
-} from '@/features/auth/supabase';
+} from '@/features/email-system/supabase';
 
 export const dynamic = 'force-dynamic';
 

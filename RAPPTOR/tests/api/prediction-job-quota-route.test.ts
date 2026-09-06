@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ used: false, releases: 0 }));
 
-vi.mock('@/features/auth/supabase', () => ({
+vi.mock('@/features/email-system/supabase', () => ({
   requirePredictionAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'person@example.test', emailConfirmed: true }),
 }));
 
@@ -28,7 +28,7 @@ vi.mock('@/features/usage/store', () => ({
 }));
 
 import { POST } from '@/app/api/predictions/jobs/route';
-import { requirePredictionAuth } from '@/features/auth/supabase';
+import { requirePredictionAuth } from '@/features/email-system/supabase';
 
 function request(mode: 'predict' | 'genome_scan') {
   return new Request('http://localhost/api/predictions/jobs', {

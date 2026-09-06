@@ -1,5 +1,5 @@
 import { serviceSecretMatches } from '@/features/prediction/tickets';
-import { sendRappTorEmail } from '@/features/email/resend';
+import { sendRappTorEmail } from '@/features/email-system/resend';
 
 export const dynamic = 'force-dynamic';
 

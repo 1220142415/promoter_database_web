@@ -3,6 +3,9 @@
 This document records the production setup for passwordless prediction access.
 Secrets are intentionally omitted.
 
+For the complete Chinese deployment, migration, API-key, data-flow, and
+troubleshooting guide, see `docs/email-system-deployment.zh-CN.md`.
+
 ## Components
 
 - Supabase Auth owns the user identity and email OTP login.

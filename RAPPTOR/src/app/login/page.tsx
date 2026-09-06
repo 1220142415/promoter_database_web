@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { PredictionAuthForm } from '@/features/auth/auth-ui';
+import { PredictionAuthForm } from '@/features/email-system/auth-ui';
 
 export const metadata: Metadata = {
   title: 'Prediction sign in | RAPPTOR',

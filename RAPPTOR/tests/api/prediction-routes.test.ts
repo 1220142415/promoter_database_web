@@ -10,7 +10,7 @@ import { GET as getResult } from '@/app/api/predictions/[jobId]/result/route';
 import { resetDemoPredictionState } from '@/features/prediction/demo-provider';
 import { PREDICTION_CONTRACT_VERSION, type PredictionJob, type PredictionResult, type PredictionTicketResponse, type PredictionUploadSlot } from '@/features/prediction/types';
 
-vi.mock('@/features/auth/supabase', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'person@example.test', emailConfirmed: true }) }));
+vi.mock('@/features/email-system/supabase', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'person@example.test', emailConfirmed: true }) }));
 
 const modelVersion = 'rapptor-cgr-100bp-demo-v1';
 const bodyRequest = (url: string, body: unknown, headers?: HeadersInit) => new Request(url, {

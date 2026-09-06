@@ -12,7 +12,7 @@ import {
   readPredictionTicketSettings,
   verifyTurnstile,
 } from '@/features/prediction/tickets';
-import { requirePredictionAuth } from '@/features/auth/supabase';
+import { requirePredictionAuth } from '@/features/email-system/supabase';
 
 export const dynamic = 'force-dynamic';
 const MAX_TICKET_REQUEST_BYTES = 16 * 1024;

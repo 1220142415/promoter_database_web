@@ -4,7 +4,7 @@ import { demoPredictionProvider, predictionAccessCookie } from '@/features/predi
 import type { GenomeContext, PredictionSubmission } from '@/features/prediction/types';
 import { PREDICTION_CONTRACT_VERSION } from '@/features/prediction/types';
 import { parseDemoPredictionSubmission } from '@/features/prediction/validation';
-import { requirePredictionAuth } from '@/features/auth/supabase';
+import { requirePredictionAuth } from '@/features/email-system/supabase';
 
 export async function POST(request: Request) {
   const auth = await requirePredictionAuth(request);

@@ -1,7 +1,7 @@
 import { after } from 'next/server';
 import { usageDatabase } from '@/features/usage/store';
 import { parsePredictionJobEvent, writePredictionJobEvent } from '@/features/prediction/jobs';
-import { sendPredictionNotification } from '@/features/prediction/notifications';
+import { sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 import { PredictionTicketConfigurationError, readPredictionTicketSettings, serviceSecretMatches } from '@/features/prediction/tickets';
 
 export const dynamic = 'force-dynamic';

@@ -1,4 +1,4 @@
-import { sendRappTorEmail, type ResendSettings } from '../email/resend';
+import { sendRappTorEmail, type ResendSettings } from './resend';
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RETRY_DELAY_MS = 5 * 60 * 1000;

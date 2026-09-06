@@ -11,8 +11,8 @@ const database = vi.hoisted(() => ({
 }));
 
 vi.mock('next/server', () => ({ after: (callback: () => Promise<void> | void) => callbacks.push(callback) }));
-vi.mock('@/features/auth/supabase', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue(auth) }));
-vi.mock('@/features/prediction/notifications', () => ({
+vi.mock('@/features/email-system/supabase', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue(auth) }));
+vi.mock('@/features/email-system/prediction-notifications', () => ({
   registerPredictionNotification: notification.register,
   sendPredictionNotification: notification.send,
 }));
@@ -20,7 +20,7 @@ vi.mock('@/features/usage/store', () => ({ usageDatabase: vi.fn() }));
 
 import { POST as createJob } from '@/app/api/predictions/jobs/route';
 import { POST as reportJobEvent } from '@/app/api/internal/prediction-jobs/route';
-import { requirePredictionAuth } from '@/features/auth/supabase';
+import { requirePredictionAuth } from '@/features/email-system/supabase';
 
 const jobId = '0123456789abcdef0123456789abcdef';
 

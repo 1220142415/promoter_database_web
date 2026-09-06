@@ -1,6 +1,6 @@
 import openNextWorker from '../.open-next/worker.js';
 import { purgeExpiredUsage } from '../src/features/usage/retention.ts';
-import { purgeExpiredPredictionNotifications, retryPredictionNotifications } from '../src/features/prediction/notifications.ts';
+import { purgeExpiredPredictionNotifications, retryPredictionNotifications } from '../src/features/email-system/prediction-notifications.ts';
 
 const DEFAULT_RETENTION_DAYS = 400;
 

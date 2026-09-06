@@ -123,6 +123,7 @@ describe('prototype prediction workbench', () => {
     await user.upload(primaryInput, primaryFile);
     expect((await screen.findAllByText('Sequence scan')).length).toBeGreaterThan(0);
     expect(screen.getByText('Genome context required')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove uploaded FASTA' })).toBeInTheDocument();
 
     const contextFile = new File([`>matching_context\n${'TGCA'.repeat(40)}`], 'matching-context.fna', { type: 'text/plain' });
     Object.defineProperty(contextFile, 'text', { value: async () => `>matching_context\n${'TGCA'.repeat(40)}` });
@@ -130,6 +131,13 @@ describe('prototype prediction workbench', () => {
     await user.upload(contextInput, contextFile);
     expect(await screen.findByText('Genome context ready: Matching genome FASTA.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Remove genome FASTA' }));
+    expect(screen.getByRole('button', { name: 'Choose FASTA file' })).toBeInTheDocument();
+    expect(screen.getByText('Genome context required')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remove uploaded FASTA' }));
+    expect(screen.getByRole('button', { name: 'Upload FASTA' })).toBeInTheDocument();
+    expect(screen.getByText('Prediction input required')).toBeInTheDocument();
   });
 
   it('requires CGR context after a real paste event for a multi-record FASTA', async () => {

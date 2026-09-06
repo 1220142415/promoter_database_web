@@ -258,6 +258,19 @@ export default function PrototypePredictionWorkbench({
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
   }
 
+  function removePrimaryFile() {
+    setUploadedInput(EMPTY_UPLOAD);
+    setPrimaryKind('inline');
+    clearGenomeContext();
+    setFormError(null);
+  }
+
+  function removeContextFile() {
+    setContextUpload(EMPTY_CONTEXT_UPLOAD);
+    setContextKind('catalog');
+    setFormError(null);
+  }
+
   function selectContextCatalog(context: PrototypeGenomeContext | null) {
     setContextCatalog(context);
     if (context) setContextKind('catalog');
@@ -547,6 +560,7 @@ export default function PrototypePredictionWorkbench({
               </div>
               <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
                 <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />{uploadedInput.file ? 'Replace FASTA' : 'Upload FASTA'}</button>
+                {uploadedInput.file ? <button type="button" aria-label="Remove uploaded FASTA" onClick={removePrimaryFile}>Remove</button> : null}
                 <span className={styles.fileMeta}>{uploadedInput.loading ? 'Reading file metadata…' : uploadedInput.file ? `${uploadedInput.file.name} · ${formatPrototypeBytes(uploadedInput.file.size)}` : `FASTA (.fa, .fasta, .fna, optionally .gz) · max ${genomeLimitLabel}`}</span>
                 <input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} />
               </div>
@@ -578,6 +592,7 @@ export default function PrototypePredictionWorkbench({
                   <div className={styles.fileAction}>
                     <div><strong>{contextUpload.file?.name || 'Choose genome FASTA'}</strong><span>{contextUpload.loading ? 'Reading metadata…' : contextUpload.file ? formatPrototypeBytes(contextUpload.file.size) : `.fa, .fasta, or .fna, optionally .gz · max ${genomeLimitLabel}`}</span></div>
                     <button type="button" onClick={() => contextFileRef.current?.click()}>{contextUpload.file ? 'Replace FASTA file' : 'Choose FASTA file'}</button>
+                    {contextUpload.file ? <button type="button" aria-label="Remove genome FASTA" onClick={removeContextFile}>Remove</button> : null}
                     <input ref={contextFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handleContextFile} />
                   </div>
                   <p className={contextUpload.error ? styles.fileError : styles.localNote}>{contextUpload.error || contextPrivacyCopy}</p>

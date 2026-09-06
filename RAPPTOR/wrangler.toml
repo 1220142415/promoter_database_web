@@ -2,6 +2,8 @@ name = "rapptor"
 main = "config/cloudflare-worker.mjs"
 compatibility_date = "2026-08-13"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+routes = [{ pattern = "rapptor.duolalab.qzz.io", custom_domain = true }]
 
 [assets]
 directory = ".open-next/assets"
@@ -25,11 +27,10 @@ RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = "on"
 RAPPTOR_CATALOG_BACKEND = "d1"
 RAPPTOR_PREDICTION_ENABLED = "on"
 RAPPTOR_PREDICTION_SERVICE_URL = "https://rapptor_server.duolalab.qzz.io"
-# Temporary local-test branch: no Turnstile widget is rendered.
-RAPPTOR_DEPLOYMENT_ENV = "local"
-RAPPTOR_PREDICTION_LOCAL_TEST = "on"
-NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST = "on"
-NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY = ""
+RAPPTOR_DEPLOYMENT_ENV = "production"
+RAPPTOR_PREDICTION_LOCAL_TEST = "off"
+NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST = "off"
+NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY = "0x4AAAAAAEqH67w5q996rf9C"
 RAPPTOR_PREDICTION_MODEL_VERSION = "candidate-github-93cf"
 RAPPTOR_PREDICTION_MAX_BASES = "6000000"
 RAPPTOR_PREDICTION_TICKETS_PER_MINUTE = "2"

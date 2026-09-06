@@ -57,6 +57,44 @@ flowchart LR
 - **D1** 保存额度和短期通知状态，不作为用户主库。
 - **Docker** 只运行预测，不接收邮箱、Supabase Key 或 Resend Key。
 
+### 单一配置源（推荐）
+
+仓库现在用根目录的 `.env.deploy` 作为本机部署配置源。这个文件同时保存域名、
+Supabase/Resend/Turnstile 凭据和 Docker 内部密钥，并已被 Git 忽略。GitHub 只保存
+不含真实密钥的 `.env.deploy.example`。
+
+```mermaid
+flowchart TD
+  C[.env.deploy 本机私密文件] --> A[scripts/deployment/apply-config.mjs]
+  T[docs/supabase-otp-template.html] --> A
+  A -->|Management API| S[Supabase SMTP / 6 位 OTP / 两个模板]
+  A -->|wrangler secret bulk| W[Cloudflare Worker Secrets]
+  A -->|更新公开变量| V[wrangler.toml + .env.production.local]
+  A -->|生成| D[services/prediction/.env]
+  D --> P[Docker API + Worker]
+```
+
+首次配置：
+
+```powershell
+Copy-Item .env.deploy.example .env.deploy
+# 只在本机编辑 .env.deploy，填入空白项
+npm run deployment:init    # 自动生成两个内部随机密钥，不输出值
+npm run deployment:check
+npm run deployment:configure
+```
+
+也可以分开执行：
+
+```powershell
+npm run deployment:email   # Supabase 邮件设置 + Worker 邮件 Secrets
+npm run deployment:ticket  # Worker ticket Secrets + Docker .env + 正式公开变量
+```
+
+`deployment:email` 会直接调用 Supabase Management API，所以需要
+`SUPABASE_MANAGEMENT_TOKEN`。它是 Supabase 账户的 Personal Access Token（需要
+`auth:write`），不是项目的 `service_role` key。脚本不会输出任何密钥值。
+
 ## 3. 所需配置清单
 
 ### 3.1 必需值
@@ -65,10 +103,11 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `SUPABASE_URL` | Supabase 项目 Settings / API Keys 中的 Project URL | Cloudflare Worker Secret | URL 本身不是机密，当前仍按 Secret 管理 | Worker 调用 Supabase Auth |
 | `SUPABASE_ANON_KEY` | Supabase 项目 Settings / API Keys 的 anon/publishable key | Cloudflare Worker Secret | 按机密管理 | 调用 Supabase `/auth/v1/*` |
+| `SUPABASE_MANAGEMENT_TOKEN` | Supabase Account / Access Tokens | 仅本机 `.env.deploy` | 是 | 由代码同步 SMTP、OTP 和模板，不下发 Worker |
 | Supabase SMTP password | Resend API Keys 新建的 sending key | Supabase Authentication / Emails / SMTP Settings | 是 | Supabase 通过 Resend 发 OTP |
 | `RESEND_API_KEY` | Resend / API Keys 新建的 sending key | Cloudflare Worker Secret | 是 | Worker 直接发送任务通知 |
 | `RESEND_FROM` | 自己决定，地址必须属于 Resend 已验证域名 | Cloudflare Worker 普通变量 | 否 | 任务通知发件人 |
-| `RAPPTOR_PREDICTION_SERVICE_SECRET` | 自行生成的高强度随机值 | Worker Secret 和 Docker 环境变量各填一份 | 是 | 验证 Docker 状态回调 |
+| `RAPPTOR_PREDICTION_SERVICE_SECRET` | 自行生成的高强度随机值 | 本机 `.env.deploy`，脚本同步到 Worker 和 Docker | 是 | ticket 消费与 Docker 状态回调 |
 
 推荐为 Supabase SMTP 和 Worker 任务通知分别创建两个 Resend Key。一个 Key
 也能工作，但分开后可以单独撤销、审计和轮换。
@@ -85,7 +124,8 @@ Supabase project ref: swicrzrhvbkocrssmqpv
 Supabase URL: https://swicrzrhvbkocrssmqpv.supabase.co
 Resend sender domain: auth.email.duolalab.qzz.io
 Recommended sender: RAPPTOR <no-reply@auth.email.duolalab.qzz.io>
-Worker URL: https://rapptor.1052596411.workers.dev
+Worker URL: https://rapptor.duolalab.qzz.io
+Backup Worker URL: https://rapptor.1052596411.workers.dev
 D1 binding: RAPPTOR_DB
 D1 database: seqedge-catalog
 ```
@@ -116,8 +156,9 @@ Resend 拒绝。
 - `rapptor-supabase-smtp`：只给 Supabase SMTP 使用。
 - `rapptor-worker-notifications`：只给 Cloudflare Worker 使用。
 
-Key 只在创建时完整显示一次。立即分别填入目标平台，不要写入 `.env`、截图、
-聊天或 Git。权限选择 Sending access，并尽量限制到已验证域名。
+Key 只在创建时完整显示一次。立即填入被 Git 忽略的 `.env.deploy`，不要写入受
+版本控制的环境文件、截图、聊天或 Git。权限选择 Sending access，并尽量限制到
+已验证域名。
 
 ### 4.3 Resend 在两条邮件链路中的区别
 
@@ -156,7 +197,8 @@ Email OTP length: 6 digits
 
 ### 5.3 自定义 SMTP
 
-位置：Authentication → Emails → SMTP Settings。
+默认使用 `npm run deployment:email` 由代码同步；Dashboard 的等价位置是
+Authentication → Emails → SMTP Settings。
 
 | 字段 | 填写内容 |
 | --- | --- |
@@ -171,7 +213,8 @@ SMTP password 只填在 Supabase，Cloudflare 不需要知道这一份 Key。
 
 ### 5.4 两个 OTP 模板都必须配置
 
-位置：Authentication → Emails → Templates。
+默认使用 `npm run deployment:email` 把 `docs/supabase-otp-template.html` 同时同步到
+两个模板；Dashboard 的等价位置是 Authentication → Emails → Templates。
 
 必须同时修改：
 
@@ -195,7 +238,19 @@ Body 使用仓库中的 `docs/supabase-otp-template.html`。两个模板都必�
 
 ## 6. Cloudflare 配置
 
-### 6.1 Dashboard 填写位置
+### 6.1 代码同步（推荐）
+
+`.env.deploy` 填完后执行：
+
+```powershell
+npm run deployment:email
+```
+
+脚本通过 `wrangler secret bulk` 更新 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、
+`RESEND_API_KEY` 和 `RESEND_FROM`。更换发件域名时，只需修改
+`EMAIL_FROM_ADDRESS`、`RAPPTOR_PUBLIC_SITE_URL` 并重新运行。
+
+### 6.2 Dashboard 手工填写（备用）
 
 Workers & Pages → `rapptor` → Settings → Variables and Secrets。
 
@@ -217,7 +272,7 @@ RESEND_FROM=RAPPTOR <no-reply@auth.example.com>
 Dashboard 保存 Secret 会创建一个新的 Worker 配置版本，但代码有变化时仍要执行
 正式部署。
 
-### 6.2 Wrangler 填写方式
+### 6.3 Wrangler 单项填写（备用）
 
 在 RAPPTOR 目录运行：
 
@@ -401,7 +456,9 @@ Worker scheduled handler
 4. 在 Supabase 配置 Email provider、6 位 OTP、SMTP 和两个邮件模板。
 5. 创建或绑定 D1，并应用需要的 migrations。
 6. 在 Cloudflare 写入 Secrets 和 `RESEND_FROM`。
-7. Docker 与 Worker 配置相同的内部回调密钥。
+7. 运行 `npm run deployment:ticket`，让 Worker 的
+   `RAPPTOR_PREDICTION_SERVICE_SECRET` 与 Docker 的
+   `RAPPTOR_TICKET_SERVICE_SECRET`、`RAPPTOR_JOB_CALLBACK_SECRET` 使用同一个值。
 8. 执行 `npm run verify`。
 9. 执行 `npm run deploy:cf`。
 10. 完成下面的验收清单。
@@ -455,9 +512,16 @@ Worker 与 Docker 必须使用同一值。先规划短暂停机或双密钥兼�
 
 ## 16. 安全规则
 
-- `.env.local`、API Key、SMTP password、OTP、Cookie 和回调密钥不得提交 Git。
+- `.env.deploy`、`.env.local`、API Key、SMTP password、OTP、Cookie 和回调密钥不得提交 Git。
 - 不在日志中记录邮箱正文、验证码、access token、refresh token 或序列。
 - 邮件不得包含序列、结果文件或访问令牌。
 - Webhook/内部回调必须校验 Bearer secret。
 - Cloudflare 只保存运行时 Secret；仓库只保存变量名和模板。
 - 离职、泄露或域名迁移时立即轮换对应 Key。
+
+## 17. 2026-09-06 ticket 启用记录
+
+- Worker 主域名：`https://rapptor.duolalab.qzz.io`，备份域名：`https://rapptor.1052596411.workers.dev`。
+- Turnstile 同一 widget 同时允许这两个 hostname。
+- Docker API/worker 使用容器级 `1.1.1.1`、`8.8.8.8` DNS，避免宿主机校园 DNS 对新自定义域名的负缓存。
+- 已完成线上验收：无 ticket 返回 401，无效 ticket 返回 401，有效 ticket 返回 202，同一 ticket 重放返回 401。

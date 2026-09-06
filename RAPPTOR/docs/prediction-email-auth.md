@@ -24,6 +24,7 @@ In Authentication → Providers → Email:
 
 - Email provider: enabled.
 - Confirm email: enabled.
+- Email OTP length: `6` digits. This must match the six-digit login input.
 - Password sign-in is not used by RAPPTOR; the application sends an email OTP.
 
 In Authentication → Emails → SMTP Settings, enable custom SMTP and use the

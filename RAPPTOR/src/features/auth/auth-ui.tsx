@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import styles from './auth.module.css';
 
 type AuthUser = { id: string; email: string; emailConfirmed: boolean };
@@ -80,8 +80,7 @@ export function PredictionAuthForm({ nextPath = '/predict' }: { nextPath?: strin
 
 export function PredictionAuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>();
   const [error, setError] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
@@ -93,14 +92,15 @@ export function PredictionAuthGate({ children }: { children: ReactNode }) {
         return;
       }
       if (response.status === 401) {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        setUser(null);
+        setError(null);
         return;
       }
       setError(payload.error?.message || 'Prediction sign-in is unavailable.');
     } catch {
       setError('Prediction sign-in could not be reached.');
     }
-  }, [pathname, router]);
+  }, []);
 
   useEffect(() => {
     void loadSession();
@@ -114,21 +114,18 @@ export function PredictionAuthGate({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'logout' }),
     }).catch(() => null);
-    window.location.assign('/login?next=/predict');
+    setUser(null);
   }
-
-  if (error) {
-    return <main className={`${styles.state} portal-shell`}><p role="alert">{error}</p><button className="portal-button portal-button-secondary" type="button" onClick={() => void loadSession()}>Retry</button></main>;
-  }
-  if (!user) return <main className={`${styles.state} portal-shell`} aria-busy="true">Checking prediction access…</main>;
 
   return (
     <>
       <div className={styles.sessionBar}>
         <div className="portal-shell">
           <span>Daily allowance: 1 whole-genome scan · short sequences unlimited · resets 00:00 Beijing</span>
-          <span>Signed in as <strong>{user.email}</strong></span>
-          <button type="button" onClick={logout}>Sign out</button>
+          {error ? <span role="alert">{error} <button type="button" onClick={() => void loadSession()}>Retry</button></span>
+            : user ? <><span>Signed in as <strong>{user.email}</strong></span><button type="button" onClick={logout}>Sign out</button></>
+              : user === null ? <Link className="portal-text-link" href={`/login?next=${encodeURIComponent(pathname)}`}>Sign in to submit</Link>
+                : <span>Checking sign-in…</span>}
         </div>
       </div>
       {children}

@@ -61,6 +61,7 @@ describe('prediction authentication', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('set-cookie')).toContain('rapptor_session=');
     expect(response.headers.get('set-cookie')).toContain('HttpOnly');
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=7776000');
     await expect(response.json()).resolves.toMatchObject({ authenticated: true, user: { email: 'person@example.test' } });
     expect(provider.mock.calls[0]![0]).toContain('/auth/v1/verify');
     expect(JSON.parse(String(provider.mock.calls[0]![1]?.body))).toEqual({ type: 'email', email: 'person@example.test', token: '123456' });

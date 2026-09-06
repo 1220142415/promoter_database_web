@@ -1,7 +1,7 @@
 import 'server-only';
 
 const AUTH_TIMEOUT_MS = 10_000;
-const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 90;
 
 export const AUTH_SESSION_COOKIE = 'rapptor_session';
 

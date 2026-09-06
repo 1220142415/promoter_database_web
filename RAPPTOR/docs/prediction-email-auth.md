@@ -80,6 +80,19 @@ used for task-completion mail.
 Existing one-time email-test secrets, if enabled, are separate and should be
 removed after the acceptance test as described in `.env.local.example`.
 
+## Session lifetime and stored user data
+
+- A verified browser receives an HttpOnly, Secure, SameSite=Lax session cookie
+  with a 90-day lifetime. Supabase refresh-token rotation renews it while the
+  user remains active on the prediction pages.
+- Signing out clears the browser cookie and revokes the Supabase session.
+- Supabase `auth.users` stores the durable user ID, normalized email address,
+  and confirmation metadata. RAPPTOR does not create or store a password.
+- D1 daily quota rows use the Supabase user ID, not the email address.
+- D1 stores the email only in the prediction notification outbox after a real
+  task is submitted; those rows are purged after seven days.
+- The Docker prediction service never receives the email or Supabase session.
+
 ## D1 migration
 
 Apply the notification outbox migration after authenticating Wrangler:

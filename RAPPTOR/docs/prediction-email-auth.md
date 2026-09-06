@@ -53,6 +53,11 @@ Keep the OTP placeholder in both template bodies:
 {{ .Token }}
 ```
 
+Use `docs/supabase-otp-template.html` as the body for both templates and
+`Your RAPPTOR verification code` as the subject. The checked-in template uses
+only inline styles and no remote images so it remains reliable in restrictive
+mail clients.
+
 Without that placeholder, Supabase falls back to a confirmation link for new
 users or sends a message that does not contain the code required by the
 passwordless login form.

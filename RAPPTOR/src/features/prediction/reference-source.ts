@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { experimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
 import { genomeCatalogRepository } from '@/features/genomes/repository';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
 
@@ -41,5 +42,19 @@ export function referenceSourceFromMatch(
 
 export async function resolvePredictionReferenceSource(accession: string) {
   if (!ACCESSION.test(accession)) return null;
-  return referenceSourceFromMatch(accession, await genomeCatalogRepository.getByAccession(accession));
+  const catalogSource = referenceSourceFromMatch(
+    accession,
+    await genomeCatalogRepository.getByAccession(accession),
+  );
+  if (catalogSource) return catalogSource;
+
+  const experimentalAsset = await experimentalTssRepository.resolveAsset(accession, 'reference.fa.gz');
+  if (!experimentalAsset?.sha256 || !SHA256.test(experimentalAsset.sha256)) return null;
+  try {
+    const parsed = new URL(experimentalAsset.upstreamUrl);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+  } catch {
+    return null;
+  }
+  return { url: experimentalAsset.upstreamUrl, sha256: experimentalAsset.sha256 };
 }

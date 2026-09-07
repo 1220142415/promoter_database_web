@@ -145,7 +145,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead }: {
             setResults([]);
             setError(null);
           }
-        }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search(); } }} placeholder="GCF_000005845.2 or Escherichia coli" />
+        }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search(); } }} placeholder="GCF_000005845.1 or Escherichia coli" />
         <button type="button" onClick={() => void search()} disabled={loading}>{loading ? 'Searching…' : 'Search catalog'}</button>
       </div>
       {error ? (
@@ -453,15 +453,27 @@ export default function PrototypePredictionWorkbench({
       let historyMode: PredictionHistoryEntry['mode'];
       if (inferredMode === 'candidate') {
         if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('100 bp scoring requires exactly one 100 bp sequence.');
-        const context = await resolveGenomeContextSequence();
-        request = {
-          mode: 'predict', complete_genome: true,
-          sequence: parsedInput.records[0].normalizedSequence,
-          genome_context: context.sequence,
-          reverse_complementary: strandMode === 'both',
-        };
-        bases = 100 + context.totalLength;
-        referenceName = context.referenceName;
+        const sequence = parsedInput.records[0].normalizedSequence;
+        if (contextKind === 'catalog') {
+          if (contextCatalog?.kind !== 'catalog' || !/^GCF_\d{9}\.\d+$/.test(contextCatalog.accession)) {
+            throw new Error('Cached short-sequence prediction currently requires a versioned GCF accession.');
+          }
+          request = {
+            mode: 'predict', complete_genome: true, sequence,
+            reference_accession: contextCatalog.accession,
+            reverse_complementary: strandMode === 'both',
+          };
+          bases = 100;
+          referenceName = contextCatalog.accession;
+        } else {
+          const context = await resolveGenomeContextSequence();
+          request = {
+            mode: 'predict', complete_genome: true, sequence, fasta: context.fasta,
+            reverse_complementary: strandMode === 'both',
+          };
+          bases = 100 + context.totalLength;
+          referenceName = context.referenceName;
+        }
         label = primaryKind === 'upload' ? uploadedInput.file?.name || 'Candidate sequence' : 'Candidate sequence';
         historyMode = 'predict';
       } else {
@@ -547,7 +559,9 @@ export default function PrototypePredictionWorkbench({
     ? 'The selected input is sent to the configured prediction service only after you queue the task.'
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
   const contextPrivacyCopy = live
-    ? 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
+    ? contextKind === 'catalog'
+      ? 'Only the accession is submitted; the prediction service reuses its cached CGR.'
+      : 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 
   return (

@@ -32,9 +32,9 @@ export async function POST(request: Request) {
   if (body.byteLength > maxSubmissionBytes) {
     return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction request is too large.' } }, { status: 413 });
   }
-  let submission: { mode?: unknown; fasta?: unknown };
+  let submission: { mode?: unknown; fasta?: unknown; reference_accession?: unknown };
   try {
-    submission = JSON.parse(new TextDecoder().decode(body)) as { mode?: unknown; fasta?: unknown };
+    submission = JSON.parse(new TextDecoder().decode(body)) as typeof submission;
   } catch {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction request is invalid.' } }, { status: 400 });
   }
@@ -80,9 +80,11 @@ export async function POST(request: Request) {
         || typeof created.access_token !== 'string') throw new Error('Invalid job response.');
       const jobId = created.job_id;
       const accessToken = created.access_token;
-      const referenceName = mode === 'genome_scan' && typeof submission.fasta === 'string'
-        ? /^>(\S+)/mu.exec(submission.fasta)?.[1] || null
-        : null;
+      const referenceName = typeof submission.reference_accession === 'string'
+        ? submission.reference_accession
+        : mode === 'genome_scan' && typeof submission.fasta === 'string'
+          ? /^>(\S+)/mu.exec(submission.fasta)?.[1] || null
+          : null;
       let registered = false;
       try {
         if (!database) throw new Error('Prediction notification database is unavailable.');

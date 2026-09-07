@@ -35,13 +35,13 @@ export const PROTOTYPE_CONTIG_EXAMPLE = [
 
 export const PROTOTYPE_CANDIDATE_GENOME_EXAMPLE = {
   kind: 'catalog' as const,
-  accession: 'GCF_000005845.2',
+  accession: 'GCF_000005845.1',
   displayName: 'Escherichia coli str. K-12 substr. MG1655',
-  fileName: 'GCF_000005845.2.reference.fna.gz',
+  fileName: 'GCF_000005845.1.reference.fna',
   fileSize: null,
-  checksum: '33f9e5082e35d141d2b1bb9fc20786b48f760981c14c508476212d2d75c85d01',
-  totalLength: 4_641_652,
-  contigs: [{ sequenceId: 'NC_000913.3', length: 4_641_652 }],
+  checksum: '2a8e2f78bc145fa82fa325acf7d34dc944612795cee74f793045dc64d782176c',
+  totalLength: 4_639_675,
+  contigs: [{ sequenceId: 'NC_000913.2', length: 4_639_675 }],
 };
 
 export const PROTOTYPE_GENOME_EXAMPLE = {

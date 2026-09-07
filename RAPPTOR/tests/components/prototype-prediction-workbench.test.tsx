@@ -28,14 +28,14 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
     ok: true,
     json: async () => ({
       items: [{
-        accession: 'GCF_000005845.2',
+        accession: 'GCF_000005845.1',
         organismName: 'Escherichia coli str. K-12 substr. MG1655',
         genomeSizeBp: 4_641_652,
         contigCount: 1,
       }],
     }),
   })));
-  await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.2');
+  await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.1');
   await waitFor(() => expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument());
 }
 
@@ -192,6 +192,42 @@ describe('prototype prediction workbench', () => {
     await user.click(submit);
     expect(screen.getByRole('alert')).toHaveTextContent('Model threshold must be between 0 and 1');
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('submits a catalog CGR by accession without downloading its FASTA', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    let ticketRequest: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/prediction-tickets') {
+        ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      }
+      if (url === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'a'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench localTest />);
+
+    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
+    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'a'.repeat(32)}`));
+    expect(jobRequest).toMatchObject({
+      mode: 'predict',
+      sequence: 'ACGT'.repeat(25),
+      reference_accession: 'GCF_000005845.1',
+    });
+    expect(jobRequest).not.toHaveProperty('genome_context');
+    expect(jobRequest).not.toHaveProperty('fasta');
+    expect(ticketRequest).toMatchObject({ bases: 100, mode: 'predict' });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/remote-data/'))).toBe(false);
   });
 
   it('reuses a matching catalog scan source for CGR without duplicating bases or request data', async () => {

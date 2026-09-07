@@ -62,6 +62,10 @@ const localReleaseTraceExcludes = [".data/**/*"];
 const nextConfig: NextConfig = {
   distDir: process.env.RAPPTOR_NEXT_DIST_DIR || '.next',
   output: "standalone",
+  // `npm run build:cf` already runs ESLint and TypeScript before Next builds.
+  // Avoid duplicate validation workers, which exhaust memory on Windows CI hosts.
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
   experimental: { cpus: 1, webpackBuildWorker: false },
   outputFileTracingExcludes: {
     "/api/local-data/**": localReleaseTraceExcludes,

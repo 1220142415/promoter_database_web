@@ -44,6 +44,12 @@ function integer(name, minimum, maximum) {
   return value;
 }
 
+function accessMode() {
+  const value = required('RAPPTOR_PREDICTION_ACCESS_MODE').toLowerCase();
+  if (!['email', 'ip'].includes(value)) throw new Error('RAPPTOR_PREDICTION_ACCESS_MODE must be email or ip.');
+  return value;
+}
+
 function emailConfig() {
   const template = readFileSync(path.resolve('docs/supabase-otp-template.html'), 'utf8');
   if (!template.includes('{{ .Token }}')) throw new Error('The Supabase OTP template must contain {{ .Token }}.');
@@ -76,6 +82,7 @@ function ticketConfig() {
     serviceSecret: required('RAPPTOR_PREDICTION_SERVICE_SECRET'),
     ipHashSecret: required('RAPPTOR_PREDICTION_IP_HASH_SECRET'),
     modelVersion: required('RAPPTOR_PREDICTION_MODEL_VERSION'),
+    accessMode: accessMode(),
   };
 }
 
@@ -115,6 +122,7 @@ function writePublicTicketConfig(config) {
   let wrangler = readFileSync(wranglerPath, 'utf8');
   const variables = {
     RAPPTOR_PREDICTION_SERVICE_URL: config.predictionServiceUrl,
+    RAPPTOR_PREDICTION_ACCESS_MODE: config.accessMode,
     RAPPTOR_DEPLOYMENT_ENV: 'production',
     RAPPTOR_PREDICTION_LOCAL_TEST: 'off',
     NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST: 'off',
@@ -131,6 +139,7 @@ function writePublicTicketConfig(config) {
   let nextEnv = existsSync(nextEnvPath) ? readFileSync(nextEnvPath, 'utf8') : '';
   nextEnv = upsertEnv(nextEnv, 'NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST', 'off');
   nextEnv = upsertEnv(nextEnv, 'NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY', config.siteKey);
+  nextEnv = upsertEnv(nextEnv, 'RAPPTOR_PREDICTION_ACCESS_MODE', config.accessMode);
   writeFileSync(nextEnvPath, nextEnv, { encoding: 'utf8', mode: 0o600 });
   console.log('Production Worker and browser public variables updated.');
 }
@@ -235,15 +244,15 @@ try {
   if (action === 'init') {
     initializeLocalSecrets();
   } else if (action === 'check') {
-    emailConfig();
-    ticketConfig();
+    const config = ticketConfig();
+    if (config.accessMode === 'email') emailConfig();
     console.log('Deployment configuration is complete.');
   } else if (action === 'email') {
     await applyEmail();
   } else if (action === 'ticket') {
     applyTicket();
   } else {
-    await applyEmail();
+    if (accessMode() === 'email') await applyEmail();
     applyTicket();
   }
 } catch (error) {

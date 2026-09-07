@@ -3,6 +3,29 @@
 This document records the production setup for passwordless prediction access.
 Secrets are intentionally omitted.
 
+## Access-mode switch
+
+The complete feature stays in the repository and is selected with one Worker
+variable:
+
+```dotenv
+RAPPTOR_PREDICTION_ACCESS_MODE=email
+# or
+RAPPTOR_PREDICTION_ACCESS_MODE=ip
+```
+
+`email` enables Supabase OTP, a per-user daily genome-scan quota, and Resend
+completion notifications. `ip` hides and disables email authentication and
+notification delivery, then uses Turnstile plus a daily rotating IP hash. It
+allows one whole-genome ticket per IP per Beijing day; short-sequence tickets
+remain unlimited by the daily quota and retain the per-minute rate limit.
+Neither mode stores a raw IP address. Missing or invalid values fail closed to
+`email`.
+
+Change the value in `.env.deploy`, run `npm run deployment:ticket`, rebuild,
+and deploy the Worker. `npm run deployment:configure` also configures Supabase
+and Resend when the selected mode is `email`.
+
 For the complete Chinese deployment, migration, API-key, data-flow, and
 troubleshooting guide, see `docs/email-system-deployment.zh-CN.md`.
 

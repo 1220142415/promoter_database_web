@@ -9,6 +9,7 @@ import {
   withClearedSession,
   withSessionCookie,
 } from '@/features/email-system/supabase';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ const error = (code: string, message: string, status: number) => Response.json(
 );
 
 export async function GET(request: Request) {
+  if (predictionAccessMode() === 'ip') return error('AUTH_DISABLED', 'Email sign-in is disabled for this deployment.', 404);
   const settings = readAuthSettings();
   if (!settings) return error('AUTH_UNAVAILABLE', 'Prediction sign-in is not configured.', 503);
   const session = readSessionCookie(request);
@@ -49,6 +51,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (predictionAccessMode() === 'ip') return error('AUTH_DISABLED', 'Email sign-in is disabled for this deployment.', 404);
   const body = await readJsonObject(request);
   const action = body?.action;
 

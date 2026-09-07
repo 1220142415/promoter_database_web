@@ -1,6 +1,7 @@
 import openNextWorker from '../.open-next/worker.js';
 import { purgeExpiredUsage } from '../src/features/usage/retention.ts';
 import { purgeExpiredPredictionNotifications, retryPredictionNotifications } from '../src/features/email-system/prediction-notifications.ts';
+import { predictionAccessMode } from '../src/features/email-system/access-mode.ts';
 
 const DEFAULT_RETENTION_DAYS = 400;
 
@@ -55,12 +56,14 @@ const worker = {
       context.waitUntil((async () => {
         const now = new Date(controller.scheduledTime);
         await purgeExpiredPredictionNotifications(env.RAPPTOR_DB, now);
-        await retryPredictionNotifications(env.RAPPTOR_DB, {
-          apiKey: env.RESEND_API_KEY,
-          from: env.RESEND_FROM,
-          siteUrl: env.RAPPTOR_PUBLIC_SITE_URL,
-          tokenSecret: env.RAPPTOR_PREDICTION_SERVICE_SECRET,
-        }, now);
+        if (predictionAccessMode(env.RAPPTOR_PREDICTION_ACCESS_MODE) === 'email') {
+          await retryPredictionNotifications(env.RAPPTOR_DB, {
+            apiKey: env.RESEND_API_KEY,
+            from: env.RESEND_FROM,
+            siteUrl: env.RAPPTOR_PUBLIC_SITE_URL,
+            tokenSecret: env.RAPPTOR_PREDICTION_SERVICE_SECRET,
+          }, now);
+        }
       })().catch(() => {
         console.error(JSON.stringify({ event: 'prediction_notification_cron_failed' }));
       }));

@@ -92,6 +92,18 @@ describe('prototype prediction workbench', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('not configured');
   });
 
+  it('shows Turnstile only after the prediction inputs are ready', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`)));
+    render(<PrototypePredictionWorkbench service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: 'site-key' }} />);
+    expect(screen.queryByLabelText('Human verification')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Use 100 bp example' })).toBeEnabled());
+    expect(await screen.findByLabelText('Human verification')).toBeInTheDocument();
+    expect(screen.getByText('Complete this immediately before queuing the task.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeDisabled();
+  });
+
   it('requires separate CGR context for the short example and stores v3 metadata only', async () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench preview />);
@@ -276,6 +288,7 @@ describe('prototype prediction workbench', () => {
     expect(jobRequest).not.toHaveProperty('score_cutoff');
     expect(ticketRequest).toMatchObject({ bases: 160, mode: 'genome_scan' });
     expect(ticketRequest).not.toHaveProperty('turnstileToken');
+    expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).not.toHaveProperty('cutoff');
     expect(screen.getByText('本地真实预测测试')).toBeInTheDocument();
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
   });

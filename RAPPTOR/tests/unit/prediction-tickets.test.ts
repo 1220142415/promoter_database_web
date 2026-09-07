@@ -47,13 +47,16 @@ class FakeStatement {
     let changes = 0;
     if (this.sql.startsWith('INSERT INTO prediction_tickets')) {
       const [ticketHash, ipHash, mode, modelVersion, requestedBases, maxBases, issuedAt, expiresAt,
-        , minuteCutoff, ticketsPerMinute, limitMode, , dayCutoff, billedBases, basesPerDay] = this.bindings;
+        , minuteCutoff, ticketsPerMinute, anonymousIpLimit, limitMode, , scanDayCutoff,
+        baseLimitMode, , dayCutoff, billedBases, basesPerDay] = this.bindings;
       const rows = this.database.rows.filter((row) => row.ipHash === ipHash);
       const minuteTickets = rows.filter((row) => row.issuedAt >= String(minuteCutoff)).length;
+      const dailyScans = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(scanDayCutoff)).length;
       const dailyBases = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(dayCutoff))
         .reduce((total, row) => total + row.requestedBases, 0);
       if (minuteTickets < Number(ticketsPerMinute)
-        && (limitMode === 'predict' || dailyBases + Number(billedBases) <= Number(basesPerDay))) {
+        && (!Number(anonymousIpLimit) || limitMode === 'predict' || dailyScans === 0)
+        && (baseLimitMode === 'predict' || dailyBases + Number(billedBases) <= Number(basesPerDay))) {
         this.database.rows.push({
           ticketHash: String(ticketHash),
           ipHash: String(ipHash),
@@ -229,6 +232,19 @@ describe('one-time prediction tickets', () => {
   it('compares the server credential without accepting prefixes', () => {
     expect(serviceSecretMatches('service-secret', 'service-secret')).toBe(true);
     expect(serviceSecretMatches('service', 'service-secret')).toBe(false);
+  });
+
+  it('allows one anonymous whole-genome ticket per IP and resets at Beijing midnight', async () => {
+    const database = new FakeD1();
+    const input = {
+      address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 700,
+      mode: 'genome_scan' as const, anonymousIpLimit: true,
+    };
+    await issuePredictionTicket(database as unknown as D1Database, settings, input, new Date('2026-08-27T15:59:59.000Z'));
+    await expect(issuePredictionTicket(database as unknown as D1Database, settings, input, new Date('2026-08-27T15:59:59.000Z')))
+      .rejects.toThrow(PredictionTicketLimitError);
+    await expect(issuePredictionTicket(database as unknown as D1Database, settings, input, new Date('2026-08-27T16:00:00.000Z')))
+      .resolves.toMatchObject({ modelVersion: settings.modelVersion });
   });
 
   it('does not apply the daily base cap to short-sequence tickets', async () => {

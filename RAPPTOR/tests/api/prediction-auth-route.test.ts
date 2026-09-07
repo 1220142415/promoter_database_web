@@ -4,6 +4,7 @@ import { requirePredictionAuth, withSessionCookie, type AuthSession } from '@/fe
 
 const originalUrl = process.env.SUPABASE_URL;
 const originalKey = process.env.SUPABASE_ANON_KEY;
+const originalAccessMode = process.env.RAPPTOR_PREDICTION_ACCESS_MODE;
 
 const session: AuthSession = {
   access_token: 'access-token',
@@ -37,9 +38,20 @@ afterEach(() => {
   else process.env.SUPABASE_URL = originalUrl;
   if (originalKey === undefined) delete process.env.SUPABASE_ANON_KEY;
   else process.env.SUPABASE_ANON_KEY = originalKey;
+  if (originalAccessMode === undefined) delete process.env.RAPPTOR_PREDICTION_ACCESS_MODE;
+  else process.env.RAPPTOR_PREDICTION_ACCESS_MODE = originalAccessMode;
 });
 
 describe('prediction authentication', () => {
+  it('does not expose email authentication in anonymous IP mode', async () => {
+    process.env.RAPPTOR_PREDICTION_ACCESS_MODE = 'ip';
+    const provider = vi.fn();
+    vi.stubGlobal('fetch', provider);
+    expect((await GET(request())).status).toBe(404);
+    expect((await POST(request({ action: 'send-code', email: 'person@example.test' }))).status).toBe(404);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
   it('sends an email OTP and creates the account when needed', async () => {
     const provider = vi.fn().mockResolvedValue(Response.json({}));
     vi.stubGlobal('fetch', provider);

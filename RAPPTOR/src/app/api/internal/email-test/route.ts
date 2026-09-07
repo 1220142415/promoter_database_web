@@ -1,11 +1,15 @@
 import { serviceSecretMatches } from '@/features/prediction/tickets';
 import { sendRappTorEmail } from '@/features/email-system/resend';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 
 export const dynamic = 'force-dynamic';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
 export async function POST(request: Request) {
+  if (predictionAccessMode() === 'ip') {
+    return Response.json({ accepted: false }, { status: 404, headers: NO_STORE });
+  }
   const apiKey = process.env.RESEND_API_KEY;
   const recipient = process.env.RESEND_TEST_TO;
   const expectedToken = process.env.RAPPTOR_EMAIL_TEST_TOKEN;

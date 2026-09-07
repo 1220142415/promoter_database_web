@@ -281,6 +281,7 @@ export default function PrototypePredictionWorkbench({
     : primaryKind === 'upload'
       ? Boolean(parsedInput && !inputError && !uploadedInput.loading)
       : Boolean(parsedInput && !inputError);
+  const verificationVisible = !preview && !localTest && Boolean(service.siteKey) && inputReady && contextReady && parametersReady && !exampleLoading && !exampleError;
   function clearGenomeContext() {
     setContextKind('catalog');
     setContextCatalog(null);
@@ -514,6 +515,7 @@ export default function PrototypePredictionWorkbench({
         historyMode = 'genome_scan';
       }
 
+      if (!localTest && !turnstileToken) throw new Error('Complete the human verification before submitting.');
       const issued = await predictionApi<PredictionTicket>('/api/prediction-tickets', {
         method: 'POST',
         body: JSON.stringify({ mode: historyMode, ...(localTest ? {} : { turnstileToken }), modelVersion, bases }),
@@ -534,6 +536,9 @@ export default function PrototypePredictionWorkbench({
         submittedAt: new Date().toISOString(),
         label,
         bases,
+        ...(historyMode === 'genome_scan' && service.supportsScoreCutoff ? { cutoff } : {}),
+        strandMode,
+        strideBases,
       };
       localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), entry)));
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
@@ -662,11 +667,14 @@ export default function PrototypePredictionWorkbench({
           ) : null}
 
           {submissionBlock ? <div role="alert"><p>{submissionBlock}</p><button type="button" onClick={() => router.refresh()}>Check availability again</button></div> : null}
-          {!preview && service.siteKey && !localTest ? <PredictionVerification key={verificationRevision} siteKey={service.siteKey} onToken={setTurnstileToken} /> : null}
           {formError ? <div className={styles.formError} role="alert">{formError}</div> : null}
+          {verificationVisible ? <div className={styles.verificationRow}>
+            <div><span>Final check</span><strong>Human verification</strong><small>Complete this immediately before queuing the task.</small></div>
+            <PredictionVerification key={verificationRevision} siteKey={service.siteKey} onToken={setTurnstileToken} />
+          </div> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
-            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (usesExampleReference && exampleLoading) || Boolean(submissionBlock)}>{submitLabel}</button>
+            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (usesExampleReference && exampleLoading) || Boolean(submissionBlock) || (!preview && !localTest && !turnstileToken)}>{submitLabel}</button>
           </div>
         </form>
       </section>

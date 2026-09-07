@@ -13,23 +13,25 @@ declare global {
   }
 }
 
-export default function TurnstileField({ capabilities, onToken }: { capabilities: PredictionCapabilities; onToken: (token: string) => void }) {
+export default function TurnstileField({ capabilities, siteKey, onToken }: { capabilities?: PredictionCapabilities; siteKey?: string; onToken: (token: string) => void }) {
   const id = useId().replaceAll(':', '');
   const container = useRef<HTMLDivElement>(null);
+  const demo = capabilities?.mode === 'demo';
+  const resolvedSiteKey = siteKey || capabilities?.turnstileSiteKey;
 
   useEffect(() => {
-    if (capabilities.mode === 'demo') {
+    if (demo) {
       onToken('demo-turnstile-bypass');
       return;
     }
-    if (!capabilities.turnstileSiteKey || !container.current) return;
+    if (!resolvedSiteKey || !container.current) return;
 
     let cancelled = false;
     let widgetId: string | null = null;
     const render = () => {
       if (cancelled || !container.current || !window.turnstile || widgetId) return;
       widgetId = window.turnstile.render(container.current, {
-        sitekey: capabilities.turnstileSiteKey,
+        sitekey: resolvedSiteKey,
         callback: (token: string) => onToken(token),
         'expired-callback': () => onToken(''),
         'error-callback': () => onToken(''),
@@ -53,9 +55,9 @@ export default function TurnstileField({ capabilities, onToken }: { capabilities
       cancelled = true;
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
     };
-  }, [capabilities.mode, capabilities.turnstileSiteKey, onToken]);
+  }, [demo, resolvedSiteKey, onToken]);
 
-  if (capabilities.mode === 'demo') {
+  if (demo) {
     return (
       <div className={styles.localOnly} data-testid="demo-turnstile">
         <span aria-hidden="true">✓</span>

@@ -12,6 +12,7 @@ import {
   readPredictionTicketSettings,
   verifyTurnstile,
 } from '@/features/prediction/tickets';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { localPredictionTestEnabled, LocalPredictionTicketError, requestLocalPredictionTicket } from '@/features/prediction/local-test';
 
@@ -20,8 +21,6 @@ const MAX_TICKET_REQUEST_BYTES = 16 * 1024;
 
 export async function POST(request: Request) {
   const localTest = localPredictionTestEnabled(request.headers, request.url, true);
-  const auth = localTest ? null : await requirePredictionAuth(request);
-  if (auth instanceof Response) return auth;
   try {
     const contentLength = Number(request.headers.get('content-length'));
     if (Number.isFinite(contentLength) && contentLength > MAX_TICKET_REQUEST_BYTES) {
@@ -38,12 +37,12 @@ export async function POST(request: Request) {
     } catch {
       return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid prediction ticket request.' } }, { status: 400 });
     }
+    const accessMode = predictionAccessMode();
+    if ((!localTest && accessMode === 'email') || body.contractVersion !== undefined) {
+      const auth = await requirePredictionAuth(request);
+      if (auth instanceof Response) return auth;
+    }
     if (body.contractVersion !== undefined) {
-      // The local exception applies only to the queued model service contract.
-      if (localTest) {
-        const legacyAuth = await requirePredictionAuth(request);
-        if (legacyAuth instanceof Response) return legacyAuth;
-      }
       if (body.mode !== 'predict') {
         return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid prediction task mode.' } }, { status: 400 });
       }
@@ -79,6 +78,7 @@ export async function POST(request: Request) {
       modelVersion: body.modelVersion,
       bases: body.bases,
       mode: body.mode,
+      anonymousIpLimit: accessMode === 'ip',
     });
     return Response.json(ticket, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {

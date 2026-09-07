@@ -3,6 +3,7 @@ import { usageDatabase } from '@/features/usage/store';
 import { parsePredictionJobEvent, writePredictionJobEvent } from '@/features/prediction/jobs';
 import { sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 import { PredictionTicketConfigurationError, readPredictionTicketSettings, serviceSecretMatches } from '@/features/prediction/tickets';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 
 export const dynamic = 'force-dynamic';
 const MAX_EVENT_BYTES = 80 * 1024;
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     const database = usageDatabase();
     if (!database) return Response.json({ accepted: false }, { status: 503 });
     if (!await writePredictionJobEvent(database, event)) return Response.json({ accepted: false }, { status: 409 });
-    if (event.status === 'succeeded' || event.status === 'failed') {
+    if (predictionAccessMode() === 'email' && (event.status === 'succeeded' || event.status === 'failed')) {
       after(async () => {
         try {
           await sendPredictionNotification(database, event.jobId, {

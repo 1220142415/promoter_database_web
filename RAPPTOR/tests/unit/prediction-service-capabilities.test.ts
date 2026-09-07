@@ -3,6 +3,28 @@ import { queuedPredictionCapabilities, queuedPredictionLocalTest } from '@/featu
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('queued service capability detection', () => {
+  it('requires ticket and Turnstile configuration but no email settings in IP mode', async () => {
+    const settings = {
+      RAPPTOR_PREDICTION_ACCESS_MODE: 'ip',
+      RAPPTOR_PREDICTION_SERVICE_URL: 'https://service.test',
+      RAPPTOR_PREDICTION_MODEL_VERSION: 'candidate-github-93cf',
+      RAPPTOR_PREDICTION_ENABLED: 'on',
+      RAPPTOR_PREDICTION_MAX_BASES: '6000000',
+      RAPPTOR_PREDICTION_TICKETS_PER_MINUTE: '2',
+      RAPPTOR_PREDICTION_BASES_PER_DAY: '12000000',
+      RAPPTOR_PREDICTION_TICKET_TTL_SECONDS: '120',
+      RAPPTOR_TURNSTILE_SECRET: 'test-turnstile-secret',
+      NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY: 'test-site-key',
+      RAPPTOR_PREDICTION_SERVICE_SECRET: 'test-service-secret',
+      RAPPTOR_PREDICTION_IP_HASH_SECRET: 'test-hash-secret',
+      SUPABASE_URL: '',
+    };
+    for (const [key, value] of Object.entries(settings)) vi.stubEnv(key, value);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : { model_version: 'candidate-github-93cf' })));
+    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, submissionIssue: undefined });
+    vi.stubEnv('NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY', '');
+    expect((await queuedPredictionCapabilities()).submissionIssue).toContain('human verification');
+  });
   it('uses the private issuer readiness check instead of email or Turnstile in local mode', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
     vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');

@@ -9,6 +9,9 @@ export type PredictionHistoryEntry = {
   submittedAt: string;
   label: string;
   bases: number;
+  cutoff?: number;
+  strandMode?: 'both' | 'forward';
+  strideBases?: number;
 };
 
 export const PREDICTION_HISTORY_KEY = 'rapptor-prediction-history';
@@ -26,7 +29,10 @@ function isEntry(value: unknown): value is PredictionHistoryEntry {
     && (entry.mode === 'genome_scan' || entry.mode === 'predict')
     && typeof entry.submittedAt === 'string'
     && typeof entry.label === 'string'
-    && typeof entry.bases === 'number' && Number.isSafeInteger(entry.bases) && entry.bases >= 0;
+    && typeof entry.bases === 'number' && Number.isSafeInteger(entry.bases) && entry.bases >= 0
+    && (entry.cutoff === undefined || (typeof entry.cutoff === 'number' && entry.cutoff >= 0 && entry.cutoff <= 1))
+    && (entry.strandMode === undefined || entry.strandMode === 'both' || entry.strandMode === 'forward')
+    && (entry.strideBases === undefined || (Number.isSafeInteger(entry.strideBases) && entry.strideBases > 0));
 }
 
 export function parsePredictionHistory(raw: string | null) {

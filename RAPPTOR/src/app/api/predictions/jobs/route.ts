@@ -1,5 +1,6 @@
 import { after } from 'next/server';
 import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
 import { releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
@@ -15,7 +16,7 @@ function serviceUrl(path: string) {
 
 export async function POST(request: Request) {
   const localTest = localPredictionTestEnabled(request.headers, request.url, true);
-  const auth = localTest ? null : await requirePredictionAuth(request);
+  const auth = !localTest && predictionAccessMode() === 'email' ? await requirePredictionAuth(request) : null;
   if (auth instanceof Response) return auth;
   if (localTest) {
     try { readLocalPredictionTestSettings(); }

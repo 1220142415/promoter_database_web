@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
+import { PredictionAuthGate } from '@/features/email-system/auth-ui';
 import { headers } from 'next/headers';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
 import { predictionCapabilities } from '@/features/prediction/capabilities';
@@ -15,10 +17,12 @@ export default async function PredictPage() {
   const capabilities = predictionCapabilities();
   const localTest = queuedPredictionLocalTest(await headers());
   const service = await queuedPredictionCapabilities(localTest);
-  return <PrototypePredictionWorkbench
+  const accessMode = predictionAccessMode();
+  const workbench = <PrototypePredictionWorkbench
     modelVersion={service.modelVersion}
     service={service}
     maxGenomeBytes={capabilities.limits.genomeMaxBytes}
     localTest={localTest}
   />;
+  return !localTest && accessMode === 'email' ? <PredictionAuthGate>{workbench}</PredictionAuthGate> : workbench;
 }

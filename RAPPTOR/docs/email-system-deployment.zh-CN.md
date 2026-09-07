@@ -8,6 +8,28 @@
 文档只记录变量名、公开地址和配置位置，不包含任何真实 API Key、SMTP
 密码、会话令牌或内部服务密钥。
 
+## 0. 邮箱/IP 一键切换
+
+预测访问方式由一个配置控制，功能代码不需要增删：
+
+```dotenv
+RAPPTOR_PREDICTION_ACCESS_MODE=email
+# 或
+RAPPTOR_PREDICTION_ACCESS_MODE=ip
+```
+
+| 模式 | 身份与限额 | 邮箱界面与通知 |
+| --- | --- | --- |
+| `email` | Supabase OTP；每个用户北京时间每天 1 个全基因组扫描 | 显示登录入口；发送完成通知 |
+| `ip` | Turnstile＋每日轮换的 IP 哈希；每个 IP 北京时间每天 1 个全基因组扫描 | 登录页重定向；不调用 Supabase、不发送邮件 |
+
+两种模式的短序列任务均不受每日次数限制，但仍保留每分钟 ticket 限流。数据库
+不保存原始 IP。配置缺失或拼写错误时安全回退到 `email`，不会意外开放匿名提交。
+
+切换步骤：修改本机 `.env.deploy` 中的值，运行 `npm run deployment:ticket`，再重新
+构建并部署 Worker。切到 `email` 时可运行 `npm run deployment:configure`，同时同步
+Supabase、Resend、Worker 和 Docker 配置。密钥不需要在两种模式间删除或重新生成。
+
 ## 1. 系统边界
 
 邮箱系统代码集中在 `src/features/email-system/`：

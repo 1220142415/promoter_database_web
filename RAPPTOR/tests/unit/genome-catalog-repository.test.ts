@@ -14,6 +14,7 @@ import { makeGenome } from '../fixtures/release';
 const mockedReadFile = vi.mocked(readFileSync);
 const originalPilotBase = process.env.HF_PILOT_STORAGE_BASE_URL;
 const originalPilotAccessions = process.env.HF_PILOT_ACCESSIONS;
+const originalStorageBase = process.env.NEXT_PUBLIC_STORAGE_BASE_URL;
 
 function catalogJson(genomes: ReturnType<typeof makeGenome>[]) {
   return JSON.stringify({
@@ -23,13 +24,18 @@ function catalogJson(genomes: ReturnType<typeof makeGenome>[]) {
 }
 
 describe('JSON genome catalog repository', () => {
-  beforeEach(() => mockedReadFile.mockReset());
+  beforeEach(() => {
+    mockedReadFile.mockReset();
+    delete process.env.NEXT_PUBLIC_STORAGE_BASE_URL;
+  });
 
   afterEach(() => {
     if (originalPilotBase === undefined) delete process.env.HF_PILOT_STORAGE_BASE_URL;
     else process.env.HF_PILOT_STORAGE_BASE_URL = originalPilotBase;
     if (originalPilotAccessions === undefined) delete process.env.HF_PILOT_ACCESSIONS;
     else process.env.HF_PILOT_ACCESSIONS = originalPilotAccessions;
+    if (originalStorageBase === undefined) delete process.env.NEXT_PUBLIC_STORAGE_BASE_URL;
+    else process.env.NEXT_PUBLIC_STORAGE_BASE_URL = originalStorageBase;
   });
 
   it('returns stable cursor pages without duplicates or omissions', async () => {

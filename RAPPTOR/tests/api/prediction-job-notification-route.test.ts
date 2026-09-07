@@ -59,6 +59,8 @@ beforeEach(() => {
   notification.register.mockClear();
   notification.send.mockClear();
   database.prepare.mockClear();
+  delete process.env.RESEND_API_KEY;
+  delete process.env.RESEND_FROM;
   process.env.RAPPTOR_PREDICTION_SERVICE_URL = 'https://prediction.example.test';
   process.env.RAPPTOR_PREDICTION_ENABLED = 'on';
   process.env.RAPPTOR_PREDICTION_MODEL_VERSION = 'candidate-github-93cf';
@@ -89,6 +91,8 @@ afterEach(async () => {
     'RAPPTOR_PREDICTION_IP_HASH_SECRET',
     'RAPPTOR_PUBLIC_SITE_URL',
     'RAPPTOR_PREDICTION_ACCESS_MODE',
+    'RESEND_API_KEY',
+    'RESEND_FROM',
   ]) delete process.env[key];
 });
 

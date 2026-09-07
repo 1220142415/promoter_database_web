@@ -1,5 +1,6 @@
 'use client';
 
+import { REAL_CANDIDATE_FASTA } from '../reference-example';
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
@@ -16,7 +17,7 @@ import TurnstileField from './turnstile-field';
 import { PORTAL_COPY, PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from './prediction.module.css';
 
-const EXAMPLE_SEQUENCE = '>example_candidate_112bp\nTTGACATGATCGATCGTACGATCGATGCTAGCTAGGCTAACGTTACGATCGATCGGATCCGATCGTTATAATGCGTACGATCGATCGATCGTAGCTAGCTAGCGATCGATCG';
+const EXAMPLE_SEQUENCE = REAL_CANDIDATE_FASTA;
 const GENOME_FILE_PATTERN = /\.(?:fa|fasta|fna)(?:\.gz)?$/i;
 
 type GenomeMode = 'catalog' | 'upload';

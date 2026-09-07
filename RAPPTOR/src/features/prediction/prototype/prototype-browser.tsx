@@ -26,29 +26,7 @@ type BrowserObjectUrls = {
 };
 
 const FASTA_LINE_WIDTH = 80;
-const MAX_ILLUSTRATIVE_REFERENCE_BASES = 50 * 1024 * 1024;
-const ILLUSTRATIVE_PATTERNS = ['ACGT', 'TGCA', 'GATC', 'CTAG'];
-
-function positiveLength(value: number) {
-  return Number.isSafeInteger(value) && value > 0 ? value : 100;
-}
-
-function sequenceSeed(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function illustrativeSequence(length: number, seed: string) {
-  const boundedLength = Math.min(positiveLength(length), MAX_ILLUSTRATIVE_REFERENCE_BASES);
-  const pattern = ILLUSTRATIVE_PATTERNS[sequenceSeed(seed) % ILLUSTRATIVE_PATTERNS.length];
-  return pattern.repeat(Math.ceil(boundedLength / pattern.length)).slice(0, boundedLength);
-}
-
-function referenceRecords(run: PrototypeGenomeScanRun, fixture: PrototypePredictionFixture) {
+function referenceRecords(run: PrototypeGenomeScanRun) {
   const submitted = readPrototypeTransientInput(run.runId);
   if (submitted?.records.length) {
     return {
@@ -57,25 +35,7 @@ function referenceRecords(run: PrototypeGenomeScanRun, fixture: PrototypePredict
     };
   }
 
-  const sourceContigs = run.input.scanSource.contigs;
-  const fallbackContigs = sourceContigs.length
-    ? sourceContigs
-    : Array.from(new Set(fixture.scoreSeries.map((window) => window.sequenceId))).map((sequenceId) => ({
-        sequenceId,
-        length: Math.max(
-          100,
-          ...fixture.scoreSeries.filter((window) => window.sequenceId === sequenceId).map((window) => window.windowEnd),
-        ),
-      }));
-  const seedBase = run.input.scanSource.checksum
-    || (run.input.scanSource.kind === 'catalog' ? run.input.scanSource.accession : run.runId);
-  return {
-    source: 'illustrative' as const,
-    records: fallbackContigs.map((contig) => ({
-      sequenceId: contig.sequenceId,
-      sequence: illustrativeSequence(contig.length, `${seedBase}:${contig.sequenceId}`),
-    })),
-  };
+  throw new Error('The reference sequence is no longer available in this tab. Reload the example or upload its FASTA again.');
 }
 
 function fastaText(records: readonly BrowserReferenceRecord[]) {
@@ -130,7 +90,7 @@ function gff3Text(fixture: PrototypePredictionFixture, records: readonly Browser
 }
 
 function createObjectUrls(run: PrototypeGenomeScanRun, fixture: PrototypePredictionFixture): BrowserObjectUrls {
-  const { source, records } = referenceRecords(run, fixture);
+  const { source, records } = referenceRecords(run);
   const plusScores = bedGraphText(fixture.scoreSeries, '+');
   const minusScores = bedGraphText(fixture.scoreSeries, '-');
   return {
@@ -199,16 +159,21 @@ export function createPrototypeBrowserAssembly(
 
 function usePrototypeBrowserAssets(run: PrototypeGenomeScanRun, fixture: PrototypePredictionFixture) {
   const [urls, setUrls] = useState<BrowserObjectUrls | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const next = createObjectUrls(run, fixture);
-    setUrls(next);
-    return () => {
-      revokeObjectUrls(next);
-    };
+    setError(null);
+    try {
+      const next = createObjectUrls(run, fixture);
+      setUrls(next);
+      return () => revokeObjectUrls(next);
+    } catch (cause) {
+      setUrls(null);
+      setError(cause instanceof Error ? cause.message : 'Reference sequence unavailable.');
+    }
   }, [fixture, run]);
 
-  return urls;
+  return { urls, error };
 }
 
 function locusForContig(record: BrowserReferenceRecord, fixture: PrototypePredictionFixture) {
@@ -229,7 +194,7 @@ export interface PrototypePredictionBrowserProps {
 }
 
 export default function PrototypePredictionBrowser({ run, fixture }: PrototypePredictionBrowserProps) {
-  const urls = usePrototypeBrowserAssets(run, fixture);
+  const { urls, error } = usePrototypeBrowserAssets(run, fixture);
   const [selectedContig, setSelectedContig] = useState('');
   const [requestedLocus, setRequestedLocus] = useState<string | undefined>();
   const [browserRevision, setBrowserRevision] = useState(0);
@@ -247,6 +212,7 @@ export default function PrototypePredictionBrowser({ run, fixture }: PrototypePr
     [activeContig, fixture, requestedLocus, run, urls],
   );
 
+  if (error) return <section className={styles.browser} aria-label="Genome browser"><p role="alert">{error}</p></section>;
   if (!assembly || !urls) {
     return <section className={styles.browser} aria-label="Genome browser"><p className={styles.loading} role="status">Preparing browser-local tracks…</p></section>;
   }

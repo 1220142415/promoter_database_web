@@ -5,9 +5,11 @@ import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-br
 import type { JBrowseAssemblyConfig } from '@/features/genome-browser/types';
 import styles from './prediction.module.css';
 
-export default function PredictionBrowser({ jobId, refName }: { jobId: string; refName: string }) {
+export default function PredictionBrowser({ jobId, refName, artifacts }: { jobId: string; refName: string; artifacts?: readonly { filename: string }[] }) {
   const [annotation, setAnnotation] = useState<{ name: string; url: string } | null>(null);
   const base = `/api/predictions/jobs/${jobId}/artifacts`;
+  const missing = artifacts ? ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].filter((name) => !artifacts.some((item) => item.filename === name)) : [];
+  const hasMinus = !artifacts || artifacts.some((item) => item.filename === 'scores.minus.bw');
 
   useEffect(() => () => {
     if (annotation) URL.revokeObjectURL(annotation.url);
@@ -28,7 +30,7 @@ export default function PredictionBrowser({ jobId, refName }: { jobId: string; r
         predictedPromoters: '',
         predictedPromotersIndex: '',
         promoterScoresPlus: `${base}/scores.plus.bw`,
-        promoterScoresMinus: `${base}/scores.minus.bw`,
+        promoterScoresMinus: hasMinus ? `${base}/scores.minus.bw` : null,
         ncbiAnnotations: annotation?.url || null,
         ncbiAnnotationsIndex: null,
       },
@@ -37,8 +39,9 @@ export default function PredictionBrowser({ jobId, refName }: { jobId: string; r
         annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
     };
-  }, [annotation, base, jobId, refName]);
+  }, [annotation, base, jobId, refName, hasMinus]);
 
+  if (missing.length) return <p role="alert">Required browser artifacts are missing: {missing.join(', ')}.</p>;
   return <>
     <div className={styles.browserTools}>
       <div><strong>Genome context</strong><span>Reference sequence is shown automatically. Optional GFF3 stays in this browser; sequence IDs must match the FASTA headers.</span></div>

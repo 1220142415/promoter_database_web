@@ -4,6 +4,7 @@ import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
 import { releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
+import { localPredictionTestEnabled, readLocalPredictionTestSettings } from '@/features/prediction/local-test';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +14,15 @@ function serviceUrl(path: string) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requirePredictionAuth(request);
+  const localTest = localPredictionTestEnabled(request.headers, request.url, true);
+  const auth = localTest ? null : await requirePredictionAuth(request);
   if (auth instanceof Response) return auth;
+  if (localTest) {
+    try { readLocalPredictionTestSettings(); }
+    catch (cause) {
+      return Response.json({ error: { code: 'LOCAL_TEST_UNAVAILABLE', message: (cause as Error).message } }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    }
+  }
   const maxSubmissionBytes = predictionMaxRequestBytes();
   const url = serviceUrl('/v1/jobs');
   if (!url) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is not configured.' } }, { status: 503 });
@@ -42,8 +50,8 @@ export async function POST(request: Request) {
   }
 
   const now = new Date();
-  const database = usageDatabase();
-  if (mode === 'genome_scan') {
+  const database = auth ? usageDatabase() : null;
+  if (mode === 'genome_scan' && auth) {
     if (!database) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota database is unavailable.' } }, { status: 503 });
     try {
       if (!await reserveGenomeScanQuota(database, auth.id, now)) {
@@ -65,12 +73,12 @@ export async function POST(request: Request) {
       body,
     });
   } catch {
-    if (mode === 'genome_scan' && database) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+    if (mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
     return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is unavailable.' } }, { status: 503 });
   }
-  if (!upstream.ok && mode === 'genome_scan' && database) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+  if (!upstream.ok && mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
 
-  if (upstream.ok) {
+  if (upstream.ok && auth) {
     // The job is already queued. Notification failures must not discard its access token or refund its quota.
     try {
       const created = await upstream.clone().json() as { job_id?: unknown; access_token?: unknown } | null;

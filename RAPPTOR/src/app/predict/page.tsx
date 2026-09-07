@@ -1,17 +1,24 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
 import { predictionCapabilities } from '@/features/prediction/capabilities';
+import { queuedPredictionCapabilities, queuedPredictionLocalTest } from '@/features/prediction/service-capabilities';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Promoter prediction | RAPPTOR',
   description: 'Score a sequence or genome with RAPPTOR.',
 };
 
-export default function PredictPage() {
+export default async function PredictPage() {
   const capabilities = predictionCapabilities();
+  const localTest = queuedPredictionLocalTest(await headers());
+  const service = await queuedPredictionCapabilities(localTest);
   return <PrototypePredictionWorkbench
-    modelVersion={process.env.RAPPTOR_PREDICTION_MODEL_VERSION || undefined}
+    modelVersion={service.modelVersion}
+    service={service}
     maxGenomeBytes={capabilities.limits.genomeMaxBytes}
-    localTest={process.env.NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST?.trim().toLowerCase() === 'on'}
+    localTest={localTest}
   />;
 }

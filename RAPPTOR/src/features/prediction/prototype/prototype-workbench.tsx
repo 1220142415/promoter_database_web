@@ -15,7 +15,6 @@ import {
   PROTOTYPE_STRIDE_OPTIONS,
   createPrototypeRunId,
   formatPrototypeBytes,
-  illustrativeCatalogContigs,
   parsePrototypeSequenceInput,
   prototypeParameters,
   readPrototypeGenomeFastaMetadata,
@@ -30,6 +29,9 @@ import {
   type PrototypeStrandMode,
   type PrototypeStrideBases,
 } from '.';
+import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
+import type { QueuedPredictionCapabilities } from '../service-capabilities';
+import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '@/components/portal-terminology';
@@ -73,6 +75,7 @@ const EMPTY_UPLOAD: UploadedInputState = { file: null, parsed: null, loading: fa
 const EMPTY_CONTEXT_UPLOAD: ContextUploadState = { file: null, totalLength: null, contigs: [], loading: false, error: null };
 
 function catalogContext(row: GenomeCatalogRow): PrototypeGenomeContext {
+  if (row.accession === REAL_PREDICTION_REFERENCE.accession) return PROTOTYPE_CANDIDATE_GENOME_EXAMPLE;
   return {
     kind: 'catalog',
     accession: row.accession,
@@ -81,7 +84,7 @@ function catalogContext(row: GenomeCatalogRow): PrototypeGenomeContext {
     fileSize: null,
     checksum: null,
     totalLength: row.genomeSizeBp,
-    contigs: illustrativeCatalogContigs(row.accession, row.genomeSizeBp, row.contigCount),
+    contigs: [],
   };
 }
 
@@ -181,6 +184,12 @@ function parsedGenomeInput(parsed: PrototypeParsedSequenceInput, label: string):
 async function catalogGenomeInput(context: PrototypeGenomeContext): Promise<ResolvedGenomeInput> {
   if (context.kind !== 'catalog' || !context.accession) throw new Error('Select a catalog genome.');
   const accession = encodeURIComponent(context.accession);
+  if (context.accession === REAL_PREDICTION_REFERENCE.accession) {
+    const response = await fetch(`/api/prediction-reference/${accession}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('The example reference could not be loaded. Retry the download.');
+    const verified = await validateReferenceExample(await response.text());
+    return parsedGenomeInput(parsePrototypeSequenceInput(verified.fasta), context.displayName);
+  }
   let response = await fetch(`/api/remote-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
   if (!response.ok) response = await fetch(`/api/experimental-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
   if (!response.ok && context.accession === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession) {
@@ -204,12 +213,18 @@ export default function PrototypePredictionWorkbench({
   modelVersion = DEFAULT_PROTOTYPE_MODEL_SPEC.version,
   maxGenomeBytes = DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
   localTest = false,
+  preview = false,
+  service = { available: false, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '', reason: 'Prediction service is not configured.' },
 }: {
   modelVersion?: string;
   maxGenomeBytes?: number;
   localTest?: boolean;
+  preview?: boolean;
+  service?: QueuedPredictionCapabilities;
 }) {
   const router = useRouter();
+  const submissionBlock = preview ? null : !service.available ? service.reason || 'Prediction service is unavailable.'
+    : service.submissionIssue || (!localTest && !service.siteKey ? 'Human verification is not configured on this site. Prediction cannot be submitted yet.' : null);
   const primaryFileRef = useRef<HTMLInputElement>(null);
   const contextFileRef = useRef<HTMLInputElement>(null);
   const primaryStepRef = useRef<HTMLFieldSetElement>(null);
@@ -227,6 +242,17 @@ export default function PrototypePredictionWorkbench({
   const [strideBases, setStrideBases] = useState<PrototypeStrideBases>(PROTOTYPE_STRIDE_BASES);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [verificationRevision, setVerificationRevision] = useState(0);
+  const [exampleLoading, setExampleLoading] = useState(false);
+  const [exampleError, setExampleError] = useState<string | null>(null);
+  const verifiedExample = useRef<ResolvedGenomeInput | null>(null);
+  async function prepareExampleReference() {
+    setExampleLoading(true); setExampleError(null);
+    try { verifiedExample.current = await catalogGenomeInput(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE); }
+    catch (cause) { setExampleError(cause instanceof Error ? cause.message : 'Example reference unavailable.'); }
+    finally { setExampleLoading(false); }
+  }
 
   const inlineState = useMemo(() => {
     if (!inlineInput.trim()) return { parsed: null, error: null };
@@ -241,7 +267,10 @@ export default function PrototypePredictionWorkbench({
   const parsedInput = primaryKind === 'inline' ? inlineState.parsed : primaryKind === 'upload' ? uploadedInput.parsed : null;
   const inputError = primaryKind === 'inline' ? inlineState.error : primaryKind === 'upload' ? uploadedInput.error : null;
   const inferredMode: PrototypePredictionMode | null = primaryKind === 'catalog' ? (inputCatalog ? 'genome-scan' : null) : parsedInput?.mode || null;
-  const parametersReady = Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1;
+  const usesExampleReference = (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession)
+    || (contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
+  const cutoffUnavailable = !preview && (inferredMode === 'candidate' || !service.supportsScoreCutoff);
+  const parametersReady = cutoffUnavailable || (Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1);
   const genomeLimitLabel = formatPredictionMaxRequestBytes(maxGenomeBytes);
   const activeThresholdLabel = inferredMode
     ? thresholdLabel(inferredMode === 'candidate' ? 'candidate' : 'genome-scan')
@@ -281,6 +310,7 @@ export default function PrototypePredictionWorkbench({
     setPrimaryKind('inline');
     setInlineInput(PROTOTYPE_CANDIDATE_EXAMPLE);
     clearGenomeContext();
+    if (!preview) { setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE); void prepareExampleReference(); }
     setFormError(null);
   }
 
@@ -288,6 +318,7 @@ export default function PrototypePredictionWorkbench({
     setPrimaryKind('catalog');
     setInputCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
     clearGenomeContext();
+    if (!preview) { setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE); void prepareExampleReference(); }
     setFormError(null);
   }
 
@@ -342,6 +373,7 @@ export default function PrototypePredictionWorkbench({
   async function resolveGenomeContextSequence(): Promise<ResolvedGenomeInput> {
     if (contextKind === 'catalog') {
       if (!contextCatalog) throw new Error('Select the matching genome context.');
+      if (contextCatalog.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession && verifiedExample.current) return verifiedExample.current;
       return catalogGenomeInput(contextCatalog);
     }
     if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid matching genome FASTA.');
@@ -372,6 +404,7 @@ export default function PrototypePredictionWorkbench({
   async function primaryScanSequence(): Promise<ResolvedGenomeInput> {
     if (primaryKind === 'catalog') {
       if (!inputCatalog) throw new Error('Select a catalog genome.');
+      if (inputCatalog.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession && verifiedExample.current) return verifiedExample.current;
       return catalogGenomeInput(inputCatalog);
     }
     if (!parsedInput) throw new Error('Provide valid sequence input.');
@@ -399,10 +432,13 @@ export default function PrototypePredictionWorkbench({
       revealStep(parameterStepRef.current);
       return;
     }
+    if (submissionBlock) { setFormError(submissionBlock); return; }
+    if (!preview && !localTest && !turnstileToken) { setFormError('Complete human verification before submitting.'); return; }
+    if (!preview && usesExampleReference && (exampleLoading || exampleError)) { setFormError('Load and verify the example reference before submitting.'); return; }
     setSubmitting(true);
     setFormError(null);
     try {
-      if (!localTest) {
+      if (preview) {
         const runId = createPrototypeRunId();
         const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases } };
         let run: PrototypePredictionRun;
@@ -430,10 +466,11 @@ export default function PrototypePredictionWorkbench({
             },
           };
         }
-        writePrototypePredictionRun(run);
-        if (run.mode === 'genome-scan' && primaryKind !== 'catalog' && parsedInput) {
-          registerPrototypeTransientInput(run.runId, parsedInput);
+        if (run.mode === 'genome-scan') {
+          const parsed = primaryKind === 'catalog' ? parsePrototypeSequenceInput((await primaryScanSequence()).fasta) : parsedInput;
+          if (parsed) registerPrototypeTransientInput(run.runId, parsed);
         }
+        writePrototypePredictionRun(run);
         router.push(`/predict/demo/${encodeURIComponent(runId)}`);
         return;
       }
@@ -468,8 +505,8 @@ export default function PrototypePredictionWorkbench({
         request = {
           mode: 'genome_scan', complete_genome: true, fasta: genome.fasta,
           ...(scanSourceProvidesCgr ? {} : { genome_context: context.sequence }),
-          stride: strideBases, score_cutoff: cutoff, reverse_complementary: strandMode === 'both',
-          output_formats: ['bigwig', 'gff3'],
+          stride: strideBases, ...(service.supportsScoreCutoff ? { score_cutoff: cutoff } : {}), reverse_complementary: strandMode === 'both',
+          output_formats: service.supportsScoreCutoff ? ['bigwig', 'gff3'] : ['bigwig', 'parquet'],
         };
         bases = genome.totalLength + (scanSourceProvidesCgr ? 0 : context.totalLength);
         referenceName = genome.referenceName;
@@ -479,7 +516,7 @@ export default function PrototypePredictionWorkbench({
 
       const issued = await predictionApi<PredictionTicket>('/api/prediction-tickets', {
         method: 'POST',
-        body: JSON.stringify({ mode: historyMode, turnstileToken: 'local-test', modelVersion, bases }),
+        body: JSON.stringify({ mode: historyMode, ...(localTest ? {} : { turnstileToken }), modelVersion, bases }),
       });
       if (!issued.ticket) throw new Error('Prediction ticket response is invalid.');
       const created = await predictionApi<CreatedDockerJob>('/api/predictions/jobs', {
@@ -502,8 +539,9 @@ export default function PrototypePredictionWorkbench({
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
       router.push(`/predict/task/${encodeURIComponent(created.job_id)}`);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : localTest ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
+      setFormError(cause instanceof Error ? cause.message : !preview ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
       setSubmitting(false);
+      if (!preview) { setTurnstileToken(''); setVerificationRevision((value) => value + 1); }
     }
   }
 
@@ -519,27 +557,33 @@ export default function PrototypePredictionWorkbench({
     || (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession)
     ? PROTOTYPE_CANDIDATE_GENOME_EXAMPLE
     : null;
-  const submitGuidance = !inputReady
+  const submitGuidance = submissionBlock
+    ? { title: 'Prediction unavailable', detail: 'Your input is kept. Prediction can start once the site configuration is complete.' }
+    : usesExampleReference && exampleLoading
+      ? { title: 'Verifying reference', detail: 'Wait for the reference download and checksum verification.' }
+    : !inputReady
     ? { title: 'Prediction input required', detail: 'Add input in Step 1.' }
     : !contextReady
       ? { title: 'Genome context required', detail: 'Select a catalog genome or upload its FASTA in Step 2.' }
       : !parametersReady
         ? { title: `Check the ${activeThresholdLabel.toLowerCase()}`, detail: 'Enter a value from 0 to 1.' }
-        : localTest
+        : !preview && !localTest && !turnstileToken
+          ? { title: 'Human verification required', detail: 'Complete the verification above before queuing the task.' }
+        : !preview
           ? { title: 'Ready to queue', detail: 'The validated input and matching CGR genome will be sent to the configured RAPPTOR prediction service.' }
           : { title: 'Ready to preview', detail: PORTAL_COPY.demoNotice };
-  const submitLabel = submitting ? (localTest ? 'Queuing…' : 'Preparing…') : (localTest ? 'Queue prediction' : 'Preview illustrative result');
-  const inputPrivacyCopy = localTest
+  const submitLabel = submitting ? (!preview ? 'Queuing…' : 'Preparing…') : (!preview ? 'Queue prediction' : 'Preview illustrative result');
+  const inputPrivacyCopy = !preview
     ? 'The selected input is sent to the configured prediction service only after you queue the task.'
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
-  const contextPrivacyCopy = localTest
+  const contextPrivacyCopy = !preview
     ? 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 
   return (
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
-        <div><p className="portal-kicker">{localTest ? 'Queued prediction' : 'Prediction prototype'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p></div>
+        <div><p className="portal-kicker">{preview ? 'Prediction prototype' : localTest ? '本地真实预测测试' : 'Queued prediction'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p>{localTest && !preview ? <p>无需邮箱登录或人机验证。使用线上 {modelVersion} 候选模型进行真实推理。</p> : null}</div>
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
@@ -556,8 +600,12 @@ export default function PrototypePredictionWorkbench({
               <p className={styles.localNote}>Paste up to 10,000 bases. {inputPrivacyCopy}</p>
               <div className={styles.exampleRow} aria-label="Examples">
                 <span>Try an example</span>
-                <div><button type="button" onClick={loadFocusedExample}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample}>Use E. coli K-12 genome example</button></div>
+                <div><button type="button" onClick={loadFocusedExample} disabled={exampleLoading}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample} disabled={exampleLoading}>Use E. coli K-12 genome example</button></div>
               </div>
+              <p className={styles.localNote}>E. coli K-12 MG1655 · {REAL_PREDICTION_REFERENCE.accession} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp. The 100 bp example is {REAL_PREDICTION_REFERENCE.sequenceId}:100001–100100 (+), a reference-genome fragment.</p>
+              {usesExampleReference && exampleLoading ? <p role="status">Loading and verifying the complete reference genome…</p> : null}
+              {usesExampleReference && !exampleLoading && !exampleError && verifiedExample.current ? <p className={styles.localNote} role="status">Verified reference: {REAL_PREDICTION_REFERENCE.sequenceId} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp · SHA-256 {REAL_PREDICTION_REFERENCE.fastaSha256.slice(0, 12)}… · <a href={REAL_PREDICTION_REFERENCE.sourceUrl}>NCBI FASTA source</a></p> : null}
+              {usesExampleReference && exampleError ? <div role="alert"><p>{exampleError}</p><button type="button" onClick={() => void prepareExampleReference()}>Retry reference download</button></div> : null}
               <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
                 <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />{uploadedInput.file ? 'Replace FASTA' : 'Upload FASTA'}</button>
                 {uploadedInput.file ? <button type="button" aria-label="Remove uploaded FASTA" onClick={removePrimaryFile}>Remove</button> : null}
@@ -607,16 +655,18 @@ export default function PrototypePredictionWorkbench({
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
                 <label><span>Strands</span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
-                <label><span>{activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" value={Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{parametersReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : PORTAL_COPY.genomeScanCutoffHelp) : 'Enter a value from 0 to 1.'}</small></label>
+                <label><span>{activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{cutoffUnavailable ? (inferredMode === 'candidate' ? 'This task returns model scores without applying a classification threshold.' : 'This service does not support export filtering. All computed scores are retained.') : parametersReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : PORTAL_COPY.genomeScanCutoffHelp) : 'Enter a value from 0 to 1.'}</small></label>
                 <label><span>{PORTAL_TERMS.stride}</span><select aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" value={strideBases} onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? 'A 100 bp input contains one window.' : 'Bases between consecutive 100 bp windows.'}</small></label>
               </div>
             </fieldset>
           ) : null}
 
+          {submissionBlock ? <div role="alert"><p>{submissionBlock}</p><button type="button" onClick={() => router.refresh()}>Check availability again</button></div> : null}
+          {!preview && service.siteKey && !localTest ? <PredictionVerification key={verificationRevision} siteKey={service.siteKey} onToken={setTurnstileToken} /> : null}
           {formError ? <div className={styles.formError} role="alert">{formError}</div> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
-            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting}>{submitLabel}</button>
+            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (usesExampleReference && exampleLoading) || Boolean(submissionBlock)}>{submitLabel}</button>
           </div>
         </form>
       </section>

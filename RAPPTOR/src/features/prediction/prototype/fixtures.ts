@@ -1,3 +1,4 @@
+import { REAL_CANDIDATE_FASTA, REAL_GENOME_CONTEXT } from '../reference-example';
 import {
   PROTOTYPE_ANCHOR_BASE,
   PROTOTYPE_WINDOW_BASES,
@@ -19,10 +20,7 @@ const FIXTURE_CONTIGS: PrototypeContigMetadata[] = [
 
 const INTERNAL_PEAK_SEPARATION_BASES = 10;
 
-export const PROTOTYPE_CANDIDATE_EXAMPLE = [
-  '>focused_candidate_100bp',
-  'ACGT'.repeat(25),
-].join('\n');
+export const PROTOTYPE_CANDIDATE_EXAMPLE = REAL_CANDIDATE_FASTA;
 
 export const PROTOTYPE_CONTIG_EXAMPLE = [
   '>tutorial_contig_A',
@@ -33,16 +31,7 @@ export const PROTOTYPE_CONTIG_EXAMPLE = [
   'GATT'.repeat(35),
 ].join('\n');
 
-export const PROTOTYPE_CANDIDATE_GENOME_EXAMPLE = {
-  kind: 'catalog' as const,
-  accession: 'GCF_000005845.2',
-  displayName: 'Escherichia coli str. K-12 substr. MG1655',
-  fileName: 'GCF_000005845.2.reference.fna.gz',
-  fileSize: null,
-  checksum: '33f9e5082e35d141d2b1bb9fc20786b48f760981c14c508476212d2d75c85d01',
-  totalLength: 4_641_652,
-  contigs: [{ sequenceId: 'NC_000913.3', length: 4_641_652 }],
-};
+export const PROTOTYPE_CANDIDATE_GENOME_EXAMPLE = REAL_GENOME_CONTEXT;
 
 export const PROTOTYPE_GENOME_EXAMPLE = {
   kind: 'catalog' as const,

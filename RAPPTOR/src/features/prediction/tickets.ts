@@ -35,7 +35,9 @@ function positiveInteger(name: string) {
   return value;
 }
 
-export function readPredictionTicketSettings(): PredictionTicketSettings {
+export type PredictionTicketIssueSettings = Omit<PredictionTicketSettings, 'turnstileSecret' | 'serviceSecret'>;
+
+export function readPredictionTicketIssueSettings(): PredictionTicketIssueSettings {
   if (process.env.RAPPTOR_PREDICTION_ENABLED?.trim().toLowerCase() !== 'on') {
     throw new PredictionTicketConfigurationError('Prediction submission is disabled.');
   }
@@ -45,8 +47,6 @@ export function readPredictionTicketSettings(): PredictionTicketSettings {
     ticketsPerMinute: positiveInteger('RAPPTOR_PREDICTION_TICKETS_PER_MINUTE'),
     basesPerDay: positiveInteger('RAPPTOR_PREDICTION_BASES_PER_DAY'),
     ttlSeconds: positiveInteger('RAPPTOR_PREDICTION_TICKET_TTL_SECONDS'),
-    turnstileSecret: required('RAPPTOR_TURNSTILE_SECRET'),
-    serviceSecret: required('RAPPTOR_PREDICTION_SERVICE_SECRET'),
     ipHashSecret: required('RAPPTOR_PREDICTION_IP_HASH_SECRET'),
   };
   if (settings.ttlSeconds < 60 || settings.ttlSeconds > 120) {
@@ -56,6 +56,14 @@ export function readPredictionTicketSettings(): PredictionTicketSettings {
     throw new PredictionTicketConfigurationError('Per-job bases must not exceed the daily bases limit.');
   }
   return settings;
+}
+
+export function readPredictionTicketSettings(): PredictionTicketSettings {
+  return {
+    ...readPredictionTicketIssueSettings(),
+    turnstileSecret: required('RAPPTOR_TURNSTILE_SECRET'),
+    serviceSecret: required('RAPPTOR_PREDICTION_SERVICE_SECRET'),
+  };
 }
 
 function hex(bytes: ArrayBuffer) {
@@ -89,7 +97,7 @@ function changedRows(result: { meta?: { changes?: unknown } }) {
 
 export async function issuePredictionTicket(
   database: D1Database,
-  settings: PredictionTicketSettings,
+  settings: PredictionTicketIssueSettings,
   input: { address: string; modelVersion: string; bases: number; mode: PredictionTaskMode },
   now = new Date(),
 ) {

@@ -43,7 +43,7 @@ describe('prediction form', () => {
     const user = userEvent.setup();
     render(<PredictionForm capabilities={capabilities} />);
     await user.click(screen.getByRole('button', { name: 'Use example' }));
-    expect(screen.getByText(/112 bases/)).toBeInTheDocument();
+    expect(screen.getByText(/100 bases/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /Evaluate both strands/ })).toBeChecked();
     await user.click(screen.getByRole('tab', { name: 'Upload genome FASTA' }));
     expect(screen.getByText('The demo computes a local checksum; the file is not uploaded.')).toBeInTheDocument();

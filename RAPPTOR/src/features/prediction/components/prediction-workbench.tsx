@@ -8,6 +8,7 @@ import {
   upsertPredictionHistory,
   type PredictionHistoryEntry,
 } from '../history';
+import FocusedJobResult from './focused-job-result';
 import PredictionProgressPanel from './prediction-progress-panel';
 import { normalizePredictionProgress, type PredictionProgressSnapshot } from '../progress';
 import { formatPredictionMaxRequestBytes, predictionMaxRequestBytes } from '../capabilities';
@@ -26,6 +27,8 @@ type JobSummary = {
   sequence_bases?: number;
   genome_context_bases?: number;
   max_score?: number;
+  reverse_complementary?: boolean;
+  model?: { model_version?: string; checkpoint_sha256?: string; model_config_sha256?: string; model_asset_status?: string };
 };
 type JobState = {
   job_id: string;
@@ -81,6 +84,11 @@ function formatExpiry(value?: string | null) {
   return Number.isNaN(expiry.getTime()) ? null : expiry.toLocaleString();
 }
 
+async function establishArtifactSession(jobId: string, token: string) {
+  const response = await fetch(`/api/predictions/jobs/${jobId}/session`, { method: 'POST', headers: { 'X-Job-Token': token } });
+  if (!response.ok) throw new Error('Task access is invalid or has expired. Reopen a valid protected task link.');
+}
+
 export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBytes = predictionMaxRequestBytes(), localTest = false, initialJobId }: { siteKey: string; modelVersion: string; maxGenomeBytes?: number; localTest?: boolean; initialJobId?: string }) {
   const [mode, setMode] = useState<'genome_scan' | 'predict'>('genome_scan');
   const [fasta, setFasta] = useState('');
@@ -91,6 +99,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
   const [jobToken, setJobToken] = useState('');
   const [job, setJob] = useState<JobState | null>(null);
   const [summary, setSummary] = useState<JobSummary | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [refName, setRefName] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -161,7 +170,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
             token: sharedToken,
             refName: sharedReference,
             status: 'unknown',
-            mode: 'genome_scan',
+            mode: fragment.get('mode') === 'predict' ? 'predict' : 'genome_scan',
             submittedAt: new Date().toISOString(),
             label: sharedReference || `Shared task ${initialJobId.slice(0, 8)}`,
             bases: 0,
@@ -182,7 +191,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
           if (!response.ok) throw new Error();
           const restored = await response.json() as JobState;
           if (restored.status === 'succeeded') {
-            await fetch(`/api/predictions/jobs/${restored.job_id}/session`, { method: 'POST', headers: { 'X-Job-Token': saved.token! } });
+            await establishArtifactSession(restored.job_id, saved.token!);
           }
           setJob(restored);
           setShowNew(false);
@@ -204,7 +213,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
   }, [initialJobId, persistHistory]);
 
   useEffect(() => {
-    if (!job || !jobToken || ['succeeded', 'failed'].includes(job.status)) return;
+    if (!job || !jobToken || ['succeeded', 'failed', 'unknown'].includes(job.status)) return;
     let cancelled = false;
     let timer: number;
     const poll = async () => {
@@ -213,7 +222,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
         if (!response.ok) throw new Error('Task status is unavailable.');
         const next = await response.json() as JobState;
         if (next.status === 'succeeded') {
-          await fetch(`/api/predictions/jobs/${next.job_id}/session`, { method: 'POST', headers: { 'X-Job-Token': jobToken } });
+          await establishArtifactSession(next.job_id, jobToken);
         }
         setJob(next);
         updateHistoryStatus(next.job_id, next.status);
@@ -225,17 +234,35 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
   }, [job, jobToken, updateHistoryStatus]);
 
   useEffect(() => {
-    setSummary(null);
-    if (job?.status !== 'succeeded' || !job.result?.artifacts?.some((artifact) => artifact.filename === 'summary.json')) return;
+    setSummary(null); setSummaryError(null);
+    if (job?.status !== 'succeeded') return;
+    if (!job.result?.artifacts?.some((artifact) => artifact.filename === 'summary.json')) {
+      setSummaryError('The completed task has no summary.json artifact.'); return;
+    }
     const controller = new AbortController();
     void fetch(`/api/predictions/jobs/${job.job_id}/artifacts/summary.json`, { cache: 'no-store', signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error();
-        setSummary(await response.json() as JobSummary);
+        const result = await response.json() as JobSummary;
+        setSummary(result);
+        if (result.mode) setMode(result.mode);
       })
-      .catch(() => undefined);
+      .catch(() => { if (!controller.signal.aborted) setSummaryError('Task summary is unavailable or its access has expired.'); });
     return () => controller.abort();
   }, [job?.job_id, job?.result?.artifacts, job?.status]);
+
+  useEffect(() => {
+    if (job?.status !== 'succeeded' || refName || !job.result?.artifacts?.some((item) => item.filename === 'input.fasta.fai')) return;
+    const controller = new AbortController();
+    void fetch(`/api/predictions/jobs/${job.job_id}/artifacts/input.fasta.fai`, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        const id = (await response.text()).split('\n')[0]?.split('\t')[0];
+        if (!id || /\s/.test(id)) throw new Error();
+        if (!controller.signal.aborted) setRefName(id);
+      }).catch(() => { if (!controller.signal.aborted) setMessage('The reference index is unavailable or invalid.'); });
+    return () => controller.abort();
+  }, [job?.job_id, job?.result?.artifacts, job?.status, refName]);
 
   async function readFile(file: File | undefined) {
     if (!file) return;
@@ -261,7 +288,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
       if (!response.ok) throw new Error('This saved task is no longer available on the prediction service.');
       const restored = await response.json() as JobState;
       if (restored.status === 'succeeded') {
-        await fetch(`/api/predictions/jobs/${entry.jobId}/session`, { method: 'POST', headers: { 'X-Job-Token': entry.token } });
+        await establishArtifactSession(entry.jobId, entry.token);
       }
       setJob(restored);
       setShowNew(false);
@@ -362,9 +389,10 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
   }
 
   const artifacts = job?.result?.artifacts || [];
-  const gffArtifacts = artifacts.filter((artifact) => artifact.format === 'gff3');
-  const hasBrowserFiles = ['scores.plus.bw', 'scores.minus.bw', 'input.fasta', 'input.fasta.fai']
-    .every((name) => artifacts.some((artifact) => artifact.filename === name));
+  const gffArtifacts = artifacts.filter((artifact) => ['gff3', 'json', 'parquet'].includes(artifact.format));
+  const missingBrowserFiles = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai', ...(summary?.reverse_complementary === false ? [] : ['scores.minus.bw'])]
+    .filter((name) => !artifacts.some((artifact) => artifact.filename === name));
+  const hasBrowserFiles = missingBrowserFiles.length === 0;
   const serviceAvailable = Boolean(siteKey) || localTest;
   const serviceTone = serviceAvailable ? styles.statusReady : styles.statusUnavailable;
   const serviceLabel = serviceAvailable ? 'SERVICE READY' : 'SERVICE UNAVAILABLE';
@@ -375,8 +403,8 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
   const activeJob = job?.status === 'queued' || job?.status === 'running';
   const selectedEntry = history.find((entry) => entry.jobId === job?.job_id);
   const artifactsExpireAt = formatExpiry(job?.artifacts_expires_at);
-  const jobProgress: PredictionProgressSnapshot | null = job ? normalizePredictionProgress({
-    state: job.status === 'unknown' ? 'running' : job.status,
+  const jobProgress: PredictionProgressSnapshot | null = job && job.status !== 'unknown' ? normalizePredictionProgress({
+    state: job.status,
     stage: job.progress?.stage || job.status,
     percent: job.progress?.percent ?? null,
     message: job.error
@@ -449,6 +477,12 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
               {message && <div className={styles.formError} role="alert"><span>{message}</span></div>}
               {jobProgress ? <PredictionProgressPanel mode={(selectedEntry?.mode || mode) === 'genome_scan' ? 'scan' : 'focused'} snapshot={jobProgress} /> : null}
 
+              {summaryError ? <p role="alert">{summaryError}</p> : null}
+              {job.status === 'failed' ? <p role="alert">{job.error?.message || 'Prediction failed.'}</p> : null}
+              {job.status === 'unknown' ? <p role="alert">This task is unavailable or has expired.</p> : null}
+              {job.status === 'succeeded' && summary?.mode === 'genome_scan' && !hasBrowserFiles ? <p role="alert">Required browser artifacts are missing: {missingBrowserFiles.join(', ')}.</p> : null}
+              {summary?.model ? <section className={styles.jobSection} aria-label="Model provenance"><strong>{summary.model.model_version || 'Model version unavailable'}</strong><p>{summary.model.model_asset_status === 'candidate_not_production' ? 'Candidate model' : summary.model.model_asset_status || 'Model status not reported'}</p><small>Checkpoint SHA-256: {summary.model.checkpoint_sha256 || 'Not reported'}</small></section> : null}
+              {summary?.mode === 'predict' && summary.sequence_bases === 100 ? <FocusedJobResult jobId={job.job_id} bothStrands={summary.reverse_complementary !== false} hasScores={Boolean(job.result?.artifacts?.some((item) => item.filename === 'scores.json'))} /> : null}
               {summary && <section className={styles.jobSection}>
                 <div className={styles.panelHeading}><div><p className="portal-kicker">Prediction summary</p><h2>Run statistics</h2></div></div>
                 <div className={styles.resultSummary}>
@@ -467,15 +501,15 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
               </section>}
 
               {artifacts.length > 0 && <section className={styles.jobSection}>
-                <div className={styles.panelHeading}><div><p className="portal-kicker">Download</p><h2>GFF3 result</h2></div><p>{artifactsExpireAt ? <>Available until <time dateTime={job.artifacts_expires_at!}>{artifactsExpireAt}</time></> : 'Earlier task · no expiry assigned'}</p></div>
+                <div className={styles.panelHeading}><div><p className="portal-kicker">Download</p><h2>Result files</h2></div><p>{artifactsExpireAt ? <>Available until <time dateTime={job.artifacts_expires_at!}>{artifactsExpireAt}</time></> : 'Earlier task · no expiry assigned'}</p></div>
                 {gffArtifacts.length > 0
-                  ? <div className={styles.downloads}>{gffArtifacts.map((artifact) => <a key={artifact.filename} href={`/api/predictions/jobs/${job.job_id}/artifacts/${artifact.filename}`} download><span><strong>{artifact.filename}</strong><small>GFF3 · {formatBytes(artifact.size_bytes)}</small></span><code>{artifact.sha256.slice(0, 12)}…</code></a>)}</div>
-                  : <p className={styles.artifactNotice}>This task did not request GFF3. Run it again for GFF3; its BigWig tracks remain in the genome browser.</p>}
+                  ? <div className={styles.downloads}>{gffArtifacts.map((artifact) => <a key={artifact.filename} href={`/api/predictions/jobs/${job.job_id}/artifacts/${artifact.filename}`} download><span><strong>{artifact.filename}</strong><small>{artifact.format.toUpperCase()} · {formatBytes(artifact.size_bytes)}</small></span><code>{artifact.sha256.slice(0, 12)}…</code></a>)}</div>
+                  : <p className={styles.artifactNotice}>No downloadable score files were returned by this task.</p>}
               </section>}
 
               {job.status === 'succeeded' && hasBrowserFiles && refName && <section className={styles.jobSection}>
                 <div className={styles.panelHeading}><div><p className="portal-kicker">Genome and prediction tracks</p><h2>Genome browser</h2></div></div>
-                <div className={styles.predictionBrowser}><PredictionBrowser jobId={job.job_id} refName={refName} /></div>
+                <div className={styles.predictionBrowser}><PredictionBrowser jobId={job.job_id} refName={refName} artifacts={job.result?.artifacts} /></div>
               </section>}
             </section> : <section className={styles.emptyWorkspace}><h2>Select a prediction</h2><p>Choose New prediction or open a recent run from the list.</p></section>}
           </div>

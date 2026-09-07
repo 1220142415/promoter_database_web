@@ -5,8 +5,14 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
 
+// These component tests isolate transport/validation; real reference checks run separately.
+vi.mock('@/features/prediction/reference-example', async (original) => ({
+  ...await original<typeof import('@/features/prediction/reference-example')>(),
+  validateReferenceExample: vi.fn(async (fasta: string) => ({ fasta, sequence: 'ACGT'.repeat(40), length: 160, sequenceId: 'NC_000913.3' })),
+}));
 const push = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+const refresh = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh }) }));
 vi.mock('@/features/prediction/client', () => ({
   predictionApi: vi.fn(async (url: string, init?: RequestInit) => {
     const response = await fetch(url, init);
@@ -20,6 +26,7 @@ vi.mock('@/features/prediction/client', () => ({
 afterEach(() => {
   sessionStorage.clear();
   push.mockClear();
+  refresh.mockClear();
   vi.unstubAllGlobals();
 });
 
@@ -40,9 +47,54 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('prototype prediction workbench', () => {
+  it('keeps valid input while checking a configuration blocker and never claims it is ready to queue', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`)));
+    const user = userEvent.setup();
+    const service = { available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '', submissionIssue: 'Email sign-in is not configured on this site. Prediction cannot be submitted yet.' };
+    const { rerender } = render(<PrototypePredictionWorkbench localTest service={service} />);
+    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Use 100 bp example' })).toBeEnabled());
+    const original = (screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value;
+    expect(screen.getByRole('alert')).toHaveTextContent('Email sign-in is not configured');
+    expect(screen.getByText('Prediction unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Ready to queue')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Check availability again' }));
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue(original);
+    expect(push).not.toHaveBeenCalled();
+    rerender(<PrototypePredictionWorkbench localTest service={{ ...service, submissionIssue: undefined }} />);
+    expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue(original);
+    expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled();
+  });
+
+  it('retains the real short input after reference failure and retries without submitting a task', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockResolvedValueOnce(new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
+    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('reference could not be loaded');
+    const original = (screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value;
+    expect(original).toContain('NC_000913.3:100001-100100');
+    await user.click(screen.getByRole('button', { name: 'Retry reference download' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue(original);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(Array(2).fill('/api/prediction-reference/GCF_000005845.2'));
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('does not offer an illustrative fallback when the real service is unavailable', () => {
+    render(<PrototypePredictionWorkbench />);
+    expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Preview illustrative result' })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('not configured');
+  });
+
   it('requires separate CGR context for the short example and stores v3 metadata only', async () => {
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     expect(screen.getByText('Prediction input required')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
@@ -80,7 +132,7 @@ describe('prototype prediction workbench', () => {
 
   it('loads the E. coli K-12 scan source but still requires separate CGR context', async () => {
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
     expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     expect(screen.getAllByText(/Escherichia coli str\. K-12/).length).toBeGreaterThan(0);
@@ -93,7 +145,7 @@ describe('prototype prediction workbench', () => {
   });
 
   it('keeps paste and the compact FASTA upload control in one input card without source tabs or a primary catalog search', () => {
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     expect(screen.getByLabelText('Raw DNA or FASTA')).toBeVisible();
     expect(screen.getByText('Try an example')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Upload FASTA' })).toBeVisible();
@@ -103,7 +155,7 @@ describe('prototype prediction workbench', () => {
 
   it('uses the most recently provided input after a whole-genome example', async () => {
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
     expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     await selectCgrCatalog(user);
@@ -116,7 +168,7 @@ describe('prototype prediction workbench', () => {
 
   it('requires separate CGR context after a primary FASTA upload', async () => {
     const user = userEvent.setup();
-    const { container } = render(<PrototypePredictionWorkbench />);
+    const { container } = render(<PrototypePredictionWorkbench preview />);
     const primaryFile = new File([`>uploaded_scan\n${'ACGT'.repeat(40)}`], 'uploaded-scan.fna', { type: 'text/plain' });
     Object.defineProperty(primaryFile, 'text', { value: async () => `>uploaded_scan\n${'ACGT'.repeat(40)}` });
     const primaryInput = container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0];
@@ -142,7 +194,7 @@ describe('prototype prediction workbench', () => {
 
   it('requires CGR context after a real paste event for a multi-record FASTA', async () => {
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     const input = screen.getByLabelText('Raw DNA or FASTA');
 
     await user.click(input);
@@ -158,19 +210,19 @@ describe('prototype prediction workbench', () => {
   it('keeps focused context catalog recovery without restoring a primary catalog block', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'E. coli');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     expect(await screen.findByRole('button', { name: 'Retry search' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload FASTA instead' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open Help' })).not.toBeInTheDocument();
-    expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('ACGT');
+    expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('CCGGTTGTACTTCATGAAC');
   });
 
   it('explains an invalid cutoff when input and CGR context are ready', async () => {
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench />);
+    render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
     await selectCgrCatalog(user);
     const cutoff = screen.getByRole('spinbutton', { name: /^Model threshold/ });
@@ -188,7 +240,7 @@ describe('prototype prediction workbench', () => {
     let ticketRequest: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes('/api/remote-data/')) {
+      if (url.includes('/api/prediction-reference/')) {
         return new Response(`>chromosome\n${'ACGT'.repeat(40)}\n`, { headers: { 'Content-Type': 'text/plain' } });
       }
       if (url === '/api/prediction-tickets') {
@@ -204,13 +256,12 @@ describe('prototype prediction workbench', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench localTest />);
+    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: "candidate-github-93cf", supportsScoreCutoff: false, siteKey: "" }} />);
 
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
     await user.selectOptions(screen.getByRole('combobox', { name: 'Stride' }), '10');
-    await user.clear(screen.getByRole('spinbutton', { name: /^Export cutoff/ }));
-    await user.type(screen.getByRole('spinbutton', { name: /^Export cutoff/ }), '0.8');
+    expect(screen.getByRole('spinbutton', { name: /^Export cutoff/ })).toBeDisabled();
     await user.selectOptions(screen.getByRole('combobox', { name: /^Strands/ }), 'forward');
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
 
@@ -218,12 +269,14 @@ describe('prototype prediction workbench', () => {
     expect(jobRequest).toMatchObject({
       mode: 'genome_scan',
       stride: 10,
-      score_cutoff: 0.8,
       reverse_complementary: false,
-      output_formats: ['bigwig', 'gff3'],
+      output_formats: ['bigwig', 'parquet'],
     });
     expect(jobRequest).not.toHaveProperty('genome_context');
+    expect(jobRequest).not.toHaveProperty('score_cutoff');
     expect(ticketRequest).toMatchObject({ bases: 160, mode: 'genome_scan' });
+    expect(ticketRequest).not.toHaveProperty('turnstileToken');
+    expect(screen.getByText('本地真实预测测试')).toBeInTheDocument();
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
   });
 
@@ -245,7 +298,7 @@ describe('prototype prediction workbench', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
     const user = userEvent.setup();
-    const { container } = render(<PrototypePredictionWorkbench localTest />);
+    const { container } = render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: "candidate-github-93cf", supportsScoreCutoff: false, siteKey: "" }} />);
     const scanText = `>scan\n${'ACGT'.repeat(40)}\n`;
     const contextText = `>context\n${'TGCA'.repeat(40)}\n`;
     const scanFile = new File([scanText], 'scan.fna', { type: 'text/plain' });

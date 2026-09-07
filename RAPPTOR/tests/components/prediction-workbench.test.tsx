@@ -84,6 +84,38 @@ describe('prediction workspace layout', () => {
     expect(recent).toHaveTextContent('recent-genome.fna');
   });
 
+  it.each(['failed', 'unknown'])('shows an actual %s task instead of running progress', async (status) => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ job_id: saved.jobId, status, error: status === 'failed' ? { message: 'Model worker failed to load its checkpoint.' } : undefined })));
+    render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(status === 'failed' ? 'Model worker failed' : 'unavailable or has expired');
+    expect(screen.queryByTestId('mock-prediction-browser')).not.toBeInTheDocument();
+  });
+
+  it('stops before loading artifacts when the access session is rejected', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/session')
+      ? new Response(null, { status: 401 })
+      : Response.json({ job_id: saved.jobId, status: 'succeeded', result: { artifacts: [{ filename: 'summary.json' }] } }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('temporarily unavailable');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/artifacts/'))).toBe(false);
+  });
+
+  it('reports a missing summary rather than silently displaying an empty result', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ job_id: saved.jobId, status: 'succeeded', result: { artifacts: [] } })));
+    render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('no summary.json');
+  });
+
+  it('reports missing genome tracks after a successful task', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => Response.json(String(input).endsWith('/summary.json')
+      ? { mode: 'genome_scan', reverse_complementary: true }
+      : { job_id: saved.jobId, status: 'succeeded', result: { artifacts: [{ filename: 'summary.json' }] } })));
+    render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Required browser artifacts are missing');
+    expect(screen.queryByTestId('mock-prediction-browser')).not.toBeInTheDocument();
+  });
+
   it('opens an emailed task link from browser history when session storage is empty', async () => {
     sessionStorage.clear();
     render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);

@@ -25,15 +25,15 @@ The source archive does not identify its GTDB release. The portal therefore repo
 4. Download the indexed files and genome metadata for that assembly.
 5. Use the Data & methods page for provenance, evidence boundaries, formats, manifests, and checksums.
 
-The homepage also contains a promoter-prediction interface. Its default
-`demo` mode returns a fixed, explicitly labelled UI fixture and never sends raw
-candidate or genome sequences to the server. Apply
-`database/migrations/0007_prediction_demo.sql` before enabling the demo on a
-Cloudflare deployment; only ticket hashes, checksums and job metadata are
-stored. Set `RAPPTOR_PREDICTION_MODE=remote` only after configuring the remote
-Docker API, server token and both Turnstile keys documented in
-`.env.local.example`. Set `RAPPTOR_MAX_REQUEST_BYTES` to the same positive byte
-value in the web app and Python service; both default to 12 MiB.
+The `/predict` interface submits real queued predictions through the configured
+`RAPPTOR_PREDICTION_SERVICE_URL`, preserving production email authentication, tickets and
+quota checks. A loopback-only, explicitly configured development mode can use a
+dedicated remote test-ticket key without email login; see [local test setup](docs/prediction-local-test.md).
+The real E. coli examples and explicit `npm run test:prediction:live`
+acceptance command are documented in [prediction-live-acceptance.md](docs/prediction-live-acceptance.md).
+The illustrative UI preview is available only at `/predict/preview` in development.
+Set `RAPPTOR_MAX_REQUEST_BYTES` to the same positive byte value in the web app
+and Python service; both default to 12 MiB.
 
 Promoter predictions and NCBI annotations are separate evidence classes. The portal does not infer promoter-gene assignments or label predictions as experimental TSS.
 

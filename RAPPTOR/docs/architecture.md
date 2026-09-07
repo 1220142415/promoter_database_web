@@ -148,6 +148,19 @@ and internal JBrowse identifiers must not be renamed during source cleanup.
 
 ### Promoter prediction interface
 
+The primary `/predict` entry now uses the queued service at
+`RAPPTOR_PREDICTION_SERVICE_URL`, with protected `/predict/task/[jobId]` results.
+It loads verified real examples; `/predict/preview` is development-only.
+Local no-login testing uses `local-test.ts` to require development mode, explicit
+configuration, a loopback Host/port and same-origin mutation requests. Its server
+obtains genuine D1 tickets from `/api/internal/prediction-test-tickets` using a
+dedicated Secret. Production requests retain normal authentication; local test
+jobs skip user quota and email registration while retaining model-side ticket
+consumption and protected task tokens. See [prediction-local-test.md](prediction-local-test.md).
+See [prediction-live-acceptance.md](prediction-live-acceptance.md) for the current
+contract and independent online tests. The older versioned provider architecture
+below remains available to its legacy API clients.
+
 ```text
 browser -> same-origin prediction routes -> demo provider -> D1 metadata only
                                   \\-> remote provider -> Docker API (future)

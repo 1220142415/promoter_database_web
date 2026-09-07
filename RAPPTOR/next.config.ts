@@ -62,6 +62,7 @@ const localReleaseTraceExcludes = [".data/**/*"];
 const nextConfig: NextConfig = {
   distDir: process.env.RAPPTOR_NEXT_DIST_DIR || '.next',
   output: "standalone",
+  experimental: { cpus: 1, webpackBuildWorker: false },
   outputFileTracingExcludes: {
     "/api/local-data/**": localReleaseTraceExcludes,
     "/api/local-region/**": localReleaseTraceExcludes,

@@ -5,7 +5,7 @@ import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-br
 import type { JBrowseAssemblyConfig } from '@/features/genome-browser/types';
 import styles from './prediction.module.css';
 
-export default function PredictionBrowser({ jobId, refName }: { jobId: string; refName: string }) {
+export default function PredictionBrowser({ jobId, refName, hasMinus = true }: { jobId: string; refName: string; hasMinus?: boolean }) {
   const [annotation, setAnnotation] = useState<{ name: string; url: string } | null>(null);
   const base = `/api/predictions/jobs/${jobId}/artifacts`;
 
@@ -28,16 +28,16 @@ export default function PredictionBrowser({ jobId, refName }: { jobId: string; r
         predictedPromoters: '',
         predictedPromotersIndex: '',
         promoterScoresPlus: `${base}/scores.plus.bw`,
-        promoterScoresMinus: `${base}/scores.minus.bw`,
+        promoterScoresMinus: hasMinus ? `${base}/scores.minus.bw` : null,
         ncbiAnnotations: annotation?.url || null,
         ncbiAnnotationsIndex: null,
       },
       trackLabels: {
-        scores: 'RAPPTOR model scores (+ / − strands)',
+        scores: hasMinus ? 'RAPPTOR model scores (+ / − strands)' : 'RAPPTOR model scores (+ strand)',
         annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
     };
-  }, [annotation, base, jobId, refName]);
+  }, [annotation, base, hasMinus, jobId, refName]);
 
   return <>
     <div className={styles.browserTools}>

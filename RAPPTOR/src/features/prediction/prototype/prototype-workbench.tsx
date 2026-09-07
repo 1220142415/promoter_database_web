@@ -506,6 +506,9 @@ export default function PrototypePredictionWorkbench({
         submittedAt: new Date().toISOString(),
         label,
         bases,
+        cutoff,
+        strandMode,
+        strideBases,
       };
       localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), entry)));
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));

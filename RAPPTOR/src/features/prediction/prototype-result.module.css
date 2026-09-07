@@ -92,6 +92,23 @@
   line-height: 1.55;
 }
 
+.resultError {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e1aaa4;
+  border-left: 5px solid #913b31;
+  border-radius: 8px;
+  padding: 14px 17px;
+  background: #fff5f3;
+  color: #7d3028;
+  font-size: 11px;
+}
+
+.resultError svg {
+  flex: 0 0 22px;
+}
+
 .summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -740,6 +757,7 @@
 
 .downloadButton {
   cursor: pointer;
+  text-decoration: none;
 }
 
 .downloadButton:hover {

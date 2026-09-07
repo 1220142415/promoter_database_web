@@ -50,13 +50,19 @@ describe('prediction workspace layout', () => {
             result: { artifacts: [
               { filename: 'scores.gff3', format: 'gff3', size_bytes: 10, sha256: 'abc' },
               { filename: 'scores.plus.bw', format: 'bigwig', size_bytes: 20, sha256: 'def' },
+              { filename: 'scores.minus.bw', format: 'bigwig', size_bytes: 20, sha256: 'def2' },
+              { filename: 'input.fasta', format: 'fasta', size_bytes: 320, sha256: 'fasta' },
+              { filename: 'input.fasta.fai', format: 'fai', size_bytes: 32, sha256: 'fai' },
               { filename: 'summary.json', format: 'json', size_bytes: 30, sha256: 'ghi' },
             ] },
           },
     })));
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    window.history.replaceState(null, '', '/');
+    vi.unstubAllGlobals();
+  });
 
   it('keeps New first in the right rail and shows one selected job in the main workspace', async () => {
     const user = userEvent.setup();
@@ -87,5 +93,21 @@ describe('prediction workspace layout', () => {
       headers: { 'X-Job-Token': saved.token },
     }));
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain(saved.jobId);
+  });
+
+  it('opens a capability link in a browser with no prior task history', async () => {
+    const sharedToken = 'shared_access_token_1234567890abcdef';
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.hash = `access=${sharedToken}&ref=shared_chr`;
+
+    render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);
+
+    await waitFor(() => expect(screen.getByTestId('mock-prediction-browser')).toBeInTheDocument());
+    expect(fetch).toHaveBeenCalledWith(`/api/predictions/jobs/${saved.jobId}`, expect.objectContaining({
+      headers: { 'X-Job-Token': sharedToken },
+    }));
+    expect(screen.getAllByText('shared_chr')).not.toHaveLength(0);
+    expect(localStorage.getItem(PREDICTION_HISTORY_KEY)).toContain(sharedToken);
   });
 });

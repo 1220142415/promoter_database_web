@@ -2,7 +2,7 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const DEFAULT_FROM = 'RAPPtor <no-reply@auth.email.duolalab.qzz.io>';
 
 // Used only by server routes and the Cron handler, which passes Worker bindings explicitly.
-export type ResendSettings = { apiKey?: string; from?: string; siteUrl?: string };
+export type ResendSettings = { apiKey?: string; from?: string; siteUrl?: string; tokenSecret?: string };
 type EmailMessage = { to: string; subject: string; text: string; html?: string; idempotencyKey?: string };
 
 export type ResendResult =

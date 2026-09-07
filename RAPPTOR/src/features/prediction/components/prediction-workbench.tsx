@@ -152,9 +152,26 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
     setHistory(storedHistory);
     try {
       const sessionJob = JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null') as Partial<PredictionHistoryEntry> | null;
-      const saved = (initialJobId ? storedHistory.find((entry) => entry.jobId === initialJobId) : null) || sessionJob;
+      const fragment = new URLSearchParams(window.location.hash.replace(/^#/u, ''));
+      const sharedToken = initialJobId ? fragment.get('access') : null;
+      const sharedReference = fragment.get('ref')?.slice(0, 200) || '';
+      const sharedJob: PredictionHistoryEntry | null = initialJobId && sharedToken && /^[A-Za-z0-9_-]{32,200}$/u.test(sharedToken)
+        ? {
+            jobId: initialJobId,
+            token: sharedToken,
+            refName: sharedReference,
+            status: 'unknown',
+            mode: 'genome_scan',
+            submittedAt: new Date().toISOString(),
+            label: sharedReference || `Shared task ${initialJobId.slice(0, 8)}`,
+            bases: 0,
+          }
+        : null;
+      const matchingHistory = initialJobId ? storedHistory.find((entry) => entry.jobId === initialJobId) : null;
+      const matchingSession = !initialJobId || sessionJob?.jobId === initialJobId ? sessionJob : null;
+      const saved = sharedJob || matchingHistory || matchingSession;
       if (!saved?.jobId || !saved.token) {
-        if (initialJobId) setMessage('Open this task link in the browser that submitted it.');
+        if (initialJobId) setMessage('This shared task link is incomplete or has expired.');
         return;
       }
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(saved));
@@ -169,6 +186,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
           }
           setJob(restored);
           setShowNew(false);
+          window.requestAnimationFrame(() => jobView.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
           const existing = storedHistory.find((entry) => entry.jobId === saved.jobId);
           persistHistory({
             jobId: saved.jobId!,
@@ -181,7 +199,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
             bases: saved.bases || existing?.bases || 0,
           });
         })
-        .catch(() => setMessage('The saved task is temporarily unavailable.'));
+        .catch(() => setMessage(sharedJob ? 'This shared task link is invalid or has expired.' : 'The saved task is temporarily unavailable.'));
     } catch { sessionStorage.removeItem('rapptor-prediction-job'); }
   }, [initialJobId, persistHistory]);
 
@@ -233,7 +251,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
       setShowNew(false);
       window.requestAnimationFrame(() => {
         jobView.current?.focus({ preventScroll: true });
-        jobView.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        jobView.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
       });
       return;
     }
@@ -254,7 +272,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(nextEntry));
       window.requestAnimationFrame(() => {
         jobView.current?.focus({ preventScroll: true });
-        jobView.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        jobView.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
       });
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'The saved task is unavailable.');

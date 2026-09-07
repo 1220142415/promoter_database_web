@@ -323,8 +323,14 @@ RAPPTOR 不保存密码。第一次请求 OTP 时 Supabase 可以创建未确认
 
 - `prediction_job_notifications`：保存 job ID、user ID、通知邮箱、任务类型、
   投递状态、尝试次数和错误摘要。
-- 不保存 DNA 序列、结果文件、访问令牌或 Supabase token。
+- 不保存 DNA 序列、结果文件或 Supabase token。
 - 行保留 7 天，随后由 Cron 清理。
+
+`0013_prediction_notification_links.sql` 增加加密的临时任务 capability 和参考序列名。
+任务 access token 使用由 `RAPPTOR_PREDICTION_SERVICE_SECRET` 派生的 AES-GCM
+密钥加密后才写入 D1；明文只进入邮件 URL 的 `#fragment`，不会随 HTTP 请求或
+Referer 发送到服务器。任何获得完整链接的人都能在结果过期前查看，因此该链接应
+按临时私密分享链接处理。
 
 应用 migration：
 
@@ -374,7 +380,7 @@ sequenceDiagram
   W->>D: Reserve quota when genome_scan
   W->>P: POST /v1/jobs
   P-->>W: job_id + access token
-  W->>D: Insert prediction_job_notifications
+  W->>D: Insert email + encrypted task capability
   P->>W: POST /api/internal/prediction-jobs (Bearer secret)
   W->>D: Update job terminal status
   W->>R: POST /emails with idempotency key
@@ -385,7 +391,8 @@ sequenceDiagram
 ```
 
 Resend 幂等键为 `prediction-completed/<job_id>`。邮件发送失败不会取消已经排队的
-预测任务。完成通知目前使用纯文本正文，以保证最大兼容性；OTP 使用品牌 HTML。
+预测任务。完成通知同时发送品牌 HTML 和纯文本备用正文；成功按钮携带临时 capability，
+打开后直接恢复任务、建立 artifact Cookie 并加载基因组浏览器。
 
 ## 10. Docker 需要的最小接口
 
@@ -440,6 +447,7 @@ docs/supabase-otp-template.html
 src/features/email-system/resend.ts
 src/features/email-system/prediction-notifications.ts
 database/migrations/0012_prediction_job_notifications.sql
+database/migrations/0013_prediction_notification_links.sql
 Worker scheduled handler
 任务创建登记点
 任务终态回调点
@@ -474,7 +482,8 @@ Worker scheduled handler
 - 同一用户北京时间每天只能提交一次 whole-genome scan。
 - 真实任务成功或失败后只收到一封通知。
 - 重放终态回调不会重复发信。
-- D1 不含序列、结果、密码或 Supabase token。
+- D1 不含序列、结果、密码或 Supabase token；临时任务 capability 仅以 AES-GCM
+  密文保存。
 - Docker 环境中不存在 Supabase 和 Resend Key。
 
 ## 14. 常见故障
@@ -508,13 +517,15 @@ Worker scheduled handler
 ### Docker 回调密钥
 
 Worker 与 Docker 必须使用同一值。先规划短暂停机或双密钥兼容窗口，再轮换；
-否则回调会暂时返回 401，任务状态和邮件会延迟。
+否则回调会暂时返回 401，任务状态和邮件会延迟。该值同时用于加密 D1 中待发送
+通知的临时 capability；轮换前应先发送或清理 pending outbox，否则旧密文无法解密。
 
 ## 16. 安全规则
 
 - `.env.deploy`、`.env.local`、API Key、SMTP password、OTP、Cookie 和回调密钥不得提交 Git。
 - 不在日志中记录邮箱正文、验证码、access token、refresh token 或序列。
-- 邮件不得包含序列、结果文件或访问令牌。
+- 邮件不得包含序列或结果文件。完整结果链接本身是临时访问凭据，只能放在
+  `#fragment` 中，并应在正文中提示“持链接可访问”。
 - Webhook/内部回调必须校验 Bearer secret。
 - Cloudflare 只保存运行时 Secret；仓库只保存变量名和模板。
 - 离职、泄露或域名迁移时立即轮换对应 Key。

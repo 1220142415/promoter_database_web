@@ -95,20 +95,29 @@ describe('prediction job notifications', () => {
     vi.mocked(database.prepare);
     const { usageDatabase } = await import('@/features/usage/store');
     vi.mocked(usageDatabase).mockReturnValue(database as unknown as D1Database);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId }, { status: 202 })));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId, access_token: 'a'.repeat(43) }, { status: 202 })));
 
     const response = await createJob(submissionRequest('predict'));
     await runCallbacks();
 
     expect(response.status).toBe(202);
-    expect(notification.register).toHaveBeenCalledWith(database, jobId, auth, 'predict', expect.any(Date));
-    expect(notification.send).toHaveBeenCalledWith(database, jobId, { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test' });
+    expect(notification.register).toHaveBeenCalledWith(database, jobId, auth, 'predict', {
+      token: 'a'.repeat(43),
+      tokenSecret: 'test-service-secret',
+      referenceName: null,
+    }, expect.any(Date));
+    expect(notification.send).toHaveBeenCalledWith(database, jobId, {
+      apiKey: undefined,
+      from: undefined,
+      siteUrl: 'https://rapptor.example.test',
+      tokenSecret: 'test-service-secret',
+    });
   });
 
   it('keeps short prediction submission working when D1 is unavailable', async () => {
     const { usageDatabase } = await import('@/features/usage/store');
     vi.mocked(usageDatabase).mockReturnValue(null);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId }, { status: 202 })));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId, access_token: 'a'.repeat(43) }, { status: 202 })));
 
     const response = await createJob(submissionRequest('predict'));
     await runCallbacks();
@@ -129,7 +138,8 @@ describe('prediction job notifications', () => {
     }
 
     expect(notification.send).toHaveBeenCalledTimes(2);
-    expect(notification.send).toHaveBeenNthCalledWith(1, database, jobId, { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test' });
-    expect(notification.send).toHaveBeenNthCalledWith(2, database, jobId, { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test' });
+    const settings = { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test', tokenSecret: 'test-service-secret' };
+    expect(notification.send).toHaveBeenNthCalledWith(1, database, jobId, settings);
+    expect(notification.send).toHaveBeenNthCalledWith(2, database, jobId, settings);
   });
 });

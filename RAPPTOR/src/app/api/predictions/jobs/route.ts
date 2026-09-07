@@ -30,12 +30,13 @@ export async function POST(request: Request) {
   if (body.byteLength > maxSubmissionBytes) {
     return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction request is too large.' } }, { status: 413 });
   }
-  let mode: unknown;
+  let submission: { mode?: unknown; fasta?: unknown };
   try {
-    mode = (JSON.parse(new TextDecoder().decode(body)) as { mode?: unknown }).mode;
+    submission = JSON.parse(new TextDecoder().decode(body)) as { mode?: unknown; fasta?: unknown };
   } catch {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction request is invalid.' } }, { status: 400 });
   }
+  const mode = submission.mode;
   if (mode !== 'predict' && mode !== 'genome_scan') {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction task mode is invalid.' } }, { status: 400 });
   }
@@ -72,13 +73,22 @@ export async function POST(request: Request) {
   if (upstream.ok) {
     // The job is already queued. Notification failures must not discard its access token or refund its quota.
     try {
-      const created = await upstream.clone().json() as { job_id?: unknown } | null;
-      if (typeof created?.job_id !== 'string' || !/^[0-9a-f]{32}$/.test(created.job_id)) throw new Error('Invalid job ID.');
+      const created = await upstream.clone().json() as { job_id?: unknown; access_token?: unknown } | null;
+      if (typeof created?.job_id !== 'string' || !/^[0-9a-f]{32}$/.test(created.job_id)
+        || typeof created.access_token !== 'string') throw new Error('Invalid job response.');
       const jobId = created.job_id;
+      const accessToken = created.access_token;
+      const referenceName = mode === 'genome_scan' && typeof submission.fasta === 'string'
+        ? /^>(\S+)/mu.exec(submission.fasta)?.[1] || null
+        : null;
       let registered = false;
       try {
         if (!database) throw new Error('Prediction notification database is unavailable.');
-        await registerPredictionNotification(database, jobId, auth, mode, now);
+        await registerPredictionNotification(database, jobId, auth, mode, {
+          token: accessToken,
+          tokenSecret: process.env.RAPPTOR_PREDICTION_SERVICE_SECRET || '',
+          referenceName,
+        }, now);
         registered = true;
       } catch {
         console.error(JSON.stringify({ event: 'prediction_notification_registration_failed', jobId }));
@@ -87,8 +97,17 @@ export async function POST(request: Request) {
         try {
           // ponytail: one post-response registration retry; a sustained D1 outage needs a durable submission outbox.
           if (!database) return;
-          if (!registered) await registerPredictionNotification(database, jobId, auth, mode, now);
-          await sendPredictionNotification(database, jobId, { apiKey: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM, siteUrl: process.env.RAPPTOR_PUBLIC_SITE_URL });
+          if (!registered) await registerPredictionNotification(database, jobId, auth, mode, {
+            token: accessToken,
+            tokenSecret: process.env.RAPPTOR_PREDICTION_SERVICE_SECRET || '',
+            referenceName,
+          }, now);
+          await sendPredictionNotification(database, jobId, {
+            apiKey: process.env.RESEND_API_KEY,
+            from: process.env.RESEND_FROM,
+            siteUrl: process.env.RAPPTOR_PUBLIC_SITE_URL,
+            tokenSecret: process.env.RAPPTOR_PREDICTION_SERVICE_SECRET,
+          });
         } catch {
           console.error(JSON.stringify({ event: 'prediction_notification_failed', jobId }));
         }

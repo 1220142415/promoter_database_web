@@ -92,8 +92,10 @@ removed after the acceptance test as described in `.env.local.example`.
 - Supabase `auth.users` stores the durable user ID, normalized email address,
   and confirmation metadata. RAPPTOR does not create or store a password.
 - D1 daily quota rows use the Supabase user ID, not the email address.
-- D1 stores the email only in the prediction notification outbox after a real
-  task is submitted; those rows are purged after seven days.
+- D1 stores the email and an AES-GCM-encrypted job capability in the temporary
+  notification outbox after a real task is submitted; rows are purged after
+  seven days. The encryption key is derived from the Worker/Docker callback
+  secret and is never stored in D1.
 - The Docker prediction service never receives the email or Supabase session.
 
 ## D1 migration
@@ -106,9 +108,10 @@ $env:HTTPS_PROXY = 'http://127.0.0.1:7997'
 npx wrangler d1 migrations apply RAPPTOR_DB --remote
 ```
 
-Migration `0012_prediction_job_notifications.sql` stores only temporary
-notification metadata. Rows are retained for seven days and purged by the
-daily Worker cron.
+Migration `0012_prediction_job_notifications.sql` creates the temporary
+notification metadata table. Migration `0013_prediction_notification_links.sql`
+adds the encrypted capability and reference name used by result links. Rows
+are retained for seven days and purged by the daily Worker cron.
 
 ## Notification behavior
 
@@ -120,9 +123,13 @@ daily Worker cron.
 - Failed delivery is retried every five minutes, up to three attempts.
 - The email contains the task ID, task type, outcome, result-expiry note, and a
   button linking to `/predict/task/{jobId}` on `RAPPTOR_PUBLIC_SITE_URL`.
-- The result link must be opened in the same browser that submitted the task;
-  the private access token remains only in that browser and is never emailed.
-  it does not contain an access token or a direct result URL.
+- The result URL carries the temporary capability in its `#fragment`, which
+  browsers do not send in HTTP requests or referrers. Anyone holding the link
+  can view the task without logging in until Docker removes the result.
+- The result page exchanges the capability for an HttpOnly artifact cookie,
+  restores the reference name, and opens the completed genome browser.
+- The email contains no sequence data or result files. Treat the link itself
+  as private and do not publish it.
 - A notification failure does not cancel an already queued prediction.
 
 ## Docker service boundary
@@ -141,6 +148,8 @@ The service needs only these endpoints:
 Protect internal callbacks with `RAPPTOR_PREDICTION_SERVICE_SECRET`. Keep
 Redis and the worker private; expose only the HTTPS API through the reverse
 proxy. The Docker service must not be given Supabase or Resend secrets.
+Before rotating this secret, send or clear pending notification rows because
+their encrypted capabilities cannot be decrypted with the new value.
 
 ## Smoke test
 

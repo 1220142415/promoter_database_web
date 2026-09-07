@@ -13,7 +13,7 @@ const defaults = {
   NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST: 'on',
   RAPPTOR_LOCAL_TEST_ORIGIN: 'http://127.0.0.1:3000',
   RAPPTOR_LOCAL_TEST_TICKET_ORIGIN: 'https://rapptor.duolalab.qzz.io',
-  RAPPTOR_PREDICTION_SERVICE_URL: 'https://rapptor_server.duolalab.qzz.io',
+  RAPPTOR_PREDICTION_SERVICE_URL: 'https://4090server.duolalab.qzz.io',
   RAPPTOR_PREDICTION_MODEL_VERSION: 'candidate-github-93cf',
   RAPPTOR_NEXT_DIST_DIR: '.next-codex-preview',
 };

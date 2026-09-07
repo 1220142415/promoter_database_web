@@ -8,7 +8,7 @@ Overall: **implementation verified locally; real model inference blocked by miss
 | --- | --- |
 | Public reference | Passed: `GCF_000005845.2`, `NC_000913.3`, 4,641,652 bp, original FASTA SHA-256 `53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4` |
 | Sample | Passed: positive-strand bases 100001–100100, 1-based inclusive; exact re-extraction and SHA-256 `1f22c64bb7b35b5f9d9abb71824045d7b803e96c9a8061f01e00a72311d5b772` |
-| Service | Readiness and model lookup succeeded at `https://rapptor_server.duolalab.qzz.io`; selected `candidate-github-93cf` |
+| Service | Readiness and model lookup succeeded at `https://4090server.duolalab.qzz.io`; selected `candidate-github-93cf` |
 | Explicit live runner | `npm run test:prediction:live` verified the real inputs, then recorded `blocked_credentials`; no task submission |
 | Offline regression suite | 90 files, 564 tests passed; final focused rerun after output-format/runtime adjustments: 2 files, 13 tests passed |
 | Static validation | TypeScript, ESLint and isolated Next production build passed; `/predict` is rendered dynamically |

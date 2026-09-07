@@ -36,7 +36,7 @@ Wrangler OAuth 会自动追加 `offline_access`，用于保存可刷新的管理
 | `NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST` | `on` |
 | `RAPPTOR_LOCAL_TEST_ORIGIN` | `http://127.0.0.1:3000` |
 | `RAPPTOR_LOCAL_TEST_TICKET_ORIGIN` | `https://rapptor.duolalab.qzz.io` |
-| `RAPPTOR_PREDICTION_SERVICE_URL` | `https://rapptor_server.duolalab.qzz.io` |
+| `RAPPTOR_PREDICTION_SERVICE_URL` | `https://4090server.duolalab.qzz.io` |
 | `RAPPTOR_PREDICTION_MODEL_VERSION` | `candidate-github-93cf` |
 | `RAPPTOR_LOCAL_TEST_SECRET` | 本机随机生成；不公开 |
 

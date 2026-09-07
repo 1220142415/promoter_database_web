@@ -64,7 +64,7 @@ export async function acquireLiveTicket(localBase, input, request = fetch) {
 }
 
 async function main() {
-  const base = (process.env.RAPPTOR_PREDICTION_SERVICE_URL || 'https://rapptor_server.duolalab.qzz.io').replace(/\/$/, '');
+  const base = (process.env.RAPPTOR_PREDICTION_SERVICE_URL || 'https://4090server.duolalab.qzz.io').replace(/\/$/, '');
   if (!/^https:\/\//.test(base)) throw new Error('Live service must use HTTPS.');
   const localBase = process.env.RAPPTOR_LIVE_LOCAL_URL || 'http://127.0.0.1:3000';
   const runDir = resolve(process.env.RAPPTOR_LIVE_RUN_DIR || `.codex-runtime/prediction-live/${new Date().toISOString().replace(/[:.]/g, '-')}`);

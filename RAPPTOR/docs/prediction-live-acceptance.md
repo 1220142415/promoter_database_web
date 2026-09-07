@@ -15,7 +15,7 @@ Both example buttons select this whole genome for CGR. The reference loader and 
 Use Node 22.18+ (native TypeScript stripping), from the RAPPTOR directory. Ordinary Vitest/CI never submits live work. In PowerShell:
 
 ```powershell
-$env:RAPPTOR_PREDICTION_SERVICE_URL = 'https://rapptor_server.duolalab.qzz.io'
+$env:RAPPTOR_PREDICTION_SERVICE_URL = 'https://4090server.duolalab.qzz.io'
 $env:RAPPTOR_PREDICTION_MODEL_VERSION = 'candidate-github-93cf'
 $env:RAPPTOR_LIVE_RUN_DIR = '.codex-runtime/prediction-live/20260907-real-sequences'
 npm run test:prediction:live

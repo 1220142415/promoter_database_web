@@ -195,7 +195,7 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
         </section>
 
         <section className={styles.panel} aria-labelledby="run-context-heading">
-          <div className={styles.panelHeader}><h2 id="run-context-heading">Run context</h2><p>Session storage restores metadata only. This tab can show the submitted reference until refresh; then an illustrative local reference is used.</p></div>
+          <div className={styles.panelHeader}><h2 id="run-context-heading">Run context</h2><p>Session storage restores metadata only. This tab can show the submitted reference until refresh. If it is no longer available, reload the example or upload the FASTA again.</p></div>
           <dl className={styles.factGrid}>
             <div><dt>Input</dt><dd>{run.mode === 'candidate' ? `${run.input.displayName} · ${run.input.length.toLocaleString()} bp` : run.input.scanSource.fileName || run.input.scanSource.displayName}</dd></div>
             <div><dt>Genome context</dt><dd>{genomeContext.displayName} · {formatLength(genomeContext.totalLength)}</dd></div>

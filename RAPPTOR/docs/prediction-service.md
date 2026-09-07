@@ -2,6 +2,11 @@
 
 Status: proposed MVP design (2026-08-25)
 
+For the implemented real-example entry, current candidate service compatibility,
+and the explicit online acceptance command, see
+[prediction-live-acceptance.md](prediction-live-acceptance.md).
+The historical MVP design below predates the current email authentication layer.
+
 This document records the first implementation boundary for running the
 RAPPTOR promoter prediction model as a queued Docker service. It does not
 include model training or a public, anonymous model API.

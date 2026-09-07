@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PrototypePredictionBrowser from '@/features/prediction/prototype/prototype-browser';
 import {
@@ -131,20 +130,11 @@ describe('prototype prediction browser', () => {
     expect(window.sessionStorage.length).toBe(0);
   });
 
-  it('uses metadata-only illustrative fallback after transient input is absent and keeps only contig navigation', async () => {
-    const user = userEvent.setup();
+  it('reports a missing reference after refresh without fabricating bases', async () => {
     const run = genomeRun('prototype-browser-fallback');
-    const fixture = createPrototypeFixture(run);
-
-    render(<PrototypePredictionBrowser run={run} fixture={fixture} />);
-
-    const panel = await screen.findByTestId('mock-prototype-browser-panel');
-    expect(panel).toHaveAttribute('data-reference-label', 'Illustrative reference sequence');
-    expect(screen.queryByRole('heading', { name: 'Browser tracks' })).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Contig' }), 'contig_beta');
-    await waitFor(() => expect(screen.getByTestId('mock-prototype-browser-panel')).toHaveAttribute('data-locus', 'contig_beta:1-400'));
-    expect(screen.queryByRole('combobox', { name: 'Top called peak' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Go to peak' })).not.toBeInTheDocument();
+    render(<PrototypePredictionBrowser run={run} fixture={createPrototypeFixture(run)} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/reference/i);
+    expect(screen.queryByTestId('mock-prototype-browser-panel')).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });

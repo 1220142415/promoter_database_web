@@ -13,6 +13,7 @@ vi.mock('@/features/genome-browser/experimental-tss-repository', () => ({
 }));
 
 import {
+  loadPredictionReference,
   referenceSourceFromMatch,
   resolvePredictionReferenceSource,
 } from '@/features/prediction/reference-source';
@@ -26,7 +27,10 @@ function match(accession: string, url: string, sha256: string) {
   } as unknown as GenomeCatalogMatch;
 }
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('prediction reference source', () => {
   it('returns the Worker-resolved HTTPS URL and checksum', () => {
@@ -92,5 +96,24 @@ describe('prediction reference source', () => {
     });
 
     await expect(resolvePredictionReferenceSource('GCF_000005845.1')).resolves.toBeNull();
+  });
+});
+
+describe('bounded reference download', () => {
+  it('propagates network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
+    await expect(loadPredictionReference()).rejects.toThrow('unavailable');
+  });
+  it('rejects a corrupt gzip without supplying substitute sequence', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('corrupt-reference')));
+    await expect(loadPredictionReference()).rejects.toThrow();
+  });
+  it('cancels streaming when the compressed size limit is exceeded', async () => {
+    const cancel = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(10 * 1024 * 1024 + 1)); }, cancel,
+    }))));
+    await expect(loadPredictionReference()).rejects.toThrow('size limit');
+    expect(cancel).toHaveBeenCalled();
   });
 });

@@ -30,7 +30,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
   test.setTimeout(120_000);
   const predictionRequests = capturePredictionApiRequests(page);
 
-  await page.goto('/predict');
+  await page.goto('/predict/preview');
   await expect(page.getByRole('heading', { name: 'Add input. RAPPTOR selects the analysis.' })).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByLabel('Raw DNA or FASTA')).toBeVisible();
@@ -39,7 +39,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
 
   await page.getByRole('button', { name: 'Use 100 bp example' }).click();
   const sequenceInput = page.getByLabel('Raw DNA or FASTA');
-  await expect(sequenceInput).toHaveValue(/focused_candidate_100bp/);
+  await expect(sequenceInput).toHaveValue(/NC_000913.3:100001-100100/);
   await expect(page.getByText('100 bp scoring').first()).toBeVisible();
   await expect(page.getByText('Select a catalog genome or upload its FASTA.').first()).toBeVisible();
   await expect(page.getByLabel('Top results')).toHaveCount(0);
@@ -47,7 +47,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
   await expect(previewButton).toBeEnabled();
   await previewButton.click();
   await expect(page.getByRole('alert').filter({ hasText: 'Genome context (CGR) is required' })).toBeVisible();
-  await expect(page).toHaveURL(/\/predict$/);
+  await expect(page).toHaveURL(/\/predict\/preview$/);
   await page.getByRole('button', { name: 'Use this genome' }).click();
   await expect(page.getByText('Genome context ready: Catalog genome.')).toBeVisible();
 
@@ -95,7 +95,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
 test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async ({ page }) => {
   const predictionRequests = capturePredictionApiRequests(page);
 
-  await page.goto('/predict');
+  await page.goto('/predict/preview');
   await page.getByRole('button', { name: 'Use E. coli K-12 genome example' }).click();
   await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByText(/Escherichia coli str\. K-12/).first()).toBeVisible();
@@ -119,7 +119,7 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
   await expect(page.getByRole('region', { name: 'Prediction progress' })).toContainText('Result ready');
   const browser = page.getByTestId('prototype-prediction-browser');
   await expect(browser).toBeVisible();
-  await expect(browser).toContainText('Illustrative reference sequence');
+  await expect(browser).toContainText('Submitted reference sequence (this tab only)');
   await expect(browser).toContainText('Illustrative model scores (+ / − strands)');
   await expect(page.locator('.portal-browser').first()).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Top called peaks')).toHaveCount(0);
@@ -146,11 +146,11 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
   expect(predictionRequests).toEqual([]);
 });
 
-test('a longer pasted sequence stays browser-local and falls back safely after reload', async ({ page }) => {
+test('a longer pasted sequence stays browser-local and reports missing reference after reload', async ({ page }) => {
   const predictionRequests = capturePredictionApiRequests(page);
   const originalInput = `>browser_contig\n${'ACGT'.repeat(40)}\n>second_contig\n${'TGCA'.repeat(35)}`;
 
-  await page.goto('/predict');
+  await page.goto('/predict/preview');
   await page.getByLabel('Raw DNA or FASTA').fill(originalInput);
   await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByLabel('Top results')).toHaveCount(0);
@@ -176,12 +176,13 @@ test('a longer pasted sequence stays browser-local and falls back safely after r
   expect(predictionRequests).toEqual([]);
 
   await page.reload();
-  await expect(page.getByTestId('prototype-prediction-browser')).toContainText('Illustrative reference sequence');
+  await expect(page.getByRole('alert').filter({ hasText: 'reference sequence is no longer available' })).toBeVisible();
+  await expect(page.getByTestId('prototype-prediction-browser')).toHaveCount(0);
 });
 
 test('the scan browser remains usable at 768 px', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
-  await page.goto('/predict');
+  await page.goto('/predict/preview');
   await page.getByRole('button', { name: 'Use E. coli K-12 genome example' }).click();
   await uploadCgrContext(page, 'tablet-context.fna');
   await Promise.all([
@@ -208,7 +209,7 @@ test.describe('catalog failure and mobile focused result', () => {
       body: JSON.stringify({ error: 'Catalog unavailable in this test.' }),
     }));
 
-    await page.goto('/predict');
+    await page.goto('/predict/preview');
     await page.getByRole('button', { name: 'Use 100 bp example' }).click();
     const sequenceInput = page.getByLabel('Raw DNA or FASTA');
     const originalSequence = await sequenceInput.inputValue();

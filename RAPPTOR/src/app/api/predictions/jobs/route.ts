@@ -1,10 +1,11 @@
 import { after } from 'next/server';
 import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
 import { releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
-import { predictionAccessMode } from '@/features/email-system/access-mode';
+import { localPredictionTestEnabled, readLocalPredictionTestSettings } from '@/features/prediction/local-test';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +15,15 @@ function serviceUrl(path: string) {
 }
 
 export async function POST(request: Request) {
-  const accessMode = predictionAccessMode();
-  const auth = accessMode === 'email' ? await requirePredictionAuth(request) : null;
+  const localTest = localPredictionTestEnabled(request.headers, request.url, true);
+  const auth = !localTest && predictionAccessMode() === 'email' ? await requirePredictionAuth(request) : null;
   if (auth instanceof Response) return auth;
+  if (localTest) {
+    try { readLocalPredictionTestSettings(); }
+    catch (cause) {
+      return Response.json({ error: { code: 'LOCAL_TEST_UNAVAILABLE', message: (cause as Error).message } }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    }
+  }
   const maxSubmissionBytes = predictionMaxRequestBytes();
   const url = serviceUrl('/v1/jobs');
   if (!url) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is not configured.' } }, { status: 503 });
@@ -44,7 +51,7 @@ export async function POST(request: Request) {
   }
 
   const now = new Date();
-  const database = usageDatabase();
+  const database = auth ? usageDatabase() : null;
   if (mode === 'genome_scan' && auth) {
     if (!database) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota database is unavailable.' } }, { status: 503 });
     try {

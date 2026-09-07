@@ -1,56 +1,35 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GET, HEAD } from '@/app/api/prediction-reference/[accession]/route';
+import { loadPredictionReference } from '@/features/prediction/reference-source';
+import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
 
-const originalFetch = global.fetch;
-const context = (accession: string) => ({ params: Promise.resolve({ accession }) });
+vi.mock('@/features/prediction/reference-source', () => ({ loadPredictionReference: vi.fn() }));
+const context = (accession = REAL_PREDICTION_REFERENCE.accession) => ({ params: Promise.resolve({ accession }) });
+const request = () => new Request('http://localhost/test');
 
-afterEach(() => {
-  global.fetch = originalFetch;
-});
-
-describe('prediction reference proxy', () => {
-  it('restricts the route to explicitly configured prediction references', async () => {
-    const fetchMock = vi.fn();
-    global.fetch = fetchMock;
-
-    const response = await GET(new Request('http://localhost/test'), context('GCF_000000001.1'));
-
-    expect(response.status).toBe(404);
-    expect(fetchMock).not.toHaveBeenCalled();
+describe('verified prediction reference route', () => {
+  it('rejects references outside the fixed allowlist without loading data', async () => {
+    expect((await GET(request(), context('GCF_000000001.1'))).status).toBe(404);
+    expect(loadPredictionReference).not.toHaveBeenCalled();
   });
-
-  it('streams the versioned E. coli reference with safe immutable headers', async () => {
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.method).toBe('GET');
-      return new Response('gzip-bytes', {
-        headers: {
-          'Content-Length': '10',
-          ETag: 'ncbi-etag',
-          'Last-Modified': 'Fri, 31 Oct 2014 23:59:39 GMT',
-        },
-      });
-    });
-    global.fetch = fetchMock;
-
-    const response = await GET(new Request('http://localhost/test'), context('GCF_000005845.2'));
-
+  it('serves verified plain FASTA and matching HEAD checksum/length', async () => {
+    const fasta = '>test\nACGT\n'; // Loader contract is tested separately.
+    vi.mocked(loadPredictionReference).mockResolvedValue(fasta);
+    const response = await GET(request(), context());
+    const head = await HEAD(request(), context());
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('application/gzip');
-    expect(response.headers.get('content-disposition')).toContain('GCF_000005845.2_ASM584v2_genomic.fna.gz');
-    expect(response.headers.get('cache-control')).toContain('immutable');
-    expect(response.headers.get('etag')).toBe('ncbi-etag');
-    expect(await response.text()).toBe('gzip-bytes');
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/');
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(response.headers.get('x-reference-sha256')).toBe(REAL_PREDICTION_REFERENCE.fastaSha256);
+    expect(response.headers.get('content-length')).toBe(String(fasta.length));
+    expect([...head.headers]).toEqual([...response.headers]);
+    expect(await response.text()).toBe(fasta);
+    expect(await head.text()).toBe('');
   });
-
-  it('uses HEAD upstream and rejects an unexpectedly large reference', async () => {
-    global.fetch = vi.fn(async () => new Response(null, {
-      headers: { 'Content-Length': String(11 * 1024 * 1024) },
-    }));
-
-    const response = await HEAD(new Request('http://localhost/test'), context('GCF_000005845.2'));
-
+  it.each(['unavailable', 'checksum mismatch', 'size limit'])('returns an uncached error when the reference is %s', async (reason) => {
+    vi.mocked(loadPredictionReference).mockRejectedValue(new Error(reason));
+    const response = await GET(request(), context());
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({ error: 'Prediction reference has an invalid size.' });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.text()).toContain('could not be loaded and verified');
   });
 });

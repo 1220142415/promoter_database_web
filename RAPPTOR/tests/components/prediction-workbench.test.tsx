@@ -6,7 +6,7 @@ import PredictionWorkbench from '@/features/prediction/components/prediction-wor
 import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/prediction/history';
 
 vi.mock('next/dynamic', () => ({
-  default: () => () => <div data-testid="live-prediction-browser">Live genome browser</div>,
+  default: () => ({ refName }: { refName: string }) => <div data-testid="live-prediction-browser" data-reference={refName}>Live genome browser</div>,
 }));
 
 vi.mock('@/features/prediction/components/prediction-browser', () => ({
@@ -60,17 +60,20 @@ function completedJob(mode: PredictionHistoryEntry['mode']) {
   };
 }
 
-function mockApi(mode: PredictionHistoryEntry['mode']) {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => ({
-    ok: true,
-    json: async () => String(input).endsWith('/artifacts/summary.json')
+function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?: number; missingArtifacts?: string[]; fai?: string } = {}) {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/session')) return new Response(null, { status: options.sessionStatus || 200 });
+    if (String(input).endsWith('/artifacts/input.fasta.fai')) return new Response(options.fai || 'chr1\t320\t6\t60\t61\n');
+    const job = completedJob(mode);
+    job.result.artifacts = job.result.artifacts.filter((item) => !options.missingArtifacts?.includes(item.filename));
+    return Response.json(String(input).endsWith('/artifacts/summary.json')
       ? mode === 'predict'
         ? { mode: 'predict', sequence_bases: 100, genome_context_bases: 4_641_652, window_count: 2, max_score: 0.3121 }
         : { mode: 'genome_scan', total_bases: 320, genome_context_bases: 320, contig_count: 1, window_count: 442, passing_window_count: 7, stride: 1 }
       : String(input).endsWith('/artifacts/scores.json')
-        ? [{ strand: '+', score: 0.3121 }, { strand: '-', score: 0.1842 }]
-        : completedJob(mode),
-  }) as unknown as Response));
+        ? [{ strand: '+', score: 0.3121, window_start_0based: 0, anchor_position_0based: 80 }, { strand: '-', score: 0.1842, window_start_0based: 0, anchor_position_0based: 19 }]
+        : job);
+  }));
 }
 
 describe('live prediction result layout', () => {
@@ -124,9 +127,47 @@ describe('live prediction result layout', () => {
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
 
     expect(await screen.findByRole('heading', { name: '100 bp result' })).toBeInTheDocument();
-    expect(await screen.findByRole('meter', { name: 'Forward strand (+) model score' })).toHaveAttribute('aria-valuenow', '0.3121');
-    expect(screen.getByRole('meter', { name: 'Reverse strand (−) model score' })).toHaveAttribute('aria-valuenow', '0.1842');
+    expect(await screen.findByRole('meter', { name: 'Forward strand model score' })).toHaveAttribute('value', '0.3121');
+    expect(screen.getByRole('meter', { name: 'Reverse strand model score' })).toHaveAttribute('value', '0.1842');
     expect(screen.queryByText(/did not request GFF3/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Genome browser' })).not.toBeInTheDocument();
+  });
+
+  it('does not load artifacts when the artifact session rejects access', async () => {
+    mockApi('genome_scan', { sessionStatus: 401 });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Task access is invalid or has expired');
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/artifacts/'))).toBe(false);
+    expect(screen.queryByTestId('live-prediction-browser')).not.toBeInTheDocument();
+  });
+
+  it('reports a missing summary instead of leaving the completed result blank', async () => {
+    mockApi('genome_scan', { missingArtifacts: ['summary.json'] });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('no summary.json artifact');
+    expect(screen.queryByTestId('live-prediction-browser')).not.toBeInTheDocument();
+  });
+
+  it('requires the reverse track for a both-strand scan', async () => {
+    mockApi('genome_scan', { missingArtifacts: ['scores.minus.bw'] });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('scores.minus.bw');
+    expect(screen.queryByTestId('live-prediction-browser')).not.toBeInTheDocument();
+  });
+
+  it('recovers the reference name from the returned index for a shared task', async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.hash = 'access=shared_access_token_1234567890abcdef';
+    mockApi('genome_scan', { fai: 'NC_000913.3\t4641652\t73\t70\t71\n' });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByTestId('live-prediction-browser')).toHaveAttribute('data-reference', 'NC_000913.3');
+  });
+
+  it('does not use summary max_score as a substitute for missing strand scores', async () => {
+    mockApi('predict', { missingArtifacts: ['scores.json'] });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('no scores.json artifact');
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
   });
 });

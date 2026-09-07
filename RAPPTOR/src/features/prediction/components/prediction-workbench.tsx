@@ -11,6 +11,7 @@ import {
   upsertPredictionHistory,
   type PredictionHistoryEntry,
 } from '../history';
+import FocusedJobResult from './focused-job-result';
 import PredictionProgressPanel from './prediction-progress-panel';
 import { normalizePredictionProgress } from '../progress';
 import { PORTAL_TERMS } from '@/components/portal-terminology';
@@ -29,8 +30,9 @@ type JobSummary = {
   sequence_bases?: number;
   genome_context_bases?: number;
   max_score?: number;
+  reverse_complementary?: boolean;
+  model?: { model_version?: string; checkpoint_sha256?: string; model_asset_status?: string };
 };
-type FocusedScore = { score: number; strand: '+' | '-' };
 type JobState = {
   job_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'unknown';
@@ -62,7 +64,7 @@ function resultEntry(jobId: string, stored: PredictionHistoryEntry[]): Predictio
       token: sharedToken,
       refName: sharedReference,
       status: 'unknown',
-      mode: 'genome_scan',
+      mode: fragment.get('mode') === 'predict' ? 'predict' : 'genome_scan',
       submittedAt: new Date().toISOString(),
       label: sharedReference || `Shared task ${jobId.slice(0, 8)}`,
       bases: 0,
@@ -76,38 +78,6 @@ function resultEntry(jobId: string, stored: PredictionHistoryEntry[]): Predictio
   } catch {
     return null;
   }
-}
-
-function FocusedResult({ scores, fallback, threshold }: { scores: FocusedScore[]; fallback?: number; threshold: number }) {
-  const rows = scores.length ? scores : fallback === undefined ? [] : [{ strand: '+' as const, score: fallback }];
-  return (
-    <section className={styles.panel} aria-labelledby="focused-score-heading">
-      <div className={styles.panelHeader}>
-        <h2 id="focused-score-heading">100 bp result</h2>
-        <p>Model scores by strand. The model threshold classifies each score only.</p>
-      </div>
-      <div className={styles.focusedComparison} data-count={rows.length}>
-        {rows.map((row) => {
-          const strandName = row.strand === '+' ? 'Forward strand (+)' : 'Reverse strand (−)';
-          const aboveThreshold = row.score > threshold;
-          return <article className={styles.focusedStrandRow} key={row.strand}>
-            <div className={styles.focusedStrandHeading}>
-              <span>{strandName}</span>
-              <strong className={aboveThreshold ? styles.passes : styles.below}>{aboveThreshold ? 'Above threshold' : 'At or below threshold'}</strong>
-            </div>
-            <div className={styles.focusedStrandSummary}><strong>{row.score.toFixed(4)}</strong><small>Model score</small></div>
-            <div className={styles.focusedMeterArea}>
-              <div className={styles.focusedMeter} role="meter" aria-label={`${strandName} model score`} aria-valuemin={0} aria-valuemax={1} aria-valuenow={row.score}>
-                <i className={styles.focusedMeterFill} style={{ width: `${Math.max(0, Math.min(1, row.score)) * 100}%` }} />
-                <b className={styles.focusedCutoff} style={{ left: `${threshold * 100}%` }} />
-              </div>
-              <div className={styles.focusedMeterLegend} aria-hidden="true"><span>0</span><span>Model threshold {threshold.toFixed(2)}</span><span>1</span></div>
-            </div>
-          </article>;
-        })}
-      </div>
-    </section>
-  );
 }
 
 function MissingTask({ message }: { message: string }) {
@@ -124,7 +94,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
   const [entry, setEntry] = useState<PredictionHistoryEntry | null>(null);
   const [job, setJob] = useState<JobState | null>(null);
   const [summary, setSummary] = useState<JobSummary | null>(null);
-  const [scores, setScores] = useState<FocusedScore[]>([]);
+  const [resolvedRefName, setResolvedRefName] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -151,7 +121,8 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
         if (!response.ok) throw new Error('This prediction is unavailable or its temporary files have expired.');
         const next = await response.json() as JobState;
         if (next.status === 'succeeded') {
-          await fetch(`/api/predictions/jobs/${entry.jobId}/session`, { method: 'POST', headers: { 'X-Job-Token': entry.token } });
+          const session = await fetch(`/api/predictions/jobs/${entry.jobId}/session`, { method: 'POST', headers: { 'X-Job-Token': entry.token } });
+          if (!session.ok) throw new Error('Task access is invalid or has expired. Reopen a valid protected task link.');
         }
         if (cancelled) return;
         setJob(next);
@@ -161,7 +132,10 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
         sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(updated));
         if (next.status === 'queued' || next.status === 'running' || next.status === 'unknown') timer = window.setTimeout(load, 3000);
       } catch (cause) {
-        if (!cancelled) setMessage(cause instanceof Error ? cause.message : 'Prediction status could not be loaded.');
+        if (!cancelled) {
+          setMessage(cause instanceof Error ? cause.message : 'Prediction status could not be loaded.');
+          timer = window.setTimeout(load, 3000);
+        }
       }
     };
     void load();
@@ -172,7 +146,6 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
 
   useEffect(() => {
     setSummary(null);
-    setScores([]);
     if (job?.status !== 'succeeded') return;
     const controller = new AbortController();
     const fetchArtifact = async <T,>(filename: string) => {
@@ -180,26 +153,40 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       if (!response.ok) throw new Error(`Could not load ${filename}.`);
       return response.json() as Promise<T>;
     };
-    void Promise.all([
-      artifacts.some((artifact) => artifact.filename === 'summary.json') ? fetchArtifact<JobSummary>('summary.json') : Promise.resolve(null),
-      artifacts.some((artifact) => artifact.filename === 'scores.json') ? fetchArtifact<FocusedScore[]>('scores.json') : Promise.resolve([]),
-    ]).then(([nextSummary, nextScores]) => {
-      setSummary(nextSummary);
-      setScores(nextScores.filter((row) => (row.strand === '+' || row.strand === '-') && Number.isFinite(row.score)));
+    if (!artifacts.some((artifact) => artifact.filename === 'summary.json')) {
+      setMessage('The completed task has no summary.json artifact.');
+      return;
+    }
+    void fetchArtifact<JobSummary>('summary.json').then((nextSummary) => {
+      if (!controller.signal.aborted) setSummary(nextSummary);
     }).catch((cause) => {
       if (!controller.signal.aborted) setMessage(cause instanceof Error ? cause.message : 'Result files could not be loaded.');
     });
     return () => controller.abort();
   }, [artifacts, job?.job_id, job?.status]);
 
+  useEffect(() => {
+    if (job?.status !== 'succeeded' || entry?.refName || !artifacts.some((item) => item.filename === 'input.fasta.fai')) return;
+    const controller = new AbortController();
+    void fetch(`/api/predictions/jobs/${job.job_id}/artifacts/input.fasta.fai`, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        const id = (await response.text()).split('\n')[0]?.split('\t')[0];
+        if (!id || /\s/.test(id)) throw new Error();
+        if (!controller.signal.aborted) setResolvedRefName(id);
+      }).catch(() => { if (!controller.signal.aborted) setMessage('The reference index is unavailable or invalid.'); });
+    return () => controller.abort();
+  }, [artifacts, entry?.refName, job?.job_id, job?.status]);
+
   if (!loaded) return <main className={styles.missing}><div><p className="portal-kicker">Prediction result</p><h1>Loading task…</h1></div></main>;
   if (!entry) return <MissingTask message={message} />;
 
   const mode = summary?.mode || entry.mode;
-  const threshold = entry.cutoff ?? 0.9;
-  const hasReference = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai'].every((name) => artifacts.some((artifact) => artifact.filename === name));
-  const hasMinus = artifacts.some((artifact) => artifact.filename === 'scores.minus.bw');
-  const downloads = artifacts.filter((artifact) => mode === 'predict' ? artifact.filename === 'scores.json' : artifact.format === 'gff3');
+  const refName = entry.refName || resolvedRefName;
+  const bothStrands = summary?.reverse_complementary !== false && entry.strandMode !== 'forward';
+  const missingBrowserFiles = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai', ...(bothStrands ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((artifact) => artifact.filename === name));
+  const hasReference = missingBrowserFiles.length === 0;
+  const downloads = artifacts;
   const progress = normalizePredictionProgress({
     state: job?.status === 'unknown' ? 'running' : job?.status || 'queued',
     stage: job?.status === 'succeeded' ? 'complete' : job?.progress?.stage || job?.status || 'queued',
@@ -225,15 +212,16 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} />
 
       {job?.status === 'succeeded' && summary ? <>
-        {mode === 'predict' ? <FocusedResult scores={scores} fallback={summary.max_score} threshold={threshold} /> : <>
+        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} /> : <>
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>
             <div><span>Promoter predictions</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>Above export cutoff</small></div>
           </section>
-          {hasReference && entry.refName ? <section className={styles.panel} aria-labelledby="genome-browser-heading">
+          {!hasReference ? <p role="alert">Required browser artifacts are missing: {missingBrowserFiles.join(', ')}.</p> : null}
+          {hasReference && refName ? <section className={styles.panel} aria-labelledby="genome-browser-heading">
             <div className={styles.panelHeader}><h2 id="genome-browser-heading">Genome browser</h2><p>Reference sequence and model-score tracks from this completed scan.</p></div>
-            <PredictionBrowser jobId={entry.jobId} refName={entry.refName} hasMinus={hasMinus} />
+            <PredictionBrowser jobId={entry.jobId} refName={refName} artifacts={artifacts} />
           </section> : null}
         </>}
 
@@ -249,14 +237,16 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
           <dl className={styles.factGrid}>
             <div><dt>Input</dt><dd>{entry.label} · {formatBases(mode === 'predict' ? summary.sequence_bases : summary.total_bases)}</dd></div>
             <div><dt>Genome context</dt><dd>{formatBases(summary.genome_context_bases || summary.total_bases)}</dd></div>
-            <div><dt>Analysis</dt><dd>{entry.strandMode === 'forward' ? 'Forward strand only' : 'Both strands'} · {mode === 'predict' ? `model threshold ${threshold.toFixed(2)}` : `export cutoff ${threshold.toFixed(2)}`} · stride {summary.stride || entry.strideBases || 1} bp</dd></div>
-            <div><dt>Model</dt><dd>{job.model_version || 'RAPPTOR production model'}</dd></div>
+            <div><dt>Analysis</dt><dd>{bothStrands ? 'Both strands requested' : 'Forward strand only'} · {entry.cutoff === undefined ? 'No export filtering' : `configured threshold ${entry.cutoff.toFixed(2)}`} · stride {summary.stride || entry.strideBases || 1} bp</dd></div>
+            <div><dt>Model</dt><dd>{summary.model?.model_version || job.model_version || 'Model version unavailable'}</dd></div>
+            <div><dt>Model status</dt><dd>{summary.model?.model_asset_status === 'candidate_not_production' ? 'Candidate model' : summary.model?.model_asset_status || 'Not reported'}</dd></div>
+            <div><dt>Checkpoint SHA-256</dt><dd>{summary.model?.checkpoint_sha256 || 'Not reported'}</dd></div>
           </dl>
         </section>
 
         <aside className={styles.interpret} aria-labelledby="interpret-heading">
           <h2 id="interpret-heading">How to interpret this result</h2>
-          <p>{mode === 'predict' ? 'Each strand has one model score for the submitted 100 bp sequence. The threshold changes classification only.' : 'Higher scores identify stronger promoter-like windows; browser peaks remain model predictions.'} This result does not establish experimental support or a transcription start site.</p>
+          <p>{mode === 'predict' ? 'Scores are shown for the strands returned by the service. Missing strands are reported explicitly.' : 'Higher scores identify stronger promoter-like windows; browser peaks remain model predictions.'} This result does not establish experimental support or a transcription start site.</p>
           <Link href="/predict">Start a new prediction</Link>
         </aside>
       </> : null}

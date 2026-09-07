@@ -34,21 +34,29 @@ export async function registerPredictionNotification(
     .run();
 }
 
-function notificationMessage(row: Notification) {
+function notificationMessage(row: Notification, siteUrl?: string) {
   const kind = row.task_kind === 'genome_scan' ? 'whole-genome scan' : 'short-sequence prediction';
   const status = row.outcome === 'succeeded' ? 'completed' : 'failed';
   const expiry = row.artifacts_expires_at ? Date.parse(row.artifacts_expires_at) : NaN;
+  let resultUrl: string | null = null;
+  try {
+    const url = new URL(`/predict/task/${row.job_id}`, siteUrl);
+    if (url.protocol === 'https:') resultUrl = url.toString();
+  } catch { /* Invalid deployment URL: retain the plain prediction-page fallback. */ }
+  const expiryText = row.outcome === 'succeeded' && Number.isFinite(expiry) ? `Results expire at: ${new Date(expiry).toISOString()} (UTC).` : '';
   return {
     to: row.email,
     subject: `RAPPtor: ${kind} ${status}`,
     text: [
       `Your RAPPtor ${kind} has ${status}.`,
       `Task ID: ${row.job_id}`,
-      row.outcome === 'succeeded' && Number.isFinite(expiry) ? `Results expire at: ${new Date(expiry).toISOString()} (UTC).` : '',
+      expiryText,
       row.outcome === 'failed' ? 'The task could not be completed. Open the task in your prediction history for details.' : '',
-      'Return to the RAPPtor prediction page in the same browser used to submit this task.',
+      resultUrl ? `Open this task: ${resultUrl}` : 'Return to the RAPPtor prediction page in the same browser used to submit this task.',
+      resultUrl ? 'Open the link in the same browser used to submit this task.' : '',
       'This email does not contain sequence data, result files, or an access token.',
     ].filter(Boolean).join('\n\n'),
+    ...(resultUrl ? { html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#17312f;max-width:600px;margin:auto"><h1 style="font-family:Georgia,serif;font-weight:600">Your RAPPtor task has ${status}</h1><p>Your ${kind} has ${status}.</p><p><strong>Task ID:</strong> ${row.job_id}</p>${expiryText ? `<p>${expiryText}</p>` : ''}<p><a href="${resultUrl}" style="display:inline-block;padding:12px 18px;border-radius:6px;background:#176b60;color:#fff;text-decoration:none;font-weight:700">Open prediction task</a></p><p style="color:#55706d;font-size:13px">Open this link in the same browser used to submit the task. The email contains no sequence data, result files, or access token.</p></div>` } : {}),
     idempotencyKey: `prediction-completed/${row.job_id}`,
   };
 }
@@ -79,7 +87,7 @@ export async function sendPredictionNotification(database: D1Database, jobId: st
     .first<Notification>();
   if (!row) return;
 
-  const result = await sendRappTorEmail(settings, notificationMessage(row));
+  const result = await sendRappTorEmail(settings, notificationMessage(row, settings.siteUrl));
   await database.prepare(`UPDATE prediction_job_notifications SET
       status = ?, updated_at = ?, sent_at = ?, last_error = ?
     WHERE job_id = ? AND status = 'sending' AND attempts = ?`)

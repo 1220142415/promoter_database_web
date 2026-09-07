@@ -135,8 +135,18 @@ function writePublicTicketConfig(config) {
   console.log('Production Worker and browser public variables updated.');
 }
 
+function writePublicSiteConfig(siteUrl) {
+  const wranglerPath = path.resolve('wrangler.toml');
+  let wrangler = readFileSync(wranglerPath, 'utf8');
+  const pattern = /^RAPPTOR_PUBLIC_SITE_URL\s*=.*$/mu;
+  if (!pattern.test(wrangler)) throw new Error('RAPPTOR_PUBLIC_SITE_URL is missing from wrangler.toml.');
+  wrangler = wrangler.replace(pattern, `RAPPTOR_PUBLIC_SITE_URL = ${JSON.stringify(siteUrl)}`);
+  writeFileSync(wranglerPath, wrangler, 'utf8');
+}
+
 async function applyEmail() {
   const config = emailConfig();
+  writePublicSiteConfig(config.siteUrl);
   const proxyUrl = inheritedEnv.HTTPS_PROXY || inheritedEnv.HTTP_PROXY;
   const dispatcher = proxyUrl ? new (await import('undici')).ProxyAgent(proxyUrl) : undefined;
   let response;

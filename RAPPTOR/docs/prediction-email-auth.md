@@ -118,7 +118,10 @@ daily Worker cron.
 - Resend idempotency is `prediction-completed/<job_id>`, so duplicate callbacks
   do not create duplicate messages.
 - Failed delivery is retried every five minutes, up to three attempts.
-- The email contains the task ID, task type, outcome, and result-expiry note;
+- The email contains the task ID, task type, outcome, result-expiry note, and a
+  button linking to `/predict/task/{jobId}` on `RAPPTOR_PUBLIC_SITE_URL`.
+- The result link must be opened in the same browser that submitted the task;
+  the private access token remains only in that browser and is never emailed.
   it does not contain an access token or a direct result URL.
 - A notification failure does not cancel an already queued prediction.
 

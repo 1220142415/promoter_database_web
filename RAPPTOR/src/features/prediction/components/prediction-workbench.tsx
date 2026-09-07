@@ -81,7 +81,7 @@ function formatExpiry(value?: string | null) {
   return Number.isNaN(expiry.getTime()) ? null : expiry.toLocaleString();
 }
 
-export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBytes = predictionMaxRequestBytes(), localTest = false }: { siteKey: string; modelVersion: string; maxGenomeBytes?: number; localTest?: boolean }) {
+export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBytes = predictionMaxRequestBytes(), localTest = false, initialJobId }: { siteKey: string; modelVersion: string; maxGenomeBytes?: number; localTest?: boolean; initialJobId?: string }) {
   const [mode, setMode] = useState<'genome_scan' | 'predict'>('genome_scan');
   const [fasta, setFasta] = useState('');
   const [fileName, setFileName] = useState('');
@@ -151,8 +151,13 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
     const storedHistory = parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY));
     setHistory(storedHistory);
     try {
-      const saved = JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null') as Partial<PredictionHistoryEntry> | null;
-      if (!saved?.jobId || !saved.token) return;
+      const sessionJob = JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null') as Partial<PredictionHistoryEntry> | null;
+      const saved = (initialJobId ? storedHistory.find((entry) => entry.jobId === initialJobId) : null) || sessionJob;
+      if (!saved?.jobId || !saved.token) {
+        if (initialJobId) setMessage('Open this task link in the browser that submitted it.');
+        return;
+      }
+      sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(saved));
       setJobToken(saved.token);
       setRefName(saved.refName || '');
       void fetch(`/api/predictions/jobs/${saved.jobId}`, { headers: { 'X-Job-Token': saved.token }, cache: 'no-store' })
@@ -178,7 +183,7 @@ export default function PredictionWorkbench({ siteKey, modelVersion, maxGenomeBy
         })
         .catch(() => setMessage('The saved task is temporarily unavailable.'));
     } catch { sessionStorage.removeItem('rapptor-prediction-job'); }
-  }, [persistHistory]);
+  }, [initialJobId, persistHistory]);
 
   useEffect(() => {
     if (!job || !jobToken || ['succeeded', 'failed'].includes(job.status)) return;

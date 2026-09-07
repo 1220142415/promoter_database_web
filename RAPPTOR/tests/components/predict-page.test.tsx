@@ -12,14 +12,13 @@ vi.mock('@/features/prediction/prototype/prototype-workbench', () => ({
 }));
 
 describe('prediction page', () => {
-  it('shows the prediction workspace and a sign-in action to visitors', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(
-      { authenticated: false, error: { code: 'AUTH_REQUIRED' } },
-      { status: 401 },
-    )));
+  it('shows the prediction workspace without login or registration controls', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<PredictionLayout><PredictPage /></PredictionLayout>);
     expect(screen.getByTestId('prototype-prediction-workbench')).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Sign in to submit' })).toHaveAttribute('href', '/login?next=%2Fpredict');
+    expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

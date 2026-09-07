@@ -77,4 +77,15 @@ describe('prediction workspace layout', () => {
     expect(screen.queryByText('SELECTED PREDICTION')).not.toBeInTheDocument();
     expect(recent).toHaveTextContent('recent-genome.fna');
   });
+
+  it('opens an emailed task link from browser history when session storage is empty', async () => {
+    sessionStorage.clear();
+    render(<PredictionWorkbench siteKey="" modelVersion="test" localTest initialJobId={saved.jobId} />);
+
+    await waitFor(() => expect(screen.getByText('SELECTED PREDICTION')).toBeInTheDocument());
+    expect(fetch).toHaveBeenCalledWith(`/api/predictions/jobs/${saved.jobId}`, expect.objectContaining({
+      headers: { 'X-Job-Token': saved.token },
+    }));
+    expect(sessionStorage.getItem('rapptor-prediction-job')).toContain(saved.jobId);
+  });
 });

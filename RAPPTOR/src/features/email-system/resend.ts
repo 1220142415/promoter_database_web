@@ -2,8 +2,8 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const DEFAULT_FROM = 'RAPPtor <no-reply@auth.email.duolalab.qzz.io>';
 
 // Used only by server routes and the Cron handler, which passes Worker bindings explicitly.
-export type ResendSettings = { apiKey?: string; from?: string };
-type EmailMessage = { to: string; subject: string; text: string; idempotencyKey?: string };
+export type ResendSettings = { apiKey?: string; from?: string; siteUrl?: string };
+type EmailMessage = { to: string; subject: string; text: string; html?: string; idempotencyKey?: string };
 
 export type ResendResult =
   | { ok: true; messageId: string }
@@ -24,7 +24,7 @@ export async function sendRappTorEmail(settings: ResendSettings, message: EmailM
         'Content-Type': 'application/json',
         ...(message.idempotencyKey ? { 'Idempotency-Key': message.idempotencyKey } : {}),
       },
-      body: JSON.stringify({ from: settings.from || DEFAULT_FROM, to: [message.to], subject: message.subject, text: message.text }),
+      body: JSON.stringify({ from: settings.from || DEFAULT_FROM, to: [message.to], subject: message.subject, text: message.text, ...(message.html ? { html: message.html } : {}) }),
       signal: AbortSignal.timeout(10_000),
     });
   } catch {

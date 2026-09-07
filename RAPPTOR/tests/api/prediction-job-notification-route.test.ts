@@ -69,6 +69,7 @@ beforeEach(() => {
   process.env.RAPPTOR_TURNSTILE_SECRET = 'test-turnstile-secret';
   process.env.RAPPTOR_PREDICTION_SERVICE_SECRET = 'test-service-secret';
   process.env.RAPPTOR_PREDICTION_IP_HASH_SECRET = 'test-ip-secret';
+  process.env.RAPPTOR_PUBLIC_SITE_URL = 'https://rapptor.example.test';
 });
 
 afterEach(async () => {
@@ -85,6 +86,7 @@ afterEach(async () => {
     'RAPPTOR_TURNSTILE_SECRET',
     'RAPPTOR_PREDICTION_SERVICE_SECRET',
     'RAPPTOR_PREDICTION_IP_HASH_SECRET',
+    'RAPPTOR_PUBLIC_SITE_URL',
   ]) delete process.env[key];
 });
 
@@ -100,7 +102,7 @@ describe('prediction job notifications', () => {
 
     expect(response.status).toBe(202);
     expect(notification.register).toHaveBeenCalledWith(database, jobId, auth, 'predict', expect.any(Date));
-    expect(notification.send).toHaveBeenCalledWith(database, jobId, { apiKey: undefined, from: undefined });
+    expect(notification.send).toHaveBeenCalledWith(database, jobId, { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test' });
   });
 
   it('keeps short prediction submission working when D1 is unavailable', async () => {
@@ -127,7 +129,7 @@ describe('prediction job notifications', () => {
     }
 
     expect(notification.send).toHaveBeenCalledTimes(2);
-    expect(notification.send).toHaveBeenNthCalledWith(1, database, jobId, { apiKey: undefined, from: undefined });
-    expect(notification.send).toHaveBeenNthCalledWith(2, database, jobId, { apiKey: undefined, from: undefined });
+    expect(notification.send).toHaveBeenNthCalledWith(1, database, jobId, { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test' });
+    expect(notification.send).toHaveBeenNthCalledWith(2, database, jobId, { apiKey: undefined, from: undefined, siteUrl: 'https://rapptor.example.test' });
   });
 });

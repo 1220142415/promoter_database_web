@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     if (event.status === 'succeeded' || event.status === 'failed') {
       after(async () => {
         try {
-          await sendPredictionNotification(database, event.jobId, { apiKey: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM });
+          await sendPredictionNotification(database, event.jobId, { apiKey: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM, siteUrl: process.env.RAPPTOR_PUBLIC_SITE_URL });
         } catch {
           console.error(JSON.stringify({ event: 'prediction_notification_failed', jobId: event.jobId }));
         }

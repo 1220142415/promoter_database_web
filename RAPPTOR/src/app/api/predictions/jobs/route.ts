@@ -88,7 +88,7 @@ export async function POST(request: Request) {
           // ponytail: one post-response registration retry; a sustained D1 outage needs a durable submission outbox.
           if (!database) return;
           if (!registered) await registerPredictionNotification(database, jobId, auth, mode, now);
-          await sendPredictionNotification(database, jobId, { apiKey: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM });
+          await sendPredictionNotification(database, jobId, { apiKey: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM, siteUrl: process.env.RAPPTOR_PUBLIC_SITE_URL });
         } catch {
           console.error(JSON.stringify({ event: 'prediction_notification_failed', jobId }));
         }

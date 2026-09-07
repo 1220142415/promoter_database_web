@@ -211,12 +211,14 @@ async function catalogGenomeInput(context: PrototypeGenomeContext): Promise<Reso
 
 export default function PrototypePredictionWorkbench({
   modelVersion = DEFAULT_PROTOTYPE_MODEL_SPEC.version,
+  maxSequenceBases = 10_000,
   maxGenomeBytes = DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
   localTest = false,
   preview = false,
   service = { available: false, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '', reason: 'Prediction service is not configured.' },
 }: {
   modelVersion?: string;
+  maxSequenceBases?: number;
   maxGenomeBytes?: number;
   localTest?: boolean;
   preview?: boolean;
@@ -258,15 +260,19 @@ export default function PrototypePredictionWorkbench({
     if (!inlineInput.trim()) return { parsed: null, error: null };
     try {
       const parsed = parsePrototypeSequenceInput(inlineInput);
-      validatePrototypeInlineLength(parsed.totalLength);
+      validatePrototypeInlineLength(parsed.totalLength, maxSequenceBases);
       return { parsed, error: null };
     }
     catch (cause) { return { parsed: null, error: cause instanceof Error ? cause.message : 'Sequence input is invalid.' }; }
-  }, [inlineInput]);
+  }, [inlineInput, maxSequenceBases]);
 
   const parsedInput = primaryKind === 'inline' ? inlineState.parsed : primaryKind === 'upload' ? uploadedInput.parsed : null;
   const inputError = primaryKind === 'inline' ? inlineState.error : primaryKind === 'upload' ? uploadedInput.error : null;
-  const inferredMode: PrototypePredictionMode | null = primaryKind === 'catalog' ? (inputCatalog ? 'genome-scan' : null) : parsedInput?.mode || null;
+  const inferredMode: PrototypePredictionMode | null = primaryKind === 'catalog'
+    ? (inputCatalog ? 'genome-scan' : null)
+    : primaryKind === 'inline' && !preview
+      ? (parsedInput?.records.length === 1 ? 'candidate' : parsedInput?.mode || null)
+      : parsedInput?.mode || null;
   const usesExampleReference = (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession)
     || (contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = inferredMode === 'candidate' && contextKind === 'catalog'
@@ -485,7 +491,7 @@ export default function PrototypePredictionWorkbench({
       let label: string;
       let historyMode: PredictionHistoryEntry['mode'];
       if (inferredMode === 'candidate') {
-        if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('100 bp scoring requires exactly one 100 bp sequence.');
+        if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length < 100 || primaryKind === 'catalog') throw new Error('Short-sequence prediction requires exactly one sequence of at least 100 bp.');
         const sequence = parsedInput.records[0].normalizedSequence;
         if (usesCachedCgr) {
           if (contextCatalog?.kind !== 'catalog' || !/^GCF_\d{9}\.\d+$/.test(contextCatalog.accession)) {
@@ -496,7 +502,7 @@ export default function PrototypePredictionWorkbench({
             reference_accession: contextCatalog.accession,
             reverse_complementary: strandMode === 'both',
           };
-          bases = 100;
+          bases = sequence.length;
           referenceName = contextCatalog.accession;
         } else {
           const context = await resolveGenomeContextSequence();
@@ -504,10 +510,10 @@ export default function PrototypePredictionWorkbench({
             mode: 'predict', complete_genome: true, sequence, fasta: context.fasta,
             reverse_complementary: strandMode === 'both',
           };
-          bases = 100 + context.totalLength;
+          bases = sequence.length + context.totalLength;
           referenceName = context.referenceName;
         }
-        label = primaryKind === 'upload' ? uploadedInput.file?.name || 'Candidate sequence' : 'Candidate sequence';
+        label = primaryKind === 'upload' ? uploadedInput.file?.name || 'Short sequence' : 'Short sequence';
         historyMode = 'predict';
       } else {
         const genome = await primaryScanSequence();
@@ -553,7 +559,7 @@ export default function PrototypePredictionWorkbench({
         bases,
         ...(historyMode === 'genome_scan' && service.supportsScoreCutoff ? { cutoff } : {}),
         strandMode,
-        strideBases,
+        strideBases: historyMode === 'predict' ? 1 : strideBases,
       };
       localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), entry)));
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
@@ -619,7 +625,7 @@ export default function PrototypePredictionWorkbench({
             <div className={styles.pasteSource}>
               <label className={styles.fieldLabel} htmlFor="prototype-sequence-input">Raw DNA or FASTA</label>
               <textarea id="prototype-sequence-input" rows={7} spellCheck={false} value={inlineInput} aria-invalid={primaryKind === 'inline' && Boolean(inputError)} aria-describedby="prototype-input-status" onChange={(event) => { setInlineInput(event.target.value); setPrimaryKind('inline'); clearGenomeContext(); setFormError(null); }} placeholder=">sequence&#10;ACGT..." />
-              <p className={styles.localNote}>Paste up to 10,000 bases. {inputPrivacyCopy}</p>
+              <p className={styles.localNote}>Paste up to {maxSequenceBases.toLocaleString()} bases. {inputPrivacyCopy}</p>
               <div className={styles.exampleRow} aria-label="Examples">
                 <span>Try an example</span>
                 <div><button type="button" onClick={loadFocusedExample} disabled={exampleLoading}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample} disabled={exampleLoading}>Use E. coli K-12 genome example</button></div>
@@ -638,7 +644,7 @@ export default function PrototypePredictionWorkbench({
             </div>
 
             <div id="prototype-input-status" className={`${styles.inferenceStatus} ${inputError ? styles.invalid : inferredMode ? styles.valid : ''}`} aria-live="polite">
-              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Selected analysis</span><strong>{inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Add input to select 100 bp scoring or a sequence scan.</span>}
+              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Selected analysis</span><strong>{inferredMode === 'candidate' && (parsedInput?.totalLength || 0) > 100 ? 'Short-sequence sliding-window prediction' : inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Add input to select short-sequence prediction or a sequence scan.</span>}
             </div>
           </fieldset>
 
@@ -678,7 +684,7 @@ export default function PrototypePredictionWorkbench({
               <div className={styles.parameterGrid}>
                 <label><span>Strands</span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
                 <label><span>{activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{cutoffUnavailable ? (inferredMode === 'candidate' ? 'This task returns model scores without applying a classification threshold.' : 'This service does not support export filtering. All computed scores are retained.') : parametersReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : PORTAL_COPY.genomeScanCutoffHelp) : 'Enter a value from 0 to 1.'}</small></label>
-                <label><span>{PORTAL_TERMS.stride}</span><select aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" value={strideBases} onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? 'A 100 bp input contains one window.' : 'Bases between consecutive 100 bp windows.'}</small></label>
+                <label><span>{PORTAL_TERMS.stride}</span><select aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" disabled={!preview && inferredMode === 'candidate'} value={!preview && inferredMode === 'candidate' ? 1 : strideBases} onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? preview ? 'A 100 bp input contains one window.' : 'Short sequences use overlapping 100 bp windows at a fixed 1 bp stride.' : 'Bases between consecutive 100 bp windows.'}</small></label>
               </div>
             </fieldset>
           ) : null}

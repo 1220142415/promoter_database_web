@@ -39,4 +39,16 @@ describe('protected 100 bp result', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('artifact is invalid');
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
   });
+
+  it('shows ranked sliding-window probabilities for a sequence longer than 100 bp', async () => {
+    const scores = Array.from({ length: 201 }, (_, index) => ({
+      strand: '+', score: index / 200, window_start_0based: index, anchor_position_0based: index + 80,
+    }));
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(scores)));
+    render(<FocusedJobResult jobId="long-job" bothStrands={false} hasScores sequenceBases={300} />);
+    expect(await screen.findByRole('heading', { name: 'Short-sequence result' })).toBeInTheDocument();
+    expect(screen.getByText('201 overlapping 100 bp windows were scored. The table shows the 20 highest probabilities.')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '201–300' })).toBeInTheDocument();
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+  });
 });

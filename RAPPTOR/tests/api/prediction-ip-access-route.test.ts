@@ -19,6 +19,7 @@ import { requirePredictionAuth } from '@/features/email-system/supabase';
 const keys = [
   'RAPPTOR_PREDICTION_ACCESS_MODE', 'RAPPTOR_PREDICTION_ENABLED', 'RAPPTOR_PREDICTION_MODEL_VERSION',
   'RAPPTOR_PREDICTION_MAX_BASES', 'RAPPTOR_PREDICTION_TICKETS_PER_MINUTE',
+  'RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY',
   'RAPPTOR_PREDICTION_BASES_PER_DAY', 'RAPPTOR_PREDICTION_TICKET_TTL_SECONDS',
   'RAPPTOR_TURNSTILE_SECRET', 'RAPPTOR_PREDICTION_SERVICE_SECRET', 'RAPPTOR_PREDICTION_IP_HASH_SECRET',
 ] as const;
@@ -30,6 +31,7 @@ beforeEach(() => {
     RAPPTOR_PREDICTION_MODEL_VERSION: 'candidate-github-93cf',
     RAPPTOR_PREDICTION_MAX_BASES: '6000000',
     RAPPTOR_PREDICTION_TICKETS_PER_MINUTE: '2',
+    RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY: '5',
     RAPPTOR_PREDICTION_BASES_PER_DAY: '12000000',
     RAPPTOR_PREDICTION_TICKET_TTL_SECONDS: '120',
     RAPPTOR_TURNSTILE_SECRET: 'turnstile-secret',
@@ -58,7 +60,7 @@ describe('anonymous IP prediction access', () => {
     expect(requirePredictionAuth).not.toHaveBeenCalled();
     expect(provider).toHaveBeenCalledTimes(1);
     expect(String(provider.mock.calls[0]![0])).toContain('challenges.cloudflare.com/turnstile');
-    expect(state.bindings).toContain(1);
+    expect(state.bindings).toContain(5);
     expect(JSON.stringify(state.bindings)).not.toContain('203.0.113.8');
   });
 });

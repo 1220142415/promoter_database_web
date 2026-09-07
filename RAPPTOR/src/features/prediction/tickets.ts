@@ -4,6 +4,7 @@ export interface PredictionTicketSettings {
   modelVersion: string;
   maxBases: number;
   ticketsPerMinute: number;
+  genomeScansPerDay: number;
   basesPerDay: number;
   ttlSeconds: number;
   turnstileSecret: string;
@@ -35,6 +36,10 @@ function positiveInteger(name: string) {
   return value;
 }
 
+export function readGenomeScansPerDay() {
+  return positiveInteger('RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY');
+}
+
 export type PredictionTicketIssueSettings = Omit<PredictionTicketSettings, 'turnstileSecret' | 'serviceSecret'>;
 
 export function readPredictionTicketIssueSettings(): PredictionTicketIssueSettings {
@@ -45,6 +50,7 @@ export function readPredictionTicketIssueSettings(): PredictionTicketIssueSettin
     modelVersion: required('RAPPTOR_PREDICTION_MODEL_VERSION'),
     maxBases: positiveInteger('RAPPTOR_PREDICTION_MAX_BASES'),
     ticketsPerMinute: positiveInteger('RAPPTOR_PREDICTION_TICKETS_PER_MINUTE'),
+    genomeScansPerDay: readGenomeScansPerDay(),
     basesPerDay: positiveInteger('RAPPTOR_PREDICTION_BASES_PER_DAY'),
     ttlSeconds: positiveInteger('RAPPTOR_PREDICTION_TICKET_TTL_SECONDS'),
     ipHashSecret: required('RAPPTOR_PREDICTION_IP_HASH_SECRET'),
@@ -120,14 +126,16 @@ export async function issuePredictionTicket(
     SELECT ?, ?, 'prediction', ?, ?, ?, ?, ?, ?, NULL
     WHERE (SELECT COUNT(*) FROM prediction_tickets WHERE ip_hash = ? AND issued_at >= ?) < ?
       AND (? = 0 OR ? = 'predict' OR (SELECT COUNT(*) FROM prediction_tickets
-        WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?) = 0)
+        WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?
+          AND (used_at IS NOT NULL OR expires_at > ?)) < ?)
       AND (? = 'predict' OR (SELECT COALESCE(SUM(requested_bases), 0) FROM prediction_tickets
-        WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?) + ? <= ?)`)
+        WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?
+          AND (used_at IS NOT NULL OR expires_at > ?)) + ? <= ?)`)
     .bind(
       await sha256(ticket), ipHash, input.mode, settings.modelVersion, input.bases, input.bases, issuedAt, expiresAt,
       ipHash, minuteCutoff, settings.ticketsPerMinute,
-      input.anonymousIpLimit ? 1 : 0, input.mode, ipHash, dayCutoff,
-      input.mode, ipHash, dayCutoff, input.bases, settings.basesPerDay,
+      input.anonymousIpLimit ? 1 : 0, input.mode, ipHash, dayCutoff, issuedAt, settings.genomeScansPerDay,
+      input.mode, ipHash, dayCutoff, issuedAt, input.bases, settings.basesPerDay,
     )
     .run();
   if (changedRows(result) !== 1) throw new PredictionTicketLimitError('Prediction ticket limit reached.');
@@ -152,23 +160,24 @@ export function secondsUntilBeijingMidnight(now = new Date()) {
   return Math.max(1, Math.ceil((nextMidnight.getTime() - now.getTime()) / 1000));
 }
 
-export async function reserveGenomeScanQuota(database: D1Database, userId: string, now = new Date()) {
+export async function reserveGenomeScanQuota(database: D1Database, userId: string, maxScans: number, now = new Date()) {
   const result = await database.prepare(`INSERT INTO prediction_daily_quota
       (user_id, quota_day, task_kind, used, updated_at)
     VALUES (?, ?, 'genome_scan', 1, ?)
     ON CONFLICT(user_id, quota_day, task_kind) DO UPDATE SET
       used = prediction_daily_quota.used + 1,
       updated_at = excluded.updated_at
-    WHERE prediction_daily_quota.used < 1`)
-    .bind(userId, beijingQuotaDay(now), now.toISOString())
+    WHERE prediction_daily_quota.used < ?`)
+    .bind(userId, beijingQuotaDay(now), now.toISOString(), maxScans)
     .run();
   return changedRows(result) === 1;
 }
 
 export async function releaseGenomeScanQuota(database: D1Database, userId: string, now = new Date()) {
-  await database.prepare(`DELETE FROM prediction_daily_quota
-    WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan'`)
-    .bind(userId, beijingQuotaDay(now))
+  await database.prepare(`UPDATE prediction_daily_quota
+    SET used = used - 1, updated_at = ?
+    WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan' AND used > 0`)
+    .bind(now.toISOString(), userId, beijingQuotaDay(now))
     .run();
 }
 

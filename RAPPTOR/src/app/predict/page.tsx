@@ -21,6 +21,7 @@ export default async function PredictPage() {
   const workbench = <PrototypePredictionWorkbench
     modelVersion={service.modelVersion}
     service={service}
+    maxSequenceBases={capabilities.limits.targetMaxBases}
     maxGenomeBytes={capabilities.limits.genomeMaxBytes}
     localTest={localTest}
   />;

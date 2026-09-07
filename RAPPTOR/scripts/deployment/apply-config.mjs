@@ -83,6 +83,12 @@ function ticketConfig() {
     ipHashSecret: required('RAPPTOR_PREDICTION_IP_HASH_SECRET'),
     modelVersion: required('RAPPTOR_PREDICTION_MODEL_VERSION'),
     accessMode: accessMode(),
+    maxBases: integer('RAPPTOR_PREDICTION_MAX_BASES', 100, 100_000_000),
+    shortSequenceMaxBases: integer('RAPPTOR_PREDICTION_SHORT_SEQUENCE_MAX_BASES', 100, 100_000),
+    ticketsPerMinute: integer('RAPPTOR_PREDICTION_TICKETS_PER_MINUTE', 1, 1_000),
+    genomeScansPerDay: integer('RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY', 1, 1_000),
+    basesPerDay: integer('RAPPTOR_PREDICTION_BASES_PER_DAY', 100, 1_000_000_000),
+    ticketTtlSeconds: integer('RAPPTOR_PREDICTION_TICKET_TTL_SECONDS', 60, 120),
   };
 }
 
@@ -127,6 +133,12 @@ function writePublicTicketConfig(config) {
     RAPPTOR_PREDICTION_LOCAL_TEST: 'off',
     NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST: 'off',
     NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY: config.siteKey,
+    RAPPTOR_PREDICTION_MAX_BASES: String(config.maxBases),
+    RAPPTOR_PREDICTION_SHORT_SEQUENCE_MAX_BASES: String(config.shortSequenceMaxBases),
+    RAPPTOR_PREDICTION_TICKETS_PER_MINUTE: String(config.ticketsPerMinute),
+    RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY: String(config.genomeScansPerDay),
+    RAPPTOR_PREDICTION_BASES_PER_DAY: String(config.basesPerDay),
+    RAPPTOR_PREDICTION_TICKET_TTL_SECONDS: String(config.ticketTtlSeconds),
   };
   for (const [name, value] of Object.entries(variables)) {
     const pattern = new RegExp(`^${name}\\s*=.*$`, 'mu');
@@ -215,6 +227,8 @@ function writeDockerEnv() {
   ];
   const lines = [
     `RAPPTOR_MODEL_VERSION=${config.modelVersion}`,
+    `RAPPTOR_MAX_PREDICT_BASES=${config.shortSequenceMaxBases}`,
+    `RAPPTOR_MAX_GENOME_BASES=${config.maxBases}`,
     ...names.map((name) => `${name}=${required(name)}`),
     'RAPPTOR_TICKET_VALIDATION_MODE=cloudflare',
     `RAPPTOR_TICKET_CONSUME_URL=${config.workerBaseUrl}/api/internal/prediction-tickets/consume`,

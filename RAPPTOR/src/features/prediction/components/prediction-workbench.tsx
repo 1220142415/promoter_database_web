@@ -182,6 +182,8 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
   if (!entry) return <MissingTask message={message} />;
 
   const mode = summary?.mode || entry.mode;
+  const sequenceBases = summary?.sequence_bases || (entry.mode === 'predict' ? 100 : undefined);
+  const focused = mode === 'predict' && sequenceBases === 100;
   const refName = entry.refName || resolvedRefName;
   const bothStrands = summary?.reverse_complementary !== false && entry.strandMode !== 'forward';
   const missingBrowserFiles = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai', ...(bothStrands ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((artifact) => artifact.filename === name));
@@ -201,9 +203,9 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
     <div className={`portal-shell ${styles.shell}`}>
       <header className={styles.intro}>
         <div className={styles.introCopy}>
-          <p className="portal-kicker">{mode === 'predict' ? '100 bp scoring' : PORTAL_TERMS.sequenceScan}</p>
+          <p className="portal-kicker">{mode === 'predict' ? (focused ? '100 bp scoring' : 'Short-sequence prediction') : PORTAL_TERMS.sequenceScan}</p>
           <h1>Prediction result</h1>
-          <p>{mode === 'predict' ? 'Compare the model score for each evaluated strand.' : 'Explore model-score and promoter-prediction tracks in the genome browser.'}</p>
+          <p>{mode === 'predict' ? (focused ? 'Compare the model score for each evaluated strand.' : 'Review probabilities from overlapping 100 bp windows across the submitted sequence.') : 'Explore model-score and promoter-prediction tracks in the genome browser.'}</p>
         </div>
         <div className={styles.runMeta}><span>Live task</span><code>{entry.jobId}</code><small>{formatDate(job?.submitted_at || entry.submittedAt)}</small></div>
       </header>
@@ -212,7 +214,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} />
 
       {job?.status === 'succeeded' && summary ? <>
-        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} /> : <>
+        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} /> : <>
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>

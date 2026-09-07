@@ -47,15 +47,17 @@ class FakeStatement {
     let changes = 0;
     if (this.sql.startsWith('INSERT INTO prediction_tickets')) {
       const [ticketHash, ipHash, mode, modelVersion, requestedBases, maxBases, issuedAt, expiresAt,
-        , minuteCutoff, ticketsPerMinute, anonymousIpLimit, limitMode, , scanDayCutoff,
-        baseLimitMode, , dayCutoff, billedBases, basesPerDay] = this.bindings;
+        , minuteCutoff, ticketsPerMinute, anonymousIpLimit, limitMode, , scanDayCutoff, activeAt, scansPerDay,
+        baseLimitMode, , dayCutoff, baseActiveAt, billedBases, basesPerDay] = this.bindings;
       const rows = this.database.rows.filter((row) => row.ipHash === ipHash);
       const minuteTickets = rows.filter((row) => row.issuedAt >= String(minuteCutoff)).length;
-      const dailyScans = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(scanDayCutoff)).length;
-      const dailyBases = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(dayCutoff))
+      const dailyScans = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(scanDayCutoff)
+        && (row.usedAt !== null || row.expiresAt > String(activeAt))).length;
+      const dailyBases = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(dayCutoff)
+        && (row.usedAt !== null || row.expiresAt > String(baseActiveAt)))
         .reduce((total, row) => total + row.requestedBases, 0);
       if (minuteTickets < Number(ticketsPerMinute)
-        && (!Number(anonymousIpLimit) || limitMode === 'predict' || dailyScans === 0)
+        && (!Number(anonymousIpLimit) || limitMode === 'predict' || dailyScans < Number(scansPerDay))
         && (baseLimitMode === 'predict' || dailyBases + Number(billedBases) <= Number(basesPerDay))) {
         this.database.rows.push({
           ticketHash: String(ticketHash),
@@ -72,12 +74,18 @@ class FakeStatement {
       }
     } else if (this.sql.startsWith('INSERT INTO prediction_daily_quota')) {
       const key = `${this.bindings[0]}|${this.bindings[1]}`;
-      if (!this.database.quotaRows.has(key)) {
-        this.database.quotaRows.add(key);
+      const used = this.database.quotaRows.get(key) || 0;
+      if (used < Number(this.bindings[3])) {
+        this.database.quotaRows.set(key, used + 1);
         changes = 1;
       }
-    } else if (this.sql.startsWith('DELETE FROM prediction_daily_quota')) {
-      changes = this.database.quotaRows.delete(`${this.bindings[0]}|${this.bindings[1]}`) ? 1 : 0;
+    } else if (this.sql.startsWith('UPDATE prediction_daily_quota')) {
+      const key = `${this.bindings[1]}|${this.bindings[2]}`;
+      const used = this.database.quotaRows.get(key) || 0;
+      if (used > 0) {
+        this.database.quotaRows.set(key, used - 1);
+        changes = 1;
+      }
     } else if (this.sql.startsWith('UPDATE prediction_tickets')) {
       const [usedAt, ticketHash, modelVersion, now, bases] = this.bindings;
       const row = this.database.rows.find((candidate) => (
@@ -98,7 +106,7 @@ class FakeStatement {
 
 class FakeD1 {
   rows: TicketRow[] = [];
-  quotaRows = new Set<string>();
+  quotaRows = new Map<string, number>();
 
   prepare(sql: string) {
     return new FakeStatement(this, sql);
@@ -113,6 +121,7 @@ const settings: PredictionTicketSettings = {
   modelVersion: 'candidate-github-93cf',
   maxBases: 1_000,
   ticketsPerMinute: 2,
+  genomeScansPerDay: 5,
   basesPerDay: 2_000,
   ttlSeconds: 90,
   turnstileSecret: 'turnstile-secret',
@@ -125,6 +134,7 @@ const predictionEnv = [
   'RAPPTOR_PREDICTION_MODEL_VERSION',
   'RAPPTOR_PREDICTION_MAX_BASES',
   'RAPPTOR_PREDICTION_TICKETS_PER_MINUTE',
+  'RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY',
   'RAPPTOR_PREDICTION_BASES_PER_DAY',
   'RAPPTOR_PREDICTION_TICKET_TTL_SECONDS',
   'RAPPTOR_TURNSTILE_SECRET',
@@ -154,6 +164,7 @@ describe('prediction ticket settings', () => {
       RAPPTOR_PREDICTION_MODEL_VERSION: settings.modelVersion,
       RAPPTOR_PREDICTION_MAX_BASES: '1000',
       RAPPTOR_PREDICTION_TICKETS_PER_MINUTE: '2',
+      RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY: '5',
       RAPPTOR_PREDICTION_BASES_PER_DAY: '2000',
       RAPPTOR_PREDICTION_TICKET_TTL_SECONDS: '90',
       RAPPTOR_TURNSTILE_SECRET: settings.turnstileSecret,
@@ -234,16 +245,31 @@ describe('one-time prediction tickets', () => {
     expect(serviceSecretMatches('service', 'service-secret')).toBe(false);
   });
 
-  it('allows one anonymous whole-genome ticket per IP and resets at Beijing midnight', async () => {
+  it('allows the configured anonymous whole-genome tickets per IP and resets at Beijing midnight', async () => {
     const database = new FakeD1();
+    const testSettings = { ...settings, ticketsPerMinute: 10, basesPerDay: 5_000 };
     const input = {
       address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 700,
       mode: 'genome_scan' as const, anonymousIpLimit: true,
     };
-    await issuePredictionTicket(database as unknown as D1Database, settings, input, new Date('2026-08-27T15:59:59.000Z'));
-    await expect(issuePredictionTicket(database as unknown as D1Database, settings, input, new Date('2026-08-27T15:59:59.000Z')))
+    for (let scan = 0; scan < 5; scan += 1) {
+      await issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T15:59:59.000Z'));
+    }
+    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T15:59:59.000Z')))
       .rejects.toThrow(PredictionTicketLimitError);
-    await expect(issuePredictionTicket(database as unknown as D1Database, settings, input, new Date('2026-08-27T16:00:00.000Z')))
+    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T16:00:00.000Z')))
+      .resolves.toMatchObject({ modelVersion: settings.modelVersion });
+  });
+
+  it('does not count an expired unused anonymous ticket toward the daily scan quota', async () => {
+    const database = new FakeD1();
+    const testSettings = { ...settings, genomeScansPerDay: 1 };
+    const input = {
+      address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 700,
+      mode: 'genome_scan' as const, anonymousIpLimit: true,
+    };
+    await issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T08:00:00.000Z'));
+    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T08:02:00.000Z')))
       .resolves.toMatchObject({ modelVersion: settings.modelVersion });
   });
 
@@ -257,15 +283,17 @@ describe('one-time prediction tickets', () => {
     expect(database.rows).toHaveLength(4);
   });
 
-  it('resets one whole-genome scan per user at Beijing midnight', async () => {
+  it('resets the configured whole-genome scans per user at Beijing midnight', async () => {
     const database = new FakeD1();
     const beforeMidnight = new Date('2026-08-27T15:59:59.000Z');
     const afterMidnight = new Date('2026-08-27T16:00:00.000Z');
     expect(beijingQuotaDay(beforeMidnight)).toBe('2026-08-27');
-    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', beforeMidnight)).resolves.toBe(true);
-    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', beforeMidnight)).resolves.toBe(false);
-    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', afterMidnight)).resolves.toBe(true);
+    for (let scan = 0; scan < 5; scan += 1) {
+      await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', 5, beforeMidnight)).resolves.toBe(true);
+    }
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', 5, beforeMidnight)).resolves.toBe(false);
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', 5, afterMidnight)).resolves.toBe(true);
     await releaseGenomeScanQuota(database as unknown as D1Database, 'user-1', afterMidnight);
-    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', afterMidnight)).resolves.toBe(true);
+    await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', 1, afterMidnight)).resolves.toBe(true);
   });
 });

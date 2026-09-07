@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ used: false, releases: 0 }));
+const state = vi.hoisted(() => ({ used: 0, releases: 0 }));
 
 vi.mock('@/features/email-system/supabase', () => ({
   requirePredictionAuth: vi.fn().mockResolvedValue({ id: 'user-1', email: 'person@example.test', emailConfirmed: true }),
@@ -12,11 +12,11 @@ vi.mock('@/features/usage/store', () => ({
       bind: () => ({
         run: async () => {
           let changes = 0;
-          if (sql.startsWith('INSERT INTO prediction_daily_quota') && !state.used) {
-            state.used = true;
+          if (sql.startsWith('INSERT INTO prediction_daily_quota') && state.used < 5) {
+            state.used += 1;
             changes = 1;
-          } else if (sql.startsWith('DELETE FROM prediction_daily_quota')) {
-            state.used = false;
+          } else if (sql.startsWith('UPDATE prediction_daily_quota') && state.used > 0) {
+            state.used -= 1;
             state.releases += 1;
             changes = 1;
           }
@@ -40,21 +40,25 @@ function request(mode: 'predict' | 'genome_scan') {
 
 beforeEach(() => {
   vi.mocked(requirePredictionAuth).mockResolvedValue({ id: 'user-1', email: 'person@example.test', emailConfirmed: true });
-  state.used = false;
+  state.used = 0;
   state.releases = 0;
   process.env.RAPPTOR_PREDICTION_SERVICE_URL = 'https://prediction.example.test';
+  process.env.RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY = '5';
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.RAPPTOR_PREDICTION_SERVICE_URL;
+  delete process.env.RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY;
 });
 
 describe('whole-genome submission quota', () => {
-  it('allows one genome scan and leaves short predictions unlimited by the daily quota', async () => {
+  it('allows five genome scans and leaves short predictions unlimited by the daily quota', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({ job_id: 'job-1' }, { status: 202 })));
-    const first = await POST(request('genome_scan'));
-    expect(first.status, JSON.stringify(await first.clone().json())).toBe(202);
+    for (let scan = 0; scan < 5; scan += 1) {
+      const response = await POST(request('genome_scan'));
+      expect(response.status, JSON.stringify(await response.clone().json())).toBe(202);
+    }
     const limited = await POST(request('genome_scan'));
     expect(limited.status).toBe(429);
     await expect(limited.json()).resolves.toMatchObject({ error: { code: 'DAILY_GENOME_SCAN_LIMIT' } });

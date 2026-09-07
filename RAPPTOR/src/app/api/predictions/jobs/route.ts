@@ -3,7 +3,7 @@ import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
-import { releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
+import { readGenomeScansPerDay, releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 import { localPredictionTestEnabled, readLocalPredictionTestSettings } from '@/features/prediction/local-test';
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   if (mode === 'genome_scan' && auth) {
     if (!database) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota database is unavailable.' } }, { status: 503 });
     try {
-      if (!await reserveGenomeScanQuota(database, auth.id, now)) {
+      if (!await reserveGenomeScanQuota(database, auth.id, readGenomeScansPerDay(), now)) {
         return Response.json(
           { error: { code: 'DAILY_GENOME_SCAN_LIMIT', message: 'The daily whole-genome scan quota has been used. Try again after 00:00 Beijing time.' } },
           { status: 429, headers: { 'Retry-After': String(secondsUntilBeijingMidnight(now)), 'Cache-Control': 'no-store' } },

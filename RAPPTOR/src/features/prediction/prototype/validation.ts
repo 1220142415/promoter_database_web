@@ -52,10 +52,10 @@ export function validatePrototypeCandidateLength(length: number) {
   }
 }
 
-export function validatePrototypeInlineLength(length: number) {
-  if (!Number.isSafeInteger(length) || length > PROTOTYPE_INLINE_MAX_BASES) {
+export function validatePrototypeInlineLength(length: number, maxBases: number = PROTOTYPE_INLINE_MAX_BASES) {
+  if (!Number.isSafeInteger(length) || length > maxBases) {
     throw new PrototypeValidationError(
-      `Pasted sequence input must contain ${PROTOTYPE_INLINE_MAX_BASES.toLocaleString()} bases or fewer. Upload a FASTA for longer input.`,
+      `Pasted sequence input must contain ${maxBases.toLocaleString()} bases or fewer. Upload a FASTA for longer input.`,
     );
   }
 }

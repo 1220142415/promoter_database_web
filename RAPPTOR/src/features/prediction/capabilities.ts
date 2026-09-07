@@ -2,6 +2,15 @@ import type { PredictionCapabilities, PredictionServiceMode } from './types';
 import { PREDICTION_ANCHOR_BASE, PREDICTION_CONTRACT_VERSION, PREDICTION_WINDOW_BASES } from './types';
 
 export const DEFAULT_PREDICTION_MAX_REQUEST_BYTES = 12 * 1024 * 1024;
+export const DEFAULT_PREDICTION_SHORT_SEQUENCE_MAX_BASES = 10_000;
+
+export function predictionShortSequenceMaxBases(value?: string | number | null) {
+  const configured = value === undefined ? process.env.RAPPTOR_PREDICTION_SHORT_SEQUENCE_MAX_BASES : value;
+  const parsed = Number(configured);
+  return Number.isSafeInteger(parsed) && parsed >= PREDICTION_WINDOW_BASES
+    ? parsed
+    : DEFAULT_PREDICTION_SHORT_SEQUENCE_MAX_BASES;
+}
 
 /** Return the configured request/upload limit shared with the prediction service. */
 export function predictionMaxRequestBytes(value?: string | number | null) {
@@ -32,7 +41,7 @@ const DEFAULT_CAPABILITIES = {
   acceptedTargetFormats: ['raw DNA', 'FASTA'],
   acceptedGenomeFormats: ['.fa', '.fasta', '.fna', '.fa.gz', '.fasta.gz', '.fna.gz'],
   limits: {
-    targetMaxBases: 10_000,
+    targetMaxBases: DEFAULT_PREDICTION_SHORT_SEQUENCE_MAX_BASES,
     genomeMaxBytes: DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
   },
   retention: {
@@ -46,6 +55,7 @@ function capabilitiesWithConfiguredLimit() {
     ...DEFAULT_CAPABILITIES,
     limits: {
       ...DEFAULT_CAPABILITIES.limits,
+      targetMaxBases: predictionShortSequenceMaxBases(),
       genomeMaxBytes: predictionMaxRequestBytes(),
     },
   };

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
@@ -307,6 +307,34 @@ describe('prototype prediction workbench', () => {
       expect(jobRequest).not.toHaveProperty('reference_accession');
     }
     expect(ticketRequest).toMatchObject({ bases: source === 'cached catalog' ? 100 : 260, mode: 'predict' });
+  });
+
+  it('submits a pasted 300 bp sequence through predict instead of genome_scan', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    let ticketRequest: Record<string, unknown> | null = null;
+    const contextFasta = `>context\n${'TGCA'.repeat(40)}\n`;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/prediction-tickets') {
+        ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      }
+      if (String(input) === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'd'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    }));
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    const { container } = render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
+    fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'ACGT'.repeat(75) } });
+    const contextFile = new File([contextFasta], 'context.fna', { type: 'text/plain' });
+    Object.defineProperty(contextFile, 'text', { value: async () => contextFasta });
+    await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[1], contextFile);
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'d'.repeat(32)}`));
+    expect(jobRequest).toMatchObject({ mode: 'predict', sequence: 'ACGT'.repeat(75), fasta: contextFasta.trimEnd() });
+    expect(ticketRequest).toMatchObject({ mode: 'predict', bases: 460 });
   });
 
   it('reuses a matching catalog scan source for CGR without duplicating bases or request data', async () => {

@@ -259,6 +259,7 @@ export default function PrototypePredictionWorkbench({
     : primaryKind === 'upload'
       ? Boolean(parsedInput && !inputError && !uploadedInput.loading)
       : Boolean(parsedInput && !inputError);
+  const verificationVisible = live && !localTest && inputReady && contextReady && parametersReady;
   function clearGenomeContext() {
     setContextKind('catalog');
     setContextCatalog(null);
@@ -624,9 +625,12 @@ export default function PrototypePredictionWorkbench({
           ) : null}
 
           {formError ? <div className={styles.formError} role="alert">{formError}</div> : null}
+          {verificationVisible ? <div className={styles.verificationRow}>
+            <div><span>Final check</span><strong>Human verification</strong><small>Complete this immediately before queuing the task.</small></div>
+            <TurnstileField siteKey={turnstileSiteKey} onToken={setTurnstileToken} />
+          </div> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
-            {live && !localTest ? <TurnstileField siteKey={turnstileSiteKey} onToken={setTurnstileToken} /> : null}
             <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (live && !turnstileToken)}>{submitLabel}</button>
           </div>
         </form>

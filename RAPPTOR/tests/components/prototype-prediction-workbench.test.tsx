@@ -40,9 +40,14 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('prototype prediction workbench', () => {
-  it('requires Turnstile before a production task can be queued', () => {
+  it('shows Turnstile only after the prediction inputs are ready', async () => {
+    const user = userEvent.setup();
     render(<PrototypePredictionWorkbench liveSubmission turnstileSiteKey="site-key" />);
+    expect(screen.queryByLabelText('Turnstile verification')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
+    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
     expect(screen.getByLabelText('Turnstile verification')).toBeInTheDocument();
+    expect(screen.getByText('Complete this immediately before queuing the task.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeDisabled();
   });
 

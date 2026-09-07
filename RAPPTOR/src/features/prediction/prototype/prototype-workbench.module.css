@@ -163,6 +163,12 @@
 .summary strong { overflow-wrap: anywhere; font-size: 11px; }
 .formError { margin-bottom: 16px; border: 1px solid #dfaaa1; border-radius: 6px; padding: 13px 15px; background: #fff7f5; color: #913127; font-size: 12px; }
 
+.verificationRow { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 14px 18px; background: #f7faf9; }
+.verificationRow > div:first-child { display: grid; gap: 4px; }
+.verificationRow span { color: var(--teal); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.verificationRow strong { font-size: 13px; }
+.verificationRow small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+
 .submitBar { display: flex; align-items: center; justify-content: space-between; gap: 25px; border-radius: 8px; padding: 18px 20px; background: #172824; color: white; }
 .submitBar > div { display: grid; gap: 5px; }
 .submitBar strong { color: #a9ded3; font-size: 12px; }
@@ -185,6 +191,7 @@
   .hero h1 { font-size: 40px; }
   .form { padding: 17px 13px; }
   .formHeading, .submitBar { align-items: stretch; flex-direction: column; }
+  .verificationRow { align-items: stretch; flex-direction: column; }
   .submitBar button { width: 100%; }
   .stepCard { padding: 18px 13px; }
   .fileAction { align-items: stretch; flex-direction: column; }

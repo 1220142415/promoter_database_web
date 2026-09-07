@@ -33,6 +33,7 @@ import {
 import { registerPrototypeTransientInput } from './transient-input';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '@/components/portal-terminology';
+import TurnstileField from '../components/turnstile-field';
 import styles from './prototype-workbench.module.css';
 
 type PrimarySourceKind = 'inline' | 'upload' | 'catalog';
@@ -204,10 +205,14 @@ export default function PrototypePredictionWorkbench({
   modelVersion = DEFAULT_PROTOTYPE_MODEL_SPEC.version,
   maxGenomeBytes = DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
   localTest = false,
+  liveSubmission = false,
+  turnstileSiteKey = '',
 }: {
   modelVersion?: string;
   maxGenomeBytes?: number;
   localTest?: boolean;
+  liveSubmission?: boolean;
+  turnstileSiteKey?: string;
 }) {
   const router = useRouter();
   const primaryFileRef = useRef<HTMLInputElement>(null);
@@ -227,6 +232,8 @@ export default function PrototypePredictionWorkbench({
   const [strideBases, setStrideBases] = useState<PrototypeStrideBases>(PROTOTYPE_STRIDE_BASES);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState(localTest ? 'local-test' : '');
+  const live = liveSubmission || localTest;
 
   const inlineState = useMemo(() => {
     if (!inlineInput.trim()) return { parsed: null, error: null };
@@ -402,7 +409,7 @@ export default function PrototypePredictionWorkbench({
     setSubmitting(true);
     setFormError(null);
     try {
-      if (!localTest) {
+      if (!live) {
         const runId = createPrototypeRunId();
         const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases } };
         let run: PrototypePredictionRun;
@@ -477,9 +484,10 @@ export default function PrototypePredictionWorkbench({
         historyMode = 'genome_scan';
       }
 
+      if (!turnstileToken) throw new Error('Complete the human verification before submitting.');
       const issued = await predictionApi<PredictionTicket>('/api/prediction-tickets', {
         method: 'POST',
-        body: JSON.stringify({ mode: historyMode, turnstileToken: 'local-test', modelVersion, bases }),
+        body: JSON.stringify({ mode: historyMode, turnstileToken, modelVersion, bases }),
       });
       if (!issued.ticket) throw new Error('Prediction ticket response is invalid.');
       const created = await predictionApi<CreatedDockerJob>('/api/predictions/jobs', {
@@ -502,7 +510,7 @@ export default function PrototypePredictionWorkbench({
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
       router.push(`/predict/task/${encodeURIComponent(created.job_id)}`);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : localTest ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
+      setFormError(cause instanceof Error ? cause.message : live ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
       setSubmitting(false);
     }
   }
@@ -525,21 +533,23 @@ export default function PrototypePredictionWorkbench({
       ? { title: 'Genome context required', detail: 'Select a catalog genome or upload its FASTA in Step 2.' }
       : !parametersReady
         ? { title: `Check the ${activeThresholdLabel.toLowerCase()}`, detail: 'Enter a value from 0 to 1.' }
-        : localTest
+        : live && !turnstileToken
+          ? { title: 'Human verification required', detail: 'Complete Turnstile before queuing the task.' }
+          : live
           ? { title: 'Ready to queue', detail: 'The validated input and matching CGR genome will be sent to the configured RAPPTOR prediction service.' }
           : { title: 'Ready to preview', detail: PORTAL_COPY.demoNotice };
-  const submitLabel = submitting ? (localTest ? 'Queuing…' : 'Preparing…') : (localTest ? 'Queue prediction' : 'Preview illustrative result');
-  const inputPrivacyCopy = localTest
+  const submitLabel = submitting ? (live ? 'Queuing…' : 'Preparing…') : (live ? 'Queue prediction' : 'Preview illustrative result');
+  const inputPrivacyCopy = live
     ? 'The selected input is sent to the configured prediction service only after you queue the task.'
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
-  const contextPrivacyCopy = localTest
+  const contextPrivacyCopy = live
     ? 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 
   return (
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
-        <div><p className="portal-kicker">{localTest ? 'Queued prediction' : 'Prediction prototype'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p></div>
+        <div><p className="portal-kicker">{live ? 'Queued prediction' : 'Prediction prototype'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p></div>
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
@@ -616,7 +626,8 @@ export default function PrototypePredictionWorkbench({
           {formError ? <div className={styles.formError} role="alert">{formError}</div> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
-            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting}>{submitLabel}</button>
+            {live && !localTest ? <TurnstileField siteKey={turnstileSiteKey} onToken={setTurnstileToken} /> : null}
+            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (live && !turnstileToken)}>{submitLabel}</button>
           </div>
         </form>
       </section>

@@ -4,6 +4,7 @@ import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
 import { releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,8 @@ function serviceUrl(path: string) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requirePredictionAuth(request);
+  const accessMode = predictionAccessMode();
+  const auth = accessMode === 'email' ? await requirePredictionAuth(request) : null;
   if (auth instanceof Response) return auth;
   const maxSubmissionBytes = predictionMaxRequestBytes();
   const url = serviceUrl('/v1/jobs');
@@ -43,7 +45,7 @@ export async function POST(request: Request) {
 
   const now = new Date();
   const database = usageDatabase();
-  if (mode === 'genome_scan') {
+  if (mode === 'genome_scan' && auth) {
     if (!database) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota database is unavailable.' } }, { status: 503 });
     try {
       if (!await reserveGenomeScanQuota(database, auth.id, now)) {
@@ -65,12 +67,12 @@ export async function POST(request: Request) {
       body,
     });
   } catch {
-    if (mode === 'genome_scan' && database) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+    if (mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
     return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is unavailable.' } }, { status: 503 });
   }
-  if (!upstream.ok && mode === 'genome_scan' && database) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+  if (!upstream.ok && mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
 
-  if (upstream.ok) {
+  if (upstream.ok && auth) {
     // The job is already queued. Notification failures must not discard its access token or refund its quota.
     try {
       const created = await upstream.clone().json() as { job_id?: unknown; access_token?: unknown } | null;

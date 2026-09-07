@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
 import { predictionCapabilities } from '@/features/prediction/capabilities';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
+import { PredictionAuthGate } from '@/features/email-system/auth-ui';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Promoter prediction | RAPPTOR',
@@ -9,9 +13,13 @@ export const metadata: Metadata = {
 
 export default function PredictPage() {
   const capabilities = predictionCapabilities();
-  return <PrototypePredictionWorkbench
+  const accessMode = predictionAccessMode();
+  const workbench = <PrototypePredictionWorkbench
     modelVersion={process.env.RAPPTOR_PREDICTION_MODEL_VERSION || undefined}
     maxGenomeBytes={capabilities.limits.genomeMaxBytes}
     localTest={process.env.NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST?.trim().toLowerCase() === 'on'}
+    liveSubmission
+    turnstileSiteKey={process.env.NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY || ''}
   />;
+  return accessMode === 'email' ? <PredictionAuthGate>{workbench}</PredictionAuthGate> : workbench;
 }

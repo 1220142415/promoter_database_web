@@ -40,6 +40,12 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('prototype prediction workbench', () => {
+  it('requires Turnstile before a production task can be queued', () => {
+    render(<PrototypePredictionWorkbench liveSubmission turnstileSiteKey="site-key" />);
+    expect(screen.getByLabelText('Turnstile verification')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeDisabled();
+  });
+
   it('requires separate CGR context for the short example and stores v3 metadata only', async () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench />);

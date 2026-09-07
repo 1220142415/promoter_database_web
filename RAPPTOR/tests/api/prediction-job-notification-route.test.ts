@@ -70,6 +70,7 @@ beforeEach(() => {
   process.env.RAPPTOR_PREDICTION_SERVICE_SECRET = 'test-service-secret';
   process.env.RAPPTOR_PREDICTION_IP_HASH_SECRET = 'test-ip-secret';
   process.env.RAPPTOR_PUBLIC_SITE_URL = 'https://rapptor.example.test';
+  process.env.RAPPTOR_PREDICTION_ACCESS_MODE = 'email';
 });
 
 afterEach(async () => {
@@ -87,6 +88,7 @@ afterEach(async () => {
     'RAPPTOR_PREDICTION_SERVICE_SECRET',
     'RAPPTOR_PREDICTION_IP_HASH_SECRET',
     'RAPPTOR_PUBLIC_SITE_URL',
+    'RAPPTOR_PREDICTION_ACCESS_MODE',
   ]) delete process.env[key];
 });
 
@@ -123,6 +125,20 @@ describe('prediction job notifications', () => {
     await runCallbacks();
 
     expect(response.status).toBe(202);
+    expect(notification.register).not.toHaveBeenCalled();
+    expect(notification.send).not.toHaveBeenCalled();
+  });
+
+  it('queues anonymously without Supabase or email notifications in IP mode', async () => {
+    process.env.RAPPTOR_PREDICTION_ACCESS_MODE = 'ip';
+    vi.mocked(requirePredictionAuth).mockResolvedValue(Response.json({}, { status: 401 }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId, access_token: 'a'.repeat(43) }, { status: 202 })));
+
+    const response = await createJob(submissionRequest('predict'));
+    await runCallbacks();
+
+    expect(response.status).toBe(202);
+    expect(requirePredictionAuth).not.toHaveBeenCalled();
     expect(notification.register).not.toHaveBeenCalled();
     expect(notification.send).not.toHaveBeenCalled();
   });

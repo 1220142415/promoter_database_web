@@ -90,7 +90,7 @@ function changedRows(result: { meta?: { changes?: unknown } }) {
 export async function issuePredictionTicket(
   database: D1Database,
   settings: PredictionTicketSettings,
-  input: { address: string; modelVersion: string; bases: number; mode: PredictionTaskMode },
+  input: { address: string; modelVersion: string; bases: number; mode: PredictionTaskMode; anonymousIpLimit?: boolean },
   now = new Date(),
 ) {
   if (input.modelVersion !== settings.modelVersion) throw new PredictionTicketInputError('INVALID_INPUT', 'Unsupported model version.');
@@ -111,11 +111,14 @@ export async function issuePredictionTicket(
       (ticket_hash, ip_hash, scope, task_kind, model_version, requested_bases, max_bases, issued_at, expires_at, used_at)
     SELECT ?, ?, 'prediction', ?, ?, ?, ?, ?, ?, NULL
     WHERE (SELECT COUNT(*) FROM prediction_tickets WHERE ip_hash = ? AND issued_at >= ?) < ?
+      AND (? = 0 OR ? = 'predict' OR (SELECT COUNT(*) FROM prediction_tickets
+        WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?) = 0)
       AND (? = 'predict' OR (SELECT COALESCE(SUM(requested_bases), 0) FROM prediction_tickets
         WHERE ip_hash = ? AND task_kind = 'genome_scan' AND issued_at >= ?) + ? <= ?)`)
     .bind(
       await sha256(ticket), ipHash, input.mode, settings.modelVersion, input.bases, input.bases, issuedAt, expiresAt,
       ipHash, minuteCutoff, settings.ticketsPerMinute,
+      input.anonymousIpLimit ? 1 : 0, input.mode, ipHash, dayCutoff,
       input.mode, ipHash, dayCutoff, input.bases, settings.basesPerDay,
     )
     .run();

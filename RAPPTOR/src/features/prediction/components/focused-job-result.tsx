@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import { parseSequenceScores, type FocusedScore } from '../focused-scores';
-import { referenceWindow } from '../live-result';
+import { referenceWindow, RESULT_TABLE_FILENAME } from '../live-result';
 import styles from './prediction.module.css';
 
-export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequenceBases = 100, coordinateSystem }: { jobId: string; bothStrands: boolean; hasScores: boolean; sequenceBases?: number; coordinateSystem?: string }) {
+export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequenceBases = 100, threshold, coordinateSystem, expiresAt }: { jobId: string; bothStrands: boolean; hasScores: boolean; sequenceBases?: number; threshold?: number; coordinateSystem?: string; expiresAt?: string }) {
   const [scores, setScores] = useState<FocusedScore[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -29,13 +30,21 @@ export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequen
   const focused = sequenceBases === 100;
   const topScores = scores ? [...scores].sort((left, right) => right.score - left.score).slice(0, 20) : [];
   return <section className={styles.jobSection} aria-label={focused ? '100 bp result' : 'Short-sequence result'}>
-    <div className={styles.panelHeading}><div><p className="portal-kicker">{focused ? '100 bp scoring' : `${sequenceBases.toLocaleString()} bp sliding-window scoring`}</p><h2>{focused ? '100 bp result' : 'Short-sequence result'}</h2></div></div>
+    <div className={`${styles.panelHeading} ${focused ? styles.focusedHeading : ''}`}>
+      <div><p className="portal-kicker">{focused ? '100 bp scoring' : `${sequenceBases.toLocaleString()} bp sliding-window scoring`}</p><h2>{focused ? '100 bp result' : 'Short-sequence result'}</h2></div>
+      {focused && hasScores ? <div className={styles.focusedDownload}>
+        <a href={`/api/predictions/jobs/${jobId}/artifacts/${RESULT_TABLE_FILENAME}`} download>
+          <DownloadRoundedIcon aria-hidden="true" />Download scores (TSV)
+        </a>
+        {expiresAt ? <small>Available until {expiresAt}</small> : null}
+      </div> : null}
+    </div>
     {error ? <div role="alert"><p>{error}</p><button type="button" onClick={() => setRevision((value) => value + 1)}>Retry score download</button></div>
       : scores ? <>
         {bothStrands && !scores.some((row) => row.strand === '-') ? <p role="alert">The service returned only forward-strand scores. The reverse-strand result is missing; two-strand verification did not pass.</p> : null}
         {focused ? <div className={styles.resultSummary}>{scores.map((row) => <div key={row.strand}>
           <span>{row.strand === '+' ? 'Forward strand (+)' : 'Reverse strand (−)'}</span>
-          <strong>{row.score.toFixed(6)}</strong><small>Model score</small>
+          <strong>{row.score.toFixed(6)}</strong><small>{threshold === undefined ? 'Model score' : row.score > threshold ? `Above threshold (> ${threshold})` : `Below threshold (≤ ${threshold})`}</small>
           <meter aria-label={`${row.strand === '+' ? 'Forward' : 'Reverse'} strand model score`} min={0} max={1} value={row.score} />
         </div>)}</div> : <>
           <p>{scores.length.toLocaleString()} overlapping 100 bp windows were scored. The table shows the 20 highest model scores. Coordinates refer to the original input sequence.</p>

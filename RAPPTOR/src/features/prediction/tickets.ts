@@ -13,7 +13,17 @@ export interface PredictionTicketSettings {
 }
 
 export class PredictionTicketConfigurationError extends Error {}
-export class PredictionTicketLimitError extends Error {}
+export type PredictionTicketLimitCode =
+  | 'TICKET_RATE_LIMIT_REACHED'
+  | 'GENOME_SCAN_DAILY_LIMIT_REACHED'
+  | 'DAILY_BASE_LIMIT_REACHED';
+export class PredictionTicketLimitError extends Error {
+  constructor(
+    readonly code: PredictionTicketLimitCode,
+    message: string,
+    readonly retryAfterSeconds: number,
+  ) { super(message); }
+}
 export class PredictionTicketInputError extends Error {
   constructor(readonly code: 'INVALID_INPUT' | 'INPUT_TOO_LARGE', message: string) {
     super(message);
@@ -64,6 +74,20 @@ export function readPredictionTicketIssueSettings(): PredictionTicketIssueSettin
   return settings;
 }
 
+export function readLocalPredictionTicketIssueSettings(): PredictionTicketIssueSettings {
+  const shared = readPredictionTicketIssueSettings();
+  const settings = {
+    ...shared,
+    ticketsPerMinute: positiveInteger('RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE'),
+    genomeScansPerDay: positiveInteger('RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY'),
+    basesPerDay: positiveInteger('RAPPTOR_LOCAL_TEST_BASES_PER_DAY'),
+  };
+  if (settings.maxBases > settings.basesPerDay) {
+    throw new PredictionTicketConfigurationError('Per-job bases must not exceed the local-test daily bases limit.');
+  }
+  return settings;
+}
+
 export function readPredictionTicketSettings(): PredictionTicketSettings {
   return {
     ...readPredictionTicketIssueSettings(),
@@ -99,6 +123,57 @@ function randomTicket() {
 function changedRows(result: { meta?: { changes?: unknown } }) {
   const changes = Number(result.meta?.changes);
   return Number.isFinite(changes) ? changes : 0;
+}
+
+async function identifyPredictionTicketLimit(
+  database: D1Database,
+  settings: PredictionTicketIssueSettings,
+  input: { bases: number; mode: PredictionTaskMode; anonymousIpLimit?: boolean },
+  ipHash: string,
+  minuteCutoff: string,
+  dayCutoff: string,
+  now: Date,
+) {
+  try {
+    const activeAt = now.toISOString();
+    const usage = await database.prepare(`SELECT
+        COUNT(CASE WHEN issued_at >= ? THEN 1 END) AS minute_tickets,
+        MIN(CASE WHEN issued_at >= ? THEN issued_at END) AS minute_first,
+        COUNT(CASE WHEN task_kind = 'genome_scan' AND issued_at >= ?
+          AND (used_at IS NOT NULL OR expires_at > ?) THEN 1 END) AS daily_scans,
+        COALESCE(SUM(CASE WHEN task_kind = 'genome_scan' AND issued_at >= ?
+          AND (used_at IS NOT NULL OR expires_at > ?) THEN requested_bases ELSE 0 END), 0) AS daily_bases
+      FROM prediction_tickets WHERE ip_hash = ?`)
+      .bind(minuteCutoff, minuteCutoff, dayCutoff, activeAt, dayCutoff, activeAt, ipHash)
+      .first<{ minute_tickets: number; minute_first: string | null; daily_scans: number; daily_bases: number }>();
+    if (input.mode === 'genome_scan' && Number(usage?.daily_bases || 0) + input.bases > settings.basesPerDay) {
+      return new PredictionTicketLimitError(
+        'DAILY_BASE_LIMIT_REACHED',
+        'The daily submitted-base limit has been reached.',
+        secondsUntilBeijingMidnight(now),
+      );
+    }
+    if (input.mode === 'genome_scan' && input.anonymousIpLimit
+      && Number(usage?.daily_scans || 0) >= settings.genomeScansPerDay) {
+      return new PredictionTicketLimitError(
+        'GENOME_SCAN_DAILY_LIMIT_REACHED',
+        'The daily genome-scan limit has been reached.',
+        secondsUntilBeijingMidnight(now),
+      );
+    }
+    if (Number(usage?.minute_tickets || 0) >= settings.ticketsPerMinute) {
+      const first = usage?.minute_first ? new Date(usage.minute_first).getTime() : now.getTime();
+      const retryAfter = Math.max(1, Math.ceil((first + 60_000 - now.getTime()) / 1000));
+      return new PredictionTicketLimitError(
+        'TICKET_RATE_LIMIT_REACHED',
+        'The per-minute prediction-ticket limit has been reached.',
+        retryAfter,
+      );
+    }
+  } catch {
+    // Keep the atomic INSERT as the source of truth even if diagnostics fail.
+  }
+  return new PredictionTicketLimitError('TICKET_RATE_LIMIT_REACHED', 'Prediction ticket limit reached.', 60);
 }
 
 export async function issuePredictionTicket(
@@ -138,7 +213,9 @@ export async function issuePredictionTicket(
       input.mode, ipHash, dayCutoff, issuedAt, input.bases, settings.basesPerDay,
     )
     .run();
-  if (changedRows(result) !== 1) throw new PredictionTicketLimitError('Prediction ticket limit reached.');
+  if (changedRows(result) !== 1) {
+    throw await identifyPredictionTicketLimit(database, settings, input, ipHash, minuteCutoff, dayCutoff, now);
+  }
   return {
     ticket,
     expiresAt,

@@ -287,7 +287,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
             if "gff3" in output_formats else None
         ),
         "peak_calling": (
-            {"distance": PEAK_DISTANCE, "cutoff": PEAK_CUTOFF, "operator": ">"}
+            {"distance": PEAK_DISTANCE, "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF, "operator": ">"}
             if "gff3" in output_formats else None
         ),
         "completed_at": utc_now(),

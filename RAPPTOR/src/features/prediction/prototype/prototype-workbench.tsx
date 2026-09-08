@@ -11,9 +11,10 @@ import {
   DEFAULT_PROTOTYPE_MODEL_SPEC,
   PROTOTYPE_CANDIDATE_EXAMPLE,
   PROTOTYPE_CANDIDATE_GENOME_EXAMPLE,
+  PROTOTYPE_MAX_STRIDE_BASES,
+  PROTOTYPE_MIN_STRIDE_BASES,
   PROTOTYPE_PREDICTION_SCHEMA_VERSION,
   PROTOTYPE_STRIDE_BASES,
-  PROTOTYPE_STRIDE_OPTIONS,
   createPrototypeRunId,
   formatPrototypeBytes,
   parsePrototypeSequenceInput,
@@ -271,16 +272,17 @@ export default function PrototypePredictionWorkbench({
   const inputError = primaryKind === 'inline' ? inlineState.error : primaryKind === 'upload' ? uploadedInput.error : null;
   const inferredMode: PrototypePredictionMode | null = primaryKind === 'catalog'
     ? (inputCatalog ? 'genome-scan' : null)
-    : primaryKind === 'inline' && !preview
-      ? (parsedInput?.records.length === 1 ? 'candidate' : parsedInput?.mode || null)
-      : parsedInput?.mode || null;
+    : parsedInput?.mode || null;
   const usesExampleReference = (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession)
     || (contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = inferredMode === 'candidate' && contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.accession !== REAL_PREDICTION_REFERENCE.accession;
   const automaticPeaks = !preview && inferredMode !== 'candidate' && strideBases === 1 && service.supportsPeakCalling;
-  const cutoffUnavailable = !preview && (inferredMode === 'candidate' || !service.supportsScoreCutoff || !!service.gff3RequiresStride1);
-  const parametersReady = cutoffUnavailable || (Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1);
+  const cutoffUnavailable = !preview && inferredMode !== 'candidate' && !service.supportsScoreCutoff;
+  const cutoffReady = cutoffUnavailable || (Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1);
+  const strideReady = !inferredMode || (Number.isSafeInteger(strideBases)
+    && strideBases >= PROTOTYPE_MIN_STRIDE_BASES && strideBases <= PROTOTYPE_MAX_STRIDE_BASES);
+  const parametersReady = cutoffReady && strideReady;
   const genomeLimitLabel = formatPredictionMaxRequestBytes(maxGenomeBytes);
   const activeThresholdLabel = inferredMode
     ? thresholdLabel(inferredMode === 'candidate' ? 'candidate' : 'genome-scan')
@@ -440,7 +442,9 @@ export default function PrototypePredictionWorkbench({
       return;
     }
     if (!parametersReady) {
-      setFormError(`${activeThresholdLabel} must be between 0 and 1.`);
+      setFormError(!strideReady
+        ? `Stride must be an integer from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES}.`
+        : `${activeThresholdLabel} must be between 0 and 1.`);
       revealStep(parameterStepRef.current);
       return;
     }
@@ -452,13 +456,14 @@ export default function PrototypePredictionWorkbench({
     try {
       if (preview) {
         const runId = createPrototypeRunId();
-        const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases } };
+        const effectiveStride = strideBases;
+        const base = { schemaVersion: PROTOTYPE_PREDICTION_SCHEMA_VERSION, runId, createdAt: new Date().toISOString(), modelSpec: { ...DEFAULT_PROTOTYPE_MODEL_SPEC, version: modelVersion, strideBases: effectiveStride } };
         let run: PrototypePredictionRun;
         if (inferredMode === 'candidate') {
           if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('100 bp scoring requires exactly one 100 bp sequence.');
           const checksum = primaryKind === 'upload' && uploadedInput.file ? await sha256File(uploadedInput.file) : await sha256Text(parsedInput.normalizedForChecksum);
           run = {
-            ...base, mode: 'candidate', parameters: prototypeParameters('candidate', strandMode, cutoff, strideBases),
+            ...base, mode: 'candidate', parameters: prototypeParameters('candidate', strandMode, cutoff, effectiveStride),
             input: {
               kind: 'candidate', displayName: 'candidate_sequence', format: parsedInput.format, length: 100, checksum,
               sourceKind: primaryKind, fileName: primaryKind === 'upload' ? uploadedInput.file?.name || null : null,
@@ -493,7 +498,7 @@ export default function PrototypePredictionWorkbench({
       let label: string;
       let historyMode: PredictionHistoryEntry['mode'];
       if (inferredMode === 'candidate') {
-        if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length < 100 || primaryKind === 'catalog') throw new Error('Short-sequence prediction requires exactly one sequence of at least 100 bp.');
+        if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('100 bp scoring requires exactly one 100 bp sequence.');
         const sequence = parsedInput.records[0].normalizedSequence;
         if (usesCachedCgr) {
           if (contextCatalog?.kind !== 'catalog' || !/^GCF_\d{9}\.\d+$/.test(contextCatalog.accession)) {
@@ -559,9 +564,9 @@ export default function PrototypePredictionWorkbench({
         submittedAt: new Date().toISOString(),
         label,
         bases,
-        ...(historyMode === 'genome_scan' && service.supportsScoreCutoff ? { cutoff: automaticPeaks ? 0.9 : service.gff3RequiresStride1 ? undefined : cutoff } : {}),
+        ...((historyMode === 'predict' || service.supportsScoreCutoff) ? { cutoff } : {}),
         strandMode,
-        strideBases: historyMode === 'predict' ? 1 : strideBases,
+        strideBases,
       };
       localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), entry)));
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
@@ -594,7 +599,9 @@ export default function PrototypePredictionWorkbench({
     : !contextReady
       ? { title: 'Genome context required', detail: 'Select a catalog genome or upload its FASTA in Step 2.' }
       : !parametersReady
-        ? { title: `Check the ${activeThresholdLabel.toLowerCase()}`, detail: 'Enter a value from 0 to 1.' }
+        ? !strideReady
+          ? { title: 'Check the stride', detail: `Enter a whole number from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES}.` }
+          : { title: `Check the ${activeThresholdLabel.toLowerCase()}`, detail: 'Enter a value from 0 to 1.' }
         : !preview && !localTest && !turnstileToken
           ? { title: 'Human verification required', detail: 'Complete the verification above before queuing the task.' }
         : !preview
@@ -617,7 +624,7 @@ export default function PrototypePredictionWorkbench({
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
-        <form onSubmit={submitPrediction} className={styles.form}>
+        <form onSubmit={submitPrediction} className={styles.form} noValidate>
           <div className={styles.formHeading}>
             <div><span>Automatic analysis</span><h2>Sequence or genome input</h2></div>
           </div>
@@ -646,7 +653,7 @@ export default function PrototypePredictionWorkbench({
             </div>
 
             <div id="prototype-input-status" className={`${styles.inferenceStatus} ${inputError ? styles.invalid : inferredMode ? styles.valid : ''}`} aria-live="polite">
-              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Selected analysis</span><strong>{inferredMode === 'candidate' && (parsedInput?.totalLength || 0) > 100 ? 'Short-sequence sliding-window prediction' : inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Add input to select short-sequence prediction or a sequence scan.</span>}
+              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Selected analysis</span><strong>{inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Add input to select short-sequence prediction or a sequence scan.</span>}
             </div>
           </fieldset>
 
@@ -685,8 +692,8 @@ export default function PrototypePredictionWorkbench({
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
                 <label><span>Strands</span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
-                <label><span>{automaticPeaks ? 'Peak cutoff' : activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={automaticPeaks ? 0.9 : Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPeaks ? 'Automatic peak calling: smoothed model score > 0.9, sigma 1, minimum distance 10 bp.' : cutoffUnavailable ? (inferredMode === 'candidate' ? 'This task returns model scores without applying a classification threshold.' : service.gff3RequiresStride1 ? 'All model scores are retained. Use a 1 bp stride to call peaks automatically.' : 'This service does not support export filtering. All computed scores are retained.') : parametersReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : PORTAL_COPY.genomeScanCutoffHelp) : 'Enter a value from 0 to 1.'}</small></label>
-                <label><span>{PORTAL_TERMS.stride}</span><select aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" disabled={!preview && inferredMode === 'candidate'} value={!preview && inferredMode === 'candidate' ? 1 : strideBases} onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? preview ? 'A 100 bp input contains one window.' : 'Short sequences use overlapping 100 bp windows at a fixed 1 bp stride.' : 'Bases between consecutive 100 bp windows.'}</small></label>
+                <label><span>{automaticPeaks ? 'Peak cutoff' : activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPeaks ? 'Smoothed model scores above this cutoff are called as peaks (sigma 1; minimum distance 10 bp).' : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 scores and sets the peak-calling cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
+                <label><span>{PORTAL_TERMS.stride}</span><input type="number" min={PROTOTYPE_MIN_STRIDE_BASES} max={PROTOTYPE_MAX_STRIDE_BASES} step="1" inputMode="numeric" aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" value={Number.isFinite(strideBases) ? strideBases : ''} aria-invalid={!strideReady} onChange={(event) => setStrideBases(event.target.value === '' ? Number.NaN : Number(event.target.value) as PrototypeStrideBases)} /><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. You can record a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES}, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Enter an integer from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES}.` : `Enter an integer from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES}.`}</small></label>
               </div>
             </fieldset>
           ) : null}

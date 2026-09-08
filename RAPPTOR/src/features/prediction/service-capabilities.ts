@@ -44,7 +44,7 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     if (!metadata.ok || !readiness.ok) throw new Error();
     const model = await metadata.json() as { model_version?: string; genome_scan?: {
       score_cutoff?: { operator?: string };
-      gff3_postprocessing?: { required_stride?: number; smoothing?: { method?: string; sigma?: number; mode?: string }; peaks?: { distance?: number; cutoff?: number; operator?: string; filename?: string } };
+      gff3_postprocessing?: { required_stride?: number; smoothing?: { method?: string; sigma?: number; mode?: string }; peaks?: { distance?: number; cutoff?: number; default_cutoff?: number; configurable_cutoff?: boolean; operator?: string; filename?: string } };
     } };
     const ready = await readiness.json() as { status?: string };
     if (model.model_version !== modelVersion) return { ...initial, reason: 'The active model does not match this deployment.' };
@@ -54,7 +54,8 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
       gff3RequiresStride1: processing?.required_stride === 1,
       supportsPeakCalling: processing?.required_stride === 1 && processing.smoothing?.method === 'gaussian'
         && processing.smoothing.sigma === 1 && processing.smoothing.mode === 'reflect'
-        && processing.peaks?.distance === 10 && processing.peaks.cutoff === 0.9
+        && processing.peaks?.distance === 10
+        && (processing.peaks.configurable_cutoff === true || processing.peaks.cutoff === 0.9)
         && processing.peaks.operator === '>' && processing.peaks.filename === 'peaks.gff3',
     };
   } catch {

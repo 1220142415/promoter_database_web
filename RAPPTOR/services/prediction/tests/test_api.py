@@ -235,7 +235,8 @@ def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
     assert "reference_accession" not in request
     capabilities = api.current_model()["genome_scan"]
     assert capabilities["score_cutoff"]["operator"] == ">"
-    assert capabilities["score_cutoff"]["applies_to"] == ["gff3", "json"]
+    assert capabilities["score_cutoff"]["applies_to"] == ["gff3", "json", "peaks.gff3"]
+    assert capabilities["gff3_postprocessing"]["peaks"]["configurable_cutoff"] is True
     assert capabilities["reverse_complementary"]["default"] is True
     assert "top_k" in capabilities["unsupported_filters"]
 

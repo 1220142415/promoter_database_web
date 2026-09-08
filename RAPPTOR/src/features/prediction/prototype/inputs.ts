@@ -19,12 +19,14 @@ function normalizeSequenceId(header: string, index: number) {
   return header.trim().split(/\s+/, 1)[0] || `contig_${index}`;
 }
 
+const IUPAC_DNA = /^[ACGTUNRYWSKMBDHV]+$/;
+
 function normalizeBases(value: string) {
-  const sequence = value.replace(/\s+/g, '').toUpperCase().replaceAll('U', 'T');
-  if (!sequence || !/^[ACGTN]+$/.test(sequence)) {
-    throw new PrototypeValidationError('Only A, C, G, T, U, and N are accepted in sequence input.');
+  const sequence = value.replace(/\s+/g, '').toUpperCase();
+  if (!sequence || !IUPAC_DNA.test(sequence)) {
+    throw new PrototypeValidationError('Only standard IUPAC DNA bases are accepted in sequence input.');
   }
-  return sequence;
+  return sequence.replaceAll('U', 'T').replace(/[NRYWSKMBDHV]/g, 'N');
 }
 
 export function parsePrototypeSequenceInput(text: string): PrototypeParsedSequenceInput {

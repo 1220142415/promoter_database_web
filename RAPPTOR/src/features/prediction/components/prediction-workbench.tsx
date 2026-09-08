@@ -213,7 +213,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} />
 
       {job?.status === 'succeeded' && summary ? <>
-        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} coordinateSystem={windowCoordinateSystem(summary)} /> : <>
+        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} threshold={entry.cutoff} coordinateSystem={windowCoordinateSystem(summary)} expiresAt={job.artifacts_expires_at ? formatDate(job.artifacts_expires_at) : undefined} /> : <>
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>
@@ -226,8 +226,8 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
           </section> : null}
         </>}
 
-        {artifacts.length > 0 && <ResultDownloads jobId={entry.jobId} artifacts={artifacts} mode={mode} expiresAt={formatDate(job.artifacts_expires_at)} />}
-        <ResultInformation summary={{ ...summary, mode }} inputName={entry.label} refName={mode === 'genome_scan' ? refName : ''} />
+        {!focused && artifacts.length > 0 && <ResultDownloads jobId={entry.jobId} artifacts={artifacts} mode={mode} expiresAt={formatDate(job.artifacts_expires_at)} />}
+        <ResultInformation summary={{ ...summary, mode, ...(mode === 'predict' && entry.cutoff !== undefined ? { score_cutoff: entry.cutoff, score_cutoff_operator: '>' } : {}) }} inputName={entry.label} refName={mode === 'genome_scan' ? refName : ''} />
 
         <aside className={styles.interpret} aria-labelledby="interpret-heading">
           <h2 id="interpret-heading">How to interpret this result</h2>

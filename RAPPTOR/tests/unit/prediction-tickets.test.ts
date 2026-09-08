@@ -6,6 +6,7 @@ import {
   issuePredictionTicket,
   PredictionTicketConfigurationError,
   PredictionTicketLimitError,
+  readLocalPredictionTicketIssueSettings,
   readPredictionTicketSettings,
   releaseGenomeScanQuota,
   reserveGenomeScanQuota,
@@ -36,6 +37,19 @@ class FakeStatement {
   }
 
   async first<T>() {
+    if (this.sql.includes('AS minute_tickets')) {
+      const [minuteCutoff, , dayCutoff, activeAt, , , ipHash] = this.bindings;
+      const rows = this.database.rows.filter((row) => row.ipHash === ipHash);
+      const minuteRows = rows.filter((row) => row.issuedAt >= String(minuteCutoff));
+      const dailyRows = rows.filter((row) => row.mode === 'genome_scan' && row.issuedAt >= String(dayCutoff)
+        && (row.usedAt !== null || row.expiresAt > String(activeAt)));
+      return {
+        minute_tickets: minuteRows.length,
+        minute_first: minuteRows.map((row) => row.issuedAt).sort()[0] || null,
+        daily_scans: dailyRows.length,
+        daily_bases: dailyRows.reduce((total, row) => total + row.requestedBases, 0),
+      } as T;
+    }
     return null as T;
   }
 
@@ -137,6 +151,9 @@ const predictionEnv = [
   'RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY',
   'RAPPTOR_PREDICTION_BASES_PER_DAY',
   'RAPPTOR_PREDICTION_TICKET_TTL_SECONDS',
+  'RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE',
+  'RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY',
+  'RAPPTOR_LOCAL_TEST_BASES_PER_DAY',
   'RAPPTOR_TURNSTILE_SECRET',
   'RAPPTOR_PREDICTION_SERVICE_SECRET',
   'RAPPTOR_PREDICTION_IP_HASH_SECRET',
@@ -172,6 +189,34 @@ describe('prediction ticket settings', () => {
       RAPPTOR_PREDICTION_IP_HASH_SECRET: settings.ipHashSecret,
     });
     expect(readPredictionTicketSettings()).toEqual(settings);
+  });
+
+  it('uses dedicated limits for the authenticated local-test issuer', () => {
+    Object.assign(process.env, {
+      RAPPTOR_PREDICTION_ENABLED: 'on',
+      RAPPTOR_PREDICTION_MODEL_VERSION: settings.modelVersion,
+      RAPPTOR_PREDICTION_MAX_BASES: '1000',
+      RAPPTOR_PREDICTION_TICKETS_PER_MINUTE: '2',
+      RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY: '5',
+      RAPPTOR_PREDICTION_BASES_PER_DAY: '2000',
+      RAPPTOR_PREDICTION_TICKET_TTL_SECONDS: '90',
+      RAPPTOR_PREDICTION_IP_HASH_SECRET: settings.ipHashSecret,
+      RAPPTOR_TURNSTILE_SECRET: settings.turnstileSecret,
+      RAPPTOR_PREDICTION_SERVICE_SECRET: settings.serviceSecret,
+      RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE: '20',
+      RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY: '20',
+      RAPPTOR_LOCAL_TEST_BASES_PER_DAY: '100000000',
+    });
+    expect(readLocalPredictionTicketIssueSettings()).toMatchObject({
+      ticketsPerMinute: 20,
+      genomeScansPerDay: 20,
+      basesPerDay: 100_000_000,
+    });
+    expect(readPredictionTicketSettings()).toMatchObject({
+      ticketsPerMinute: 2,
+      genomeScansPerDay: 5,
+      basesPerDay: 2_000,
+    });
   });
 });
 
@@ -227,6 +272,29 @@ describe('one-time prediction tickets', () => {
     await issuePredictionTicket(database as unknown as D1Database, settings, input, now);
     await expect(issuePredictionTicket(database as unknown as D1Database, settings, input, now))
       .rejects.toThrow(PredictionTicketLimitError);
+  });
+
+  it('identifies minute, daily scan, and daily base limits with accurate reset windows', async () => {
+    const now = new Date('2026-08-27T08:00:00.000Z');
+
+    const minuteDatabase = new FakeD1();
+    const shortInput = { address: 'minute', modelVersion: settings.modelVersion, bases: 100, mode: 'predict' as const };
+    await issuePredictionTicket(minuteDatabase as unknown as D1Database, { ...settings, ticketsPerMinute: 1 }, shortInput, now);
+    await expect(issuePredictionTicket(minuteDatabase as unknown as D1Database, { ...settings, ticketsPerMinute: 1 }, shortInput, now))
+      .rejects.toMatchObject({ code: 'TICKET_RATE_LIMIT_REACHED', retryAfterSeconds: 60 });
+
+    const scanDatabase = new FakeD1();
+    const scanInput = { address: 'scan', modelVersion: settings.modelVersion, bases: 100, mode: 'genome_scan' as const, anonymousIpLimit: true };
+    const scanSettings = { ...settings, ticketsPerMinute: 10, genomeScansPerDay: 1, basesPerDay: 10_000 };
+    await issuePredictionTicket(scanDatabase as unknown as D1Database, scanSettings, scanInput, now);
+    await expect(issuePredictionTicket(scanDatabase as unknown as D1Database, scanSettings, scanInput, now))
+      .rejects.toMatchObject({ code: 'GENOME_SCAN_DAILY_LIMIT_REACHED', retryAfterSeconds: 28_800 });
+
+    const baseDatabase = new FakeD1();
+    const baseSettings = { ...settings, ticketsPerMinute: 10, genomeScansPerDay: 10, basesPerDay: 150 };
+    await issuePredictionTicket(baseDatabase as unknown as D1Database, baseSettings, scanInput, now);
+    await expect(issuePredictionTicket(baseDatabase as unknown as D1Database, baseSettings, scanInput, now))
+      .rejects.toMatchObject({ code: 'DAILY_BASE_LIMIT_REACHED', retryAfterSeconds: 28_800 });
   });
 
   it('separates invalid and oversized inputs from quota failures', async () => {

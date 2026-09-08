@@ -49,6 +49,8 @@ function completedJob(mode: PredictionHistoryEntry['mode']) {
     artifacts_expires_at: '2026-09-08T09:25:25Z',
     result: { artifacts: mode === 'predict' ? [
       { filename: 'scores.json', format: 'json', size_bytes: 200, sha256: 'scores' },
+      { filename: 'scores.gff3', format: 'gff3', size_bytes: 200, sha256: 'score-gff' },
+      { filename: 'peaks.gff3', format: 'gff3', size_bytes: 100, sha256: 'peaks' },
       { filename: 'summary.json', format: 'json', size_bytes: 100, sha256: 'summary' },
     ] : [
       { filename: 'scores.gff3', format: 'gff3', size_bytes: 10, sha256: 'gff' },
@@ -72,7 +74,10 @@ function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?
         ? { mode: 'predict', sequence_bases: 100, genome_context_bases: 4_641_652, window_count: 2, max_score: 0.3121, reverse_complementary: true, ...options.summary }
         : { mode: 'genome_scan', total_bases: 320, genome_context_bases: 320, contig_count: 1, window_count: 442, passing_window_count: 7, stride: 1, score_cutoff: .9, score_cutoff_operator: '>', cgr_source: 'complete_genome_assembly_fasta', reverse_complementary: true, model: { seq_length: 100, model_version: 'candidate-v1', model_asset_status: 'candidate_not_production', checkpoint_sha256: 'checkpoint-test' }, ...options.summary }
       : String(input).endsWith('/artifacts/scores.json')
-        ? [{ strand: '+', score: 0.3121, window_start_0based: 0, anchor_position_0based: 80 }, { strand: '-', score: 0.1842, window_start_0based: 0, anchor_position_0based: 19 }]
+        ? ['+', '-'].flatMap(strand => Array.from({ length: (options.summary?.sequence_bases ?? 100) - 99 }, (_, index) => ({
+          strand, score: strand === '+' ? 0.3121 : 0.1842, window_start_0based: index,
+          anchor_position_0based: strand === '+' ? index + 80 : (options.summary?.sequence_bases ?? 100) - index - 81,
+        })))
         : job);
   }));
 }
@@ -134,7 +139,10 @@ describe('live prediction result layout', () => {
     const focused = { ...saved, mode: 'predict' as const, label: 'Candidate sequence', bases: 4_641_752 };
     localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify([focused]));
     sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(focused));
-    mockApi('predict');
+    mockApi('predict', { summary: {
+      peak_calling: { cutoff: .9, distance: 10, operator: '>' },
+      smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' },
+    } });
 
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
 
@@ -143,6 +151,16 @@ describe('live prediction result layout', () => {
     expect(screen.getByRole('meter', { name: 'Reverse strand model score' })).toHaveAttribute('value', '0.1842');
     expect(screen.queryByText(/did not request GFF3/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Genome browser' })).not.toBeInTheDocument();
+    const result = screen.getByRole('region', { name: '100 bp result' });
+    expect(within(result).getByRole('link', { name: 'Download scores (TSV)' })).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/prediction-results.tsv`);
+    expect(within(result).getByText(/^Available until/)).toHaveTextContent(new Date('2026-09-08T09:25:25Z').toLocaleString());
+    expect(screen.queryByRole('region', { name: 'Download result' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /GFF3/ })).not.toBeInTheDocument();
+    const info = screen.getByRole('region', { name: 'Prediction information' });
+    expect(info).toHaveTextContent('Both strands');
+    expect(info).toHaveTextContent('Cutoff: > 0.9');
+    expect(within(result).getAllByText('Below threshold (≤ 0.9)')).toHaveLength(2);
+    expect(info).not.toHaveTextContent(/Peak cutoff|Min\. distance|σ|Export cutoff/);
   });
 
   it('does not load artifacts when the artifact session rejects access', async () => {
@@ -181,6 +199,8 @@ describe('live prediction result layout', () => {
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('no scores.json artifact');
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Download scores/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Download result' })).not.toBeInTheDocument();
   });
 
   it('refreshes service scan counters while a task is running', async () => {
@@ -221,7 +241,7 @@ describe('live prediction result layout', () => {
   it('uses the completed parameters when local request history disagrees', async () => {
     mockApi('genome_scan', { summary: { score_cutoff: .75, stride: 20, reverse_complementary: false } });
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
-    expect(await screen.findByText('Export cutoff: Model score > 0.75')).toBeInTheDocument();
+    expect(await screen.findByText('Cutoff: Model score > 0.75')).toBeInTheDocument();
     expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('Forward strand only');
     expect(screen.queryByText(/configured threshold/)).not.toBeInTheDocument();
   });
@@ -238,7 +258,7 @@ describe('live prediction result layout', () => {
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
     await screen.findByRole('heading', { name: 'Prediction information' });
     expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('Strands not recorded');
-    expect(screen.getByText('Export cutoff: Not recorded')).toBeInTheDocument();
+    expect(screen.getByText('Cutoff: Not recorded')).toBeInTheDocument();
     expect(screen.queryByText('Same as input genome')).not.toBeInTheDocument();
   });
 
@@ -259,12 +279,27 @@ describe('live prediction result layout', () => {
     expect(screen.getByRole('link', { name: /Model score tracks ZIP/ })).toBeInTheDocument();
   });
 
-  it('keeps a result table for short-sequence tasks that have no GFF3', async () => {
-    mockApi('predict', { summary: { cgr_source: 'reference_accession', reference_accession: 'GCF_000005845.2', genome_context_bases: null } });
+  it('keeps the compact TSV download for older 100 bp tasks that have no GFF3', async () => {
+    mockApi('predict', { missingArtifacts: ['scores.gff3', 'peaks.gff3'], summary: { cgr_source: 'reference_accession', reference_accession: 'GCF_000005845.2', genome_context_bases: null } });
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
-    expect(await screen.findByRole('link', { name: /Prediction results TSV/ })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Download scores (TSV)' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Prediction positions/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Model score tracks' })).not.toBeInTheDocument();
-    expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('No export filtering');
+    expect(screen.getByText('Prediction settings').closest('div')).not.toHaveTextContent('Export cutoff');
+  });
+
+  it('retains the full downloads and peak settings for a 101 bp result', async () => {
+    mockApi('predict', { summary: {
+      sequence_bases: 101, window_count: 4,
+      peak_calling: { cutoff: .9, distance: 10, operator: '>' },
+      smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' },
+    } });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    const downloads = await screen.findByRole('region', { name: 'Download result' });
+    expect(within(downloads).getByRole('link', { name: /Prediction results TSV/ })).toBeInTheDocument();
+    expect(within(downloads).getByRole('link', { name: /Predicted peaks GFF3/ })).toBeInTheDocument();
+    expect(screen.getByText('Cutoff: > 0.9')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Short-sequence result' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Download scores (TSV)' })).not.toBeInTheDocument();
   });
 });

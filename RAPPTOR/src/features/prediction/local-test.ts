@@ -57,7 +57,12 @@ export function readLocalPredictionTestSettings() {
 }
 
 export class LocalPredictionTicketError extends Error {
-  constructor(readonly code: string, message: string, readonly status: number) { super(message); }
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: number,
+    readonly retryAfterSeconds?: number,
+  ) { super(message); }
 }
 
 async function remoteTestTickets(input?: { modelVersion: string; bases: number; mode: PredictionTaskMode }) {
@@ -72,16 +77,31 @@ async function remoteTestTickets(input?: { modelVersion: string; bases: number; 
     });
   } catch { throw new LocalPredictionTicketError('TEST_TICKETS_UNAVAILABLE', 'The remote test-ticket service could not be reached. Check its deployment and retry.', 503); }
   if (!response.ok) {
+    let upstreamCode: string | undefined;
+    try {
+      const result = await response.json() as { error?: { code?: unknown } };
+      if (typeof result?.error?.code === 'string') upstreamCode = result.error.code;
+    } catch { /* Use the status-only fallback below. */ }
+    const retryAfter = Number(response.headers.get('retry-after'));
+    const retryAfterSeconds = Number.isSafeInteger(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
+    const limitErrors: Record<string, string> = {
+      TICKET_RATE_LIMIT_REACHED: `The local development ticket limit has been reached.${retryAfterSeconds ? ` Retry in ${retryAfterSeconds} seconds.` : ' Retry shortly.'}`,
+      GENOME_SCAN_DAILY_LIMIT_REACHED: 'The local development daily genome-scan limit has been reached. Retry after 00:00 Beijing time.',
+      DAILY_BASE_LIMIT_REACHED: 'The local development daily base limit has been reached. Retry after 00:00 Beijing time.',
+    };
+    if (response.status === 429 && upstreamCode && limitErrors[upstreamCode]) {
+      throw new LocalPredictionTicketError(upstreamCode, limitErrors[upstreamCode], 429, retryAfterSeconds);
+    }
     const errors: Record<number, [string, string]> = {
       400: ['INVALID_REQUEST', 'The remote test-ticket service rejected the model or input size.'],
       401: ['TEST_KEY_REJECTED', 'The remote test-ticket service rejected the development key. Check the Cloudflare Secret.'],
       403: ['TEST_KEY_REJECTED', 'The remote test-ticket service denied development access.'],
       404: ['TEST_TICKETS_DISABLED', 'The remote test-ticket endpoint is not deployed or its development key is disabled.'],
       413: ['INPUT_TOO_LARGE', 'Input exceeds the remote test-ticket base limit.'],
-      429: ['RATE_LIMITED', 'The remote test-ticket minute or daily genome limit has been reached. Retry after the limit resets.'],
+      429: ['RATE_LIMITED', 'The remote test-ticket limit has been reached. Retry after the limit resets.'],
     };
     const [code, message] = errors[response.status] || ['TEST_TICKETS_UNAVAILABLE', 'The remote test-ticket service or its D1 configuration is unavailable.'];
-    throw new LocalPredictionTicketError(code, message, errors[response.status] ? response.status : 503);
+    throw new LocalPredictionTicketError(code, message, errors[response.status] ? response.status : 503, retryAfterSeconds);
   }
   try {
     const result: unknown = await response.json();

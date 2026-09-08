@@ -4,6 +4,8 @@
 
 2026-09-07 管理员授权和测试票据接口部署已完成，本地免邮箱提交已实测连通。当前生产使用原有 `RAPPTOR_PREDICTION_ACCESS_MODE=ip`；本次没有改动该模式或模型服务。真实结果和尚未通过的双链验收见 [验收记录](prediction-local-test-acceptance-2026-09-07.md)。
 
+2026-09-08 已修复线上短序列 worker 的 CGR 卡死，并恢复原任务验证正反链结果均正常返回；见 [短序列修复验收](prediction-short-worker-2026-09-08.md)。
+
 ## 一次配置
 
 使用 Node 22.18+，在 RAPPTOR 目录执行：
@@ -36,6 +38,9 @@ Wrangler OAuth 会自动追加 `offline_access`，用于保存可刷新的管理
 | `NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST` | `on` |
 | `RAPPTOR_LOCAL_TEST_ORIGIN` | `http://127.0.0.1:3000` |
 | `RAPPTOR_LOCAL_TEST_TICKET_ORIGIN` | `https://rapptor.duolalab.qzz.io` |
+| `RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE` | 远端内部测试专用；当前部署为 `20` |
+| `RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY` | 远端内部测试专用；当前部署为 `20` |
+| `RAPPTOR_LOCAL_TEST_BASES_PER_DAY` | 远端内部测试专用；当前部署为 `100000000` |
 | `RAPPTOR_PREDICTION_SERVICE_URL` | `https://4090server.duolalab.qzz.io` |
 | `RAPPTOR_PREDICTION_MODEL_VERSION` | `candidate-github-93cf` |
 | `RAPPTOR_LOCAL_TEST_SECRET` | 本机随机生成；不公开 |
@@ -46,7 +51,7 @@ Wrangler OAuth 会自动追加 `offline_access`，用于保存可刷新的管理
 
 1. 页面验证真实序列后，请求本地 `/api/prediction-tickets`。
 2. 本地后端持开发密钥向远端内部接口请求真实票据。内部接口先校验密钥，再访问 D1；无密钥返回 404，错误密钥返回 401。
-3. D1 使用原有一次性票据表，只保存票据哈希。全部开发请求共享独立配额标识，无法通过换 IP 或轮换密钥重置配额。沿用线上模型、每任务 6,000,000 bp、每分钟 2 张票据、每日 12,000,000 基因组 bp 和 120 秒有效期。
+3. D1 使用原有一次性票据表，只保存票据哈希。全部开发请求共享独立配额标识，无法通过换 IP 或轮换密钥重置配额。内部入口沿用线上模型、每任务 6,000,000 bp 和 120 秒有效期，但使用独立的每分钟 20 张票据、每日 20 个基因组任务和每日 100,000,000 基因组 bp 限额；公开入口仍使用原有正式配额。
 4. 本地 `/api/predictions/jobs` 将票据和真实输入发送原有模型服务。该服务继续通过既有内部消费接口原子校验过期、重复使用、模型身份和实际输入大小。本地任务不创建用户、预留用户每日配额或登记邮件通知。
 5. 原有访问令牌保护任务状态和产物。独立测试接口 GET 仅检查配置与 D1 表，不生成票据或消耗配额。页面可重新检查可用性而不清除输入。
 

@@ -65,6 +65,7 @@ class ScanArtifactWriter:
         self.records = tuple(records)
         self.stride = int(stride)
         self.score_cutoff = float(score_cutoff) if score_cutoff is not None else None
+        self.peak_cutoff = self.score_cutoff if self.score_cutoff is not None else PEAK_CUTOFF
         self._counter = 0
         self._gff_counter = 0
         self._json_counter = 0
@@ -105,7 +106,7 @@ class ScanArtifactWriter:
                     peak_handle.write(f"##RAPPtor-scan-stride {self.stride}\n")
                     peak_handle.write(f"##RAPPtor-score-smoothing gaussian sigma={SMOOTHING_SIGMA:g} mode=reflect\n")
                     peak_handle.write(f"##RAPPtor-peak-distance {PEAK_DISTANCE}\n")
-                    peak_handle.write(f"##RAPPtor-peak-cutoff >{PEAK_CUTOFF:g}\n")
+                    peak_handle.write(f"##RAPPtor-peak-cutoff >{self.peak_cutoff:g}\n")
                 elif fmt == "json":
                     self._open_text("scores.json", "json")
                     self._handles["json"].write("[\n")
@@ -224,7 +225,7 @@ class ScanArtifactWriter:
                 ordered_scores.astype(float), SMOOTHING_SIGMA, mode="reflect"
             )
             indices, _ = find_peaks(ordered_smoothed, distance=PEAK_DISTANCE)
-            ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > PEAK_CUTOFF}
+            ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > self.peak_cutoff}
             if strand == "+":
                 smoothed_scores = ordered_smoothed
                 peak_indices = ordered_peaks

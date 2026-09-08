@@ -49,6 +49,7 @@ class ServiceSettings:
     max_batch_size: int
     default_batch_size: int
     job_timeout_seconds: int
+    job_stall_timeout_seconds: int
     result_ttl_seconds: int
     failure_ttl_seconds: int
     ticket_validation_mode: str
@@ -73,7 +74,7 @@ class ServiceSettings:
             "default_scan_stride": self.default_scan_stride,
             "max_batch_size": self.max_batch_size,
             "default_batch_size": self.default_batch_size,
-            "job_timeout_seconds": self.job_timeout_seconds,
+            "job_stall_timeout_seconds": self.job_stall_timeout_seconds,
             "result_ttl_seconds": self.result_ttl_seconds,
             "failure_ttl_seconds": self.failure_ttl_seconds,
             "worker_heartbeat_ttl": self.worker_heartbeat_ttl,
@@ -82,6 +83,8 @@ class ServiceSettings:
         invalid = [name for name, value in positive.items() if value <= 0]
         if invalid:
             raise ValueError(f"service settings must be positive: {', '.join(invalid)}")
+        if self.job_timeout_seconds != -1:
+            raise ValueError("job_timeout_seconds must be -1; stalled jobs are controlled by progress watchdog")
         if not 0.0 <= self.max_ambiguous_fraction <= 1.0:
             raise ValueError("max_ambiguous_fraction must be between 0 and 1")
         if not self.min_scan_stride <= self.default_scan_stride <= self.max_scan_stride:
@@ -130,7 +133,8 @@ class ServiceSettings:
             default_scan_stride=int(os.getenv("RAPPTOR_DEFAULT_SCAN_STRIDE", "1")),
             max_batch_size=int(os.getenv("RAPPTOR_MAX_BATCH_SIZE", "8192")),
             default_batch_size=int(os.getenv("RAPPTOR_DEFAULT_BATCH_SIZE", "1024")),
-            job_timeout_seconds=int(os.getenv("RAPPTOR_JOB_TIMEOUT_SECONDS", "3600")),
+            job_timeout_seconds=int(os.getenv("RAPPTOR_JOB_TIMEOUT_SECONDS", "-1")),
+            job_stall_timeout_seconds=int(os.getenv("RAPPTOR_JOB_STALL_TIMEOUT_SECONDS", "3600")),
             result_ttl_seconds=int(os.getenv("RAPPTOR_RESULT_TTL_SECONDS", str(7 * 24 * 3600))),
             failure_ttl_seconds=int(os.getenv("RAPPTOR_FAILURE_TTL_SECONDS", str(24 * 3600))),
             ticket_validation_mode=os.getenv("RAPPTOR_TICKET_VALIDATION_MODE", "cloudflare").strip().lower(),

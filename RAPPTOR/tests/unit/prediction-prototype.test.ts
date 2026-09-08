@@ -195,11 +195,23 @@ describe('prediction prototype core', () => {
     expect(parsePrototypeGenomeFastaMetadata('>chr one\nACGTNN\n>plasmid\nACGT')).toEqual([{ sequenceId: 'chr', length: 6 }, { sequenceId: 'plasmid', length: 4 }]);
   });
 
+  it('accepts IUPAC ambiguity codes in genome FASTA and normalizes them for prediction', () => {
+    const ambiguous = 'ACGTURYSWKMBDHVN';
+    expect(parsePrototypeGenomeFastaMetadata(`>chr\n${ambiguous}`)).toEqual([{ sequenceId: 'chr', length: 16 }]);
+    const parsed = parsePrototypeSequenceInput(`>chr\n${ambiguous}${'ACGT'.repeat(25)}`);
+    expect(parsed.records[0].normalizedSequence).toBe(`ACGTT${'N'.repeat(11)}${'ACGT'.repeat(25)}`);
+    expect(() => parsePrototypeGenomeFastaMetadata('>chr\nACGTZ')).toThrow('standard IUPAC DNA bases');
+  });
+
   it('validates mode-specific parameters and input boundaries', () => {
     expect(prototypeParameters('candidate', 'both', 0.9)).toEqual({ mode: 'candidate', strandMode: 'both', cutoff: 0.9, strideBases: 1 });
-    expect(prototypeParameters('genome-scan', 'forward', 0.9, 10)).toEqual({ mode: 'genome-scan', strandMode: 'forward', cutoff: 0.9, strideBases: 10 });
+    expect(prototypeParameters('candidate', 'both', 0.9, 37)).toEqual({ mode: 'candidate', strandMode: 'both', cutoff: 0.9, strideBases: 37 });
+    expect(prototypeParameters('genome-scan', 'forward', 0.9, 37)).toEqual({ mode: 'genome-scan', strandMode: 'forward', cutoff: 0.9, strideBases: 37 });
+    expect(prototypeParameters('genome-scan', 'forward', 0.9, 100).strideBases).toBe(100);
     expect(() => prototypeParameters('candidate', 'both', Number.NaN)).toThrow('between 0 and 1');
-    expect(() => prototypeParameters('genome-scan', 'both', 0.9, 3)).toThrow('supported scan stride');
+    expect(() => prototypeParameters('genome-scan', 'both', 0.9, 0)).toThrow('integer from 1 to 100');
+    expect(() => prototypeParameters('genome-scan', 'both', 0.9, 101)).toThrow('integer from 1 to 100');
+    expect(() => prototypeParameters('genome-scan', 'both', 0.9, 1.5)).toThrow('integer from 1 to 100');
     expect(() => validatePrototypeCandidateLength(100)).not.toThrow();
     expect(() => validatePrototypeCandidateLength(101)).toThrow('exactly one 100 bp');
     expect(() => validatePrototypeInlineLength(10_000)).not.toThrow();

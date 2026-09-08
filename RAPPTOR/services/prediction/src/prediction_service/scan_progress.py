@@ -9,7 +9,10 @@ def count_scan_windows(lengths, window_length, stride, reverse):
 
 
 class ScanProgress:
-    def __init__(self, total_windows, publish, *, clock=monotonic, interval=1.0):
+    def __init__(
+        self, total_windows, publish, *, clock=monotonic, interval=1.0,
+        stage="scanning", percent_start=15.0, percent_span=75.0,
+    ):
         self.total_windows = total_windows
         self.windows = 0
         self.publish = publish
@@ -19,6 +22,9 @@ class ScanProgress:
         self.sequence_start = 0
         self.contig = None
         self.strand = None
+        self.stage = stage
+        self.percent_start = percent_start
+        self.percent_span = percent_span
 
     def snapshot(self):
         return {
@@ -43,7 +49,7 @@ class ScanProgress:
             return
         fraction = self.windows / self.total_windows if self.total_windows else 0
         self.publish(
-            "scanning", 15.0 + 75.0 * fraction,
+            self.stage, self.percent_start + self.percent_span * fraction,
             **self.snapshot(), contig=self.contig, strand=self.strand, **extra,
         )
         self.last_report = now

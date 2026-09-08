@@ -50,6 +50,16 @@ describe('protected 100 bp result', () => {
     expect(screen.getByText(/201 overlapping 100 bp windows were scored. The table shows the 20 highest model scores/)).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '201–300' })).toBeInTheDocument();
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Download scores/ })).not.toBeInTheDocument();
+  });
+  it('classifies focused scores with the selected model threshold', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json([
+      { strand: '+', score: .91, window_start_0based: 0, anchor_position_0based: 80 },
+      { strand: '-', score: .9, window_start_0based: 0, anchor_position_0based: 19 },
+    ])));
+    render(<FocusedJobResult jobId="threshold-job" bothStrands hasScores threshold={.9} />);
+    expect(await screen.findByText('Above threshold (> 0.9)')).toBeInTheDocument();
+    expect(screen.getByText('Below threshold (≤ 0.9)')).toBeInTheDocument();
   });
 
   it('maps reverse windows onto the original input sequence in the ranked table', async () => {

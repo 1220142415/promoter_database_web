@@ -28,6 +28,7 @@ beforeEach(() => {
     RAPPTOR_LOCAL_TEST_ORIGIN: 'http://127.0.0.1:3000', RAPPTOR_LOCAL_TEST_TICKET_ORIGIN: 'https://tickets.example.test', RAPPTOR_LOCAL_TEST_SECRET: secret,
     RAPPTOR_PREDICTION_ENABLED: 'on', RAPPTOR_PREDICTION_MODEL_VERSION: input.modelVersion, RAPPTOR_PREDICTION_MAX_BASES: '6000000',
     RAPPTOR_PREDICTION_TICKETS_PER_MINUTE: '2', RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY: '5', RAPPTOR_PREDICTION_BASES_PER_DAY: '12000000', RAPPTOR_PREDICTION_TICKET_TTL_SECONDS: '120',
+    RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE: '20', RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY: '20', RAPPTOR_LOCAL_TEST_BASES_PER_DAY: '100000000',
     RAPPTOR_PREDICTION_IP_HASH_SECRET: 'test-hash-secret', RAPPTOR_PREDICTION_SERVICE_URL: 'https://service.example.test',
   })) vi.stubEnv(name, value);
 });
@@ -46,6 +47,10 @@ describe('protected remote development issuer', () => {
     expect(state.bindings[0][0]).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(state.bindings)).not.toContain(result.ticket);
     expect(JSON.stringify(state.bindings)).not.toContain(secret);
+    expect(state.bindings[0][10]).toBe(20);
+    expect(state.bindings[0][11]).toBe(1);
+    expect(state.bindings[0][16]).toBe(20);
+    expect(state.bindings[0][22]).toBe(100_000_000);
     expect(requirePredictionAuth).not.toHaveBeenCalled();
   });
   it('probes configuration without issuing a ticket', async () => {
@@ -73,7 +78,10 @@ describe('protected remote development issuer', () => {
   });
   it('retains D1 rate limits and reports database outages', async () => {
     state.changes = 0;
-    expect((await issue(remote())).status).toBe(429);
+    const limited = await issue(remote());
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toMatchObject({ error: { code: 'TICKET_RATE_LIMIT_REACHED' } });
+    expect(limited.headers.get('retry-after')).toBe('60');
     state.dbAvailable = false;
     expect((await issue(remote())).status).toBe(503);
   });
@@ -87,6 +95,21 @@ describe('local ticket relay and job creation', () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject(issued);
     expect(requirePredictionAuth).not.toHaveBeenCalled();
+  });
+  it('relays a specific remote quota reason and retry interval', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(
+      { error: { code: 'DAILY_BASE_LIMIT_REACHED', message: 'remote details' } },
+      { status: 429, headers: { 'Retry-After': '28800' } },
+    )));
+    const response = await localTicket(request('/api/prediction-tickets'));
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('28800');
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'DAILY_BASE_LIMIT_REACHED',
+        message: 'The local development daily base limit has been reached. Retry after 00:00 Beijing time.',
+      },
+    });
   });
   it('keeps job tokens and skips user creation, quota reservations and notifications for local tests', async () => {
     const created = { job_id: 'b'.repeat(32), access_token: 'protected-job-token' };

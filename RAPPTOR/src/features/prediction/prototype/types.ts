@@ -4,8 +4,9 @@ export const LEGACY_PROTOTYPE_PREDICTION_SCHEMA_VERSION = 1 as const;
 export const PROTOTYPE_WINDOW_BASES = 100 as const;
 export const PROTOTYPE_ANCHOR_BASE = 80 as const;
 export const PROTOTYPE_CGR_SIZE = 128 as const;
-export const PROTOTYPE_STRIDE_OPTIONS = [1, 5, 10, 20] as const;
-export type PrototypeStrideBases = typeof PROTOTYPE_STRIDE_OPTIONS[number];
+export const PROTOTYPE_MIN_STRIDE_BASES = 1 as const;
+export const PROTOTYPE_MAX_STRIDE_BASES = 100 as const;
+export type PrototypeStrideBases = number;
 export const PROTOTYPE_STRIDE_BASES: PrototypeStrideBases = 1;
 
 export type PrototypePredictionMode = 'candidate' | 'genome-scan';

@@ -15,6 +15,19 @@ it('prefers peaks GFF3 while retaining both raw BigWigs as one download', () => 
 
 it('shows the recorded peak rule without conflating it with a window export cutoff', () => {
   render(<ResultInformation inputName="input.fa" refName="a" summary={{ mode: 'genome_scan', score_cutoff: .4, peak_count: 0, peak_calling: { cutoff: .9, distance: 10, operator: '>' }, smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' } }} />);
-  expect(screen.getByText(/Peak cutoff: smoothed model score > 0.9/)).toBeInTheDocument();
+  expect(screen.getByText('Cutoff: > 0.9')).toBeInTheDocument();
   expect(screen.queryByText(/Export cutoff/)).not.toBeInTheDocument();
+});
+
+it('keeps peak parameters and downloads for short sequences longer than 100 bp', () => {
+  const artifacts = ['scores.json', 'peaks.gff3'].map(filename => ({ filename, format: filename.split('.').at(-1)!, size_bytes: 1, sha256: 'hash' }));
+  render(<>
+    <ResultDownloads jobId="long" artifacts={artifacts} mode="predict" expiresAt="tomorrow" />
+    <ResultInformation inputName="sequence" refName="" summary={{ mode: 'predict', sequence_bases: 101, reverse_complementary: true, peak_calling: { cutoff: .9, distance: 10, operator: '>' }, smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' } }} />
+  </>);
+  expect(screen.getByRole('region', { name: 'Download result' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /Prediction results TSV/ })).toHaveAttribute('href', '/api/predictions/jobs/long/artifacts/prediction-results.tsv');
+  expect(screen.getByRole('link', { name: /Predicted peaks/ })).toBeInTheDocument();
+  expect(screen.getByText('Cutoff: > 0.9')).toBeInTheDocument();
+  expect(screen.queryByText(/Min\. distance|σ/)).not.toBeInTheDocument();
 });

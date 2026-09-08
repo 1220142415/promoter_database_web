@@ -70,6 +70,22 @@ describe('private remote ticket client', () => {
     await expect(requestLocalPredictionTicket(input)).rejects.toMatchObject({ status });
     try { await requestLocalPredictionTicket(input); } catch (cause) { expect((cause as Error).message).not.toContain(secret); }
   });
+  it.each([
+    ['TICKET_RATE_LIMIT_REACHED', 'ticket limit', 45],
+    ['GENOME_SCAN_DAILY_LIMIT_REACHED', 'daily genome-scan limit', 12_345],
+    ['DAILY_BASE_LIMIT_REACHED', 'daily base limit', 12_345],
+  ])('reports the specific remote quota %s', async (code, message, retryAfter) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(
+      { error: { code, message: secret } },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+    )));
+    await expect(requestLocalPredictionTicket(input)).rejects.toMatchObject({
+      code,
+      message: expect.stringContaining(message),
+      status: 429,
+      retryAfterSeconds: retryAfter,
+    });
+  });
   it.each(['local-fake', 'b'.repeat(43)])('rejects fake or expired tickets', async (ticket) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ticket, modelVersion: input.modelVersion, maxBases: input.bases, expiresAt: '2020-01-01T00:00:00Z' })));
     await expect(requestLocalPredictionTicket(input)).rejects.toThrow('invalid or expired');

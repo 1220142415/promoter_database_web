@@ -240,6 +240,13 @@
 .panelHeading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; }
 .panelHeading h2 { margin: 0; font: 600 24px/1.18 Georgia, serif; }
 .panelHeading > p { max-width: 520px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.focusedHeading { flex-wrap: wrap; gap: 12px 24px; margin-bottom: 14px; }
+.focusedDownload { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; }
+.focusedDownload a { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; border: 1px solid var(--line-strong); border-radius: 5px; background: white; padding: 7px 11px; color: var(--teal-dark); font-size: 11px; font-weight: 750; text-decoration: none; }
+.focusedDownload a:hover { border-color: var(--teal); background: var(--teal-soft); }
+.focusedDownload a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.focusedDownload svg { width: 16px; height: 16px; }
+.focusedDownload small { color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .resultViewTools { max-width: 540px; display: grid; justify-items: end; gap: 11px; }
 .resultViewTools > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; text-align: right; }
 .runContext span { color: var(--teal-dark); font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
@@ -354,6 +361,7 @@
 }
 
 @media (max-width: 720px) {
+  .focusedDownload { justify-content: flex-start; }
   .workspace { grid-template-columns: 1fr; }
   .recentPanel { position: static; }
   .downloads a { align-items: flex-start; flex-direction: column; gap: 7px; }

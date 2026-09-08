@@ -83,14 +83,26 @@ export async function POST(request: Request) {
     return Response.json(ticket, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (cause) {
     if (cause instanceof LocalPredictionTicketError) {
-      return Response.json({ error: { code: cause.code, message: cause.message } }, { status: cause.status, headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(
+        { error: { code: cause.code, message: cause.message } },
+        {
+          status: cause.status,
+          headers: {
+            'Cache-Control': 'no-store',
+            ...(cause.retryAfterSeconds ? { 'Retry-After': String(cause.retryAfterSeconds) } : {}),
+          },
+        },
+      );
     }
     if (cause instanceof PredictionProviderError) return predictionErrorResponse(cause);
     if (cause instanceof PredictionTicketInputError) {
       return Response.json({ error: { code: cause.code, message: cause.message } }, { status: cause.code === 'INPUT_TOO_LARGE' ? 413 : 400 });
     }
     if (cause instanceof PredictionTicketLimitError) {
-      return Response.json({ error: { code: 'RATE_LIMITED', message: cause.message } }, { status: 429, headers: { 'Retry-After': '60' } });
+      return Response.json(
+        { error: { code: cause.code, message: cause.message } },
+        { status: 429, headers: { 'Retry-After': String(cause.retryAfterSeconds) } },
+      );
     }
     if (cause instanceof PredictionTicketConfigurationError) {
       return Response.json({ error: { code: 'UNAVAILABLE', message: cause.message } }, { status: 503 });

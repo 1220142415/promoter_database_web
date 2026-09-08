@@ -235,7 +235,8 @@ def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
     assert "reference_accession" not in request
     capabilities = api.current_model()["genome_scan"]
     assert capabilities["score_cutoff"]["operator"] == ">"
-    assert capabilities["score_cutoff"]["applies_to"] == ["gff3", "json"]
+    assert capabilities["score_cutoff"]["applies_to"] == ["gff3", "json", "peaks.gff3"]
+    assert capabilities["gff3_postprocessing"]["peaks"]["configurable_cutoff"] is True
     assert capabilities["reverse_complementary"]["default"] is True
     assert "top_k" in capabilities["unsupported_filters"]
 
@@ -297,6 +298,7 @@ def test_submit_and_token_protected_status(tmp_path, monkeypatch):
     job_id = created.job_id
     token = created.access_token
     assert api.Job.fetch(job_id, connection=connection).origin == "prediction:genome_scan"
+    assert api.Job.fetch(job_id, connection=connection).timeout == -1
     assert created.status_url == f"/v1/jobs/{job_id}"
     assert created.poll_after_seconds == 3
     assert created.queue.ahead == 0
@@ -308,6 +310,7 @@ def test_submit_and_token_protected_status(tmp_path, monkeypatch):
     assert status.status == "queued"
     assert status.queue.model_dump() == {
         "ahead": 0,
+        "estimated_wait_seconds": None,
         "waiting": 1,
         "total_waiting": 1,
         "waiting_by_mode": {"predict": 0, "genome_scan": 1},
@@ -322,6 +325,47 @@ def test_submit_and_token_protected_status(tmp_path, monkeypatch):
     assert second_status.queue.ahead == 1
     assert second_status.queue.waiting == 2
     assert second_status.queue.total_waiting == 2
+
+
+def test_job_status_exposes_estimated_wait_without_changing_token_auth(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, "estimate_wait_seconds", lambda *args, **kwargs: 123)
+    created = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 300,
+        genome_context="ACGT" * 100,
+    ), authorization=None))
+    assert created.queue.estimated_wait_seconds == 123
+    with pytest.raises(HTTPException) as hidden:
+        api.get_job(created.job_id, "wrong-token")
+    assert hidden.value.status_code == 404
+    assert api.get_job(created.job_id, created.access_token).queue.estimated_wait_seconds == 123
+
+
+def test_submission_records_stride_and_strand_aware_window_workload(tmp_path, monkeypatch):
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    (model_dir / "model_config.json").write_text('{"seq_length":100}', encoding="utf-8")
+    api, connection = load_api(tmp_path, monkeypatch)
+
+    prediction = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 300,
+        genome_context="ACGT" * 100,
+        reverse_complementary=True,
+    ), authorization=None))
+    scan = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="genome_scan",
+        complete_genome=True,
+        fasta=">one\n" + "A" * 300 + "\n>two\n" + "C" * 120,
+        stride=20,
+        reverse_complementary=False,
+    ), authorization=None))
+
+    assert api.Job.fetch(prediction.job_id, connection=connection).meta["eta_total_windows"] == 402
+    assert api.Job.fetch(scan.job_id, connection=connection).meta["eta_total_windows"] == 13
 
 
 def test_status_separates_load_from_job_polling(tmp_path, monkeypatch):

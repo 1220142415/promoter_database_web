@@ -56,7 +56,7 @@ class PeakCallingTests(unittest.TestCase):
             for row in raw_rows:
                 self.assertEqual(row['anchor_position_0based'] - row['window_start_0based'], 80 if row['strand'] == '+' else 19)
 
-    def test_cutoff_is_strict_and_independent_of_window_export_cutoff(self):
+    def test_cutoff_is_strict_and_also_controls_peak_calling(self):
         with TemporaryDirectory() as folder:
             path = Path(folder)
             writer = self.writer(path, [('a', 140)], score_cutoff=1)
@@ -65,7 +65,8 @@ class PeakCallingTests(unittest.TestCase):
             writer.close(success=True)
             self.assertEqual(len(rows(path/'scores.gff3')), 0)
             self.assertEqual(json.loads((path/'scores.json').read_text()), [])
-            self.assertEqual(writer.peak_count, 1)
+            self.assertEqual(writer.peak_count, 0)
+            self.assertIn('##RAPPtor-peak-cutoff >1', (path/'peaks.gff3').read_text())
 
         with TemporaryDirectory() as folder:
             path = Path(folder)

@@ -1,7 +1,7 @@
 import { usageDatabase } from '@/features/usage/store';
 import {
   issuePredictionTicket, PredictionTicketInputError, PredictionTicketLimitError,
-  readPredictionTicketIssueSettings, serviceSecretMatches,
+  readLocalPredictionTicketIssueSettings, serviceSecretMatches,
 } from '@/features/prediction/tickets';
 
 export const dynamic = 'force-dynamic';
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   const rejection = denied(request);
   if (rejection) return rejection;
   try {
-    const settings = readPredictionTicketIssueSettings();
+    const settings = readLocalPredictionTicketIssueSettings();
     const database = usageDatabase();
     if (!database) return unavailable();
     await database.prepare('SELECT ticket_hash FROM prediction_tickets LIMIT 0').all();
@@ -56,13 +56,13 @@ export async function POST(request: Request) {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Invalid development ticket request.' } }, { status: 400, headers });
   }
   try {
-    const settings = readPredictionTicketIssueSettings();
+    const settings = readLocalPredictionTicketIssueSettings();
     const database = usageDatabase();
     if (!database) return unavailable();
     const ticket = await issuePredictionTicket(database, settings, {
       // All development clients share a separate quota. Rotation does not reset it.
       address: 'internal:local-real-prediction-test',
-      modelVersion: body.modelVersion, bases: body.bases, mode: body.mode,
+      modelVersion: body.modelVersion, bases: body.bases, mode: body.mode, anonymousIpLimit: true,
     });
     return Response.json(ticket, { status: 201, headers });
   } catch (cause) {
@@ -70,7 +70,10 @@ export async function POST(request: Request) {
       return Response.json({ error: { code: cause.code, message: cause.message } }, { status: cause.code === 'INPUT_TOO_LARGE' ? 413 : 400, headers });
     }
     if (cause instanceof PredictionTicketLimitError) {
-      return Response.json({ error: { code: 'RATE_LIMITED', message: cause.message } }, { status: 429, headers: { ...headers, 'Retry-After': '60' } });
+      return Response.json(
+        { error: { code: cause.code, message: cause.message } },
+        { status: 429, headers: { ...headers, 'Retry-After': String(cause.retryAfterSeconds) } },
+      );
     }
     return unavailable();
   }

@@ -4,8 +4,9 @@ import {
   PROTOTYPE_ANCHOR_BASE,
   PROTOTYPE_CGR_SIZE,
   PROTOTYPE_PREDICTION_SCHEMA_VERSION,
+  PROTOTYPE_MIN_STRIDE_BASES,
+  PROTOTYPE_MAX_STRIDE_BASES,
   PROTOTYPE_STRIDE_BASES,
-  PROTOTYPE_STRIDE_OPTIONS,
   PROTOTYPE_WINDOW_BASES,
   type PrototypeGenomeContext,
   type PrototypePredictionRun,
@@ -244,6 +245,13 @@ function isGenomeContext(value: unknown): value is PrototypeGenomeContext {
 function nullableString(value: unknown) { return value === null || typeof value === 'string'; }
 function nullableSafeInteger(value: unknown) { return value === null || (Number.isSafeInteger(value) && Number(value) >= 0); }
 
+function validStride(value: unknown) {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= PROTOTYPE_MIN_STRIDE_BASES
+    && value <= PROTOTYPE_MAX_STRIDE_BASES;
+}
+
 function hasValidParameters(value: Record<string, unknown>, mode: unknown) {
   const shared = value.mode === mode
     && (value.strandMode === 'both' || value.strandMode === 'forward')
@@ -251,8 +259,7 @@ function hasValidParameters(value: Record<string, unknown>, mode: unknown) {
     && Number.isFinite(value.cutoff)
     && value.cutoff >= 0
     && value.cutoff <= 1
-    && typeof value.strideBases === 'number'
-    && PROTOTYPE_STRIDE_OPTIONS.includes(value.strideBases as (typeof PROTOTYPE_STRIDE_OPTIONS)[number]);
+    && validStride(value.strideBases);
   return shared;
 }
 
@@ -261,8 +268,7 @@ function hasValidModelSpec(value: Record<string, unknown>) {
     && value.windowBases === PROTOTYPE_WINDOW_BASES
     && value.anchorBase === PROTOTYPE_ANCHOR_BASE
     && value.cgrSize === PROTOTYPE_CGR_SIZE
-    && typeof value.strideBases === 'number'
-    && PROTOTYPE_STRIDE_OPTIONS.includes(value.strideBases as (typeof PROTOTYPE_STRIDE_OPTIONS)[number]);
+    && validStride(value.strideBases);
 }
 
 function isPrototypePredictionRun(value: unknown): value is PrototypePredictionRun {

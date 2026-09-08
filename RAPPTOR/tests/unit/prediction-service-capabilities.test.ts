@@ -9,7 +9,9 @@ describe('queued service capability detection', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : {
       model_version: 'candidate-github-93cf', genome_scan: { gff3_postprocessing: {
         required_stride: 1, smoothing: { method: 'gaussian', sigma, mode: 'reflect' },
-        peaks: { distance: 10, cutoff: .9, operator: '>', filename: 'peaks.gff3' },
+        peaks: sigma === 1
+          ? { distance: 10, default_cutoff: .9, configurable_cutoff: true, operator: '>', filename: 'peaks.gff3' }
+          : { distance: 10, cutoff: .9, operator: '>', filename: 'peaks.gff3' },
       } },
     })));
     expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, gff3RequiresStride1: true, supportsPeakCalling: sigma === 1 });

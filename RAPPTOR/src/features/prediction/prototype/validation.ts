@@ -1,12 +1,12 @@
 import {
   PROTOTYPE_STRIDE_BASES,
-  PROTOTYPE_STRIDE_OPTIONS,
+  PROTOTYPE_MIN_STRIDE_BASES,
+  PROTOTYPE_MAX_STRIDE_BASES,
   type PrototypePredictionMode,
   type PrototypeCandidateParameters,
   type PrototypeGenomeScanParameters,
   type PrototypePredictionParameters,
   type PrototypeStrandMode,
-  type PrototypeStrideBases,
 } from './types';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 
@@ -39,10 +39,10 @@ export function prototypeParameters(
   if (!Number.isFinite(cutoff) || cutoff < 0 || cutoff > 1) {
     throw new PrototypeValidationError(`${mode === 'candidate' ? 'Model threshold' : 'Export cutoff'} must be between 0 and 1.`);
   }
-  if (!PROTOTYPE_STRIDE_OPTIONS.includes(strideBases as PrototypeStrideBases)) {
-    throw new PrototypeValidationError('Choose a supported scan stride.');
+  if (!Number.isSafeInteger(strideBases) || strideBases < PROTOTYPE_MIN_STRIDE_BASES || strideBases > PROTOTYPE_MAX_STRIDE_BASES) {
+    throw new PrototypeValidationError(`Scan stride must be an integer from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES}.`);
   }
-  const base = { strandMode, cutoff: Math.round(cutoff * 100) / 100, strideBases: strideBases as PrototypeStrideBases };
+  const base = { strandMode, cutoff: Math.round(cutoff * 100) / 100, strideBases };
   return { mode, ...base };
 }
 

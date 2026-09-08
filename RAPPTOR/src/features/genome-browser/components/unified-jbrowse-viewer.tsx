@@ -192,14 +192,16 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const collectionScores = Boolean(experimental?.assets.promoterScoresPlus && experimental.assets.promoterScoresMinus);
     const scoreAssets = collectionScores ? experimental!.assets : prediction?.assets;
     const scoreAssetBase = collectionScores ? experimental!.assetBase : prediction?.assetBase || '';
-    const smoothScores = !collectionScores && prediction?.smoothScoreTrack;
-    const scoreSmoothing = collectionScores ? 'Gaussian σ = 1 (precomputed)' : smoothScores ? 'Gaussian σ = 1' : undefined;
+    const precomputedSigma = collectionScores ? 1 : prediction?.precomputedScoreSigma;
+    const scoreAccession = collectionScores ? experimental!.accession : prediction?.assemblyName;
+    const smoothScores = precomputedSigma === undefined && prediction?.smoothScoreTrack;
+    const scoreSmoothing = precomputedSigma !== undefined ? `Gaussian σ = ${precomputedSigma} (precomputed)` : smoothScores ? 'Gaussian σ = 1' : undefined;
     const scoreAdapterType = smoothScores ? SMOOTHED_SCORE_ADAPTER : 'BigWigAdapter';
     const scoreDownload = (strand: 'plus' | 'minus', label: string, url: string) => ({
       ...predictionDownload(`scores-${strand}`, label, url, false).rapptorDownload,
-      ...(collectionScores ? {
-        accession: experimental!.accession,
-        defaultFilename: `${experimental!.accession}.promoter_scores.sigma1.${strand}.bw`,
+      ...(precomputedSigma !== undefined ? {
+        accession: scoreAccession!,
+        defaultFilename: `${scoreAccession}.promoter_scores.sigma${precomputedSigma}.${strand}.bw`,
       } : {}),
     });
     if (scoreAssets?.promoterScoresPlus && scoreAssets.promoterScoresMinus) {
@@ -257,7 +259,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       tracks.push({
         trackId,
         name: scoreTrackLabel,
-        metadata: { ...predictionDownload('scores-plus', scoreTrackLabel, plusUrl, false), rapptorScoreSmoothing: prediction.smoothScoreTrack ? 'Gaussian σ = 1' : undefined },
+        metadata: { rapptorDownload: scoreDownload('plus', scoreTrackLabel, plusUrl), rapptorScoreSmoothing: scoreSmoothing },
         assemblyNames: [assemblyName],
         type: 'QuantitativeTrack',
         adapter: { type: scoreAdapterType, bigWigLocation: { uri: plusUrl } },

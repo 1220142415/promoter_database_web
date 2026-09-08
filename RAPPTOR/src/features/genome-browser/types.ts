@@ -64,6 +64,8 @@ export interface JBrowseAssemblyConfig {
   predictionProcessing?: JBrowsePredictionProcessing | null;
   /** Smooth raw stride-1 score tracks with Gaussian sigma=1 and reflect edges. */
   smoothScoreTrack?: boolean;
+  /** Existing BigWigs already smoothed with this sigma; never smooth them again. */
+  precomputedScoreSigma?: number;
   annotationAbout?: JBrowseAnnotationAbout | null;
   /**
    * Local, illustrative tracks for the browser-only prediction prototype.

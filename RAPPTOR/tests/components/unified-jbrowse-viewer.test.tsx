@@ -152,6 +152,28 @@ describe('unified JBrowse viewer', () => {
     expect(config.defaultSession.view.tracks).toContainEqual(expect.objectContaining({ configuration: track.trackId }));
   });
 
+  it.each([true, false])('uses precomputed prediction scores without experimental evidence, dual strand: %s', (bothStrands) => {
+    const scan = prediction();
+    render(<UnifiedJBrowseViewer prediction={{ ...scan, smoothScoreTrack: true, precomputedScoreSigma: 1,
+      assets: { ...scan.assets, promoterScoresMinus: bothStrands ? scan.assets.promoterScoresMinus : null } }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ trackId: string; adapter: { type: string; subadapters?: Array<{ type: string }> }; metadata: Record<string, unknown> }>;
+    };
+    const track = config.tracks.find(row => row.trackId === `${scan.assemblyName}-promoter-scores`)!;
+    expect(track.metadata.rapptorScoreSmoothing).toBe('Gaussian σ = 1 (precomputed)');
+    if (bothStrands) {
+      expect(track.adapter.subadapters?.map(row => row.type)).toEqual(['BigWigAdapter', 'BigWigAdapter']);
+      expect(track.metadata.rapptorDownloads).toEqual(['plus', 'minus'].map(strand => expect.objectContaining({
+        defaultFilename: `${scan.assemblyName}.promoter_scores.sigma1.${strand}.bw`, visibleRegionDownload: false,
+      })));
+    } else {
+      expect(track.adapter.type).toBe('BigWigAdapter');
+      expect(track.metadata.rapptorDownload).toEqual(expect.objectContaining({
+        defaultFilename: `${scan.assemblyName}.promoter_scores.sigma1.plus.bw`, visibleRegionDownload: false,
+      }));
+    }
+  });
+
   it.each([true, false])('installs smoothing for an opted-in %s dual-strand score track', (bothStrands) => {
     vi.mocked(createViewState).mockImplementation(() => stateTree() as never);
     const scan = prediction();

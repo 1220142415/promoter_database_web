@@ -12,6 +12,7 @@ import {
   getCyanobacteriaGenome,
 } from '@/features/cyanobacteria/catalog';
 import { normalizeDownloadFilename } from '@/features/genome-browser/track-download';
+import { cyanobacteriaContinuousScores } from '@/features/cyanobacteria/continuous-scores';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,6 +63,7 @@ function responseHeaders(request: Request, file: string, size: number, range: { 
   const firstDot = basename.indexOf('.');
   const extension = basename.endsWith('.bed.gz') ? '.bed.gz'
     : basename.endsWith('.bed') ? '.bed'
+      : basename.endsWith('.bw') ? '.bw'
       : firstDot >= 0 ? basename.slice(firstDot) : '';
   const downloadFilename = normalizeDownloadFilename(requestedFilename, extension, basename);
   const start = range?.start ?? 0;
@@ -84,8 +86,10 @@ function localRoot() {
     || join(process.cwd(), '.data', 'cyanobacteria', 'releases', cyanobacteriaRelease.releaseId);
 }
 
-async function serveLocal(request: Request, genomeId: string, file: string, headOnly: boolean) {
-  const path = join(localRoot(), cyanobacteriaAssetPath(genomeId, file));
+async function serveLocal(request: Request, genomeId: string, file: string, headOnly: boolean, scoreVersion?: string) {
+  const path = scoreVersion
+    ? join(process.env.CYANOBACTERIA_CONTINUOUS_SCORE_ROOT || join(process.cwd(), '.data', 'cyanobacteria', 'continuous-scores'), scoreVersion, genomeId, file)
+    : join(localRoot(), cyanobacteriaAssetPath(genomeId, file));
   let details;
   try {
     details = await stat(path);
@@ -112,9 +116,9 @@ async function upstreamMetadata(upstream: string) {
   }
 }
 
-async function serveRemote(request: Request, genomeId: string, file: string, headOnly: boolean) {
+async function serveRemote(request: Request, genomeId: string, file: string, headOnly: boolean, scoreUpstream?: string) {
   const base = (process.env.CYANOBACTERIA_ASSET_BASE_URL || cyanobacteriaRelease.assetBaseUrl).replace(/\/+$/, '');
-  const upstream = `${base}/${cyanobacteriaAssetPath(genomeId, file)}`;
+  const upstream = scoreUpstream || `${base}/${cyanobacteriaAssetPath(genomeId, file)}`;
   const requestedRange = request.headers.get('range');
   const metadata = await upstreamMetadata(upstream);
   if (!metadata) return NextResponse.json({ error: 'Cyanobacteria release storage could not be reached.' }, { status: 502 });
@@ -152,6 +156,15 @@ async function serveRemote(request: Request, genomeId: string, file: string, hea
 
 async function serve(request: Request, context: RouteContext, headOnly: boolean) {
   const { genomeId, file: requestedParts } = await context.params;
+  const scores = cyanobacteriaContinuousScores(genomeId);
+  if (scores && requestedParts[0] === `v-${scores.version}`) {
+    const file = requestedParts.slice(1).join('/');
+    if (Object.hasOwn(scores.files, file)) {
+      const upstream = scores.files[file];
+      if (upstream) return serveRemote(request, genomeId, file, headOnly, upstream);
+      if (scores.localVersion) return serveLocal(request, genomeId, file, headOnly, scores.localVersion);
+    }
+  }
   const version = `v-${cyanobacteriaAssetVersion}`;
   if (requestedParts[0]?.startsWith('v-') && requestedParts[0] !== version) {
     return NextResponse.json({ error: 'Unknown cyanobacteria asset version.' }, { status: 404 });

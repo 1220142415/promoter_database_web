@@ -6,6 +6,7 @@ import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import GenomeFileStatus from '@/features/genome-browser/components/genome-file-status';
 import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-browser-panel';
 import { cyanobacteriaAssetVersion, cyanobacteriaRelease, getCyanobacteriaGenome } from '@/features/cyanobacteria/catalog';
+import { cyanobacteriaContinuousScores } from '@/features/cyanobacteria/continuous-scores';
 import type { ExperimentalTssGenome } from '@/types/experimental-tss';
 import { PORTAL_TERMS } from '@/components/portal-terminology';
 
@@ -35,6 +36,7 @@ function experimentalAssembly(genome: NonNullable<ReturnType<typeof getCyanobact
     annotationStatus: genome.annotation.source === 'NCBI' ? 'available' : 'missing',
     assetBase: dataUrl(genome.id, '' ).replace(/\/$/u, ''),
     assets: {
+      ...cyanobacteriaContinuousScores(genome.id)?.assets,
       fasta: genome.assets.fasta,
       fastaFai: genome.assets.fastaFai,
       fastaGzi: genome.assets.fastaGzi,
@@ -83,7 +85,8 @@ export default async function CyanobacteriaGenomePage({ params }: { params: Prom
     regionExportBase: '/api/cyanobacteria-region',
     adapterMode: 'indexed' as const,
     annotationTrackKind: 'annotation' as const,
-    assets: genome.assets,
+    assets: { ...genome.assets, ...cyanobacteriaContinuousScores(genome.id)?.assets },
+    precomputedScoreSigma: cyanobacteriaContinuousScores(genome.id) ? 1 : undefined,
     trackLabels: {
       scores: 'RAPPTOR model scores (+ / − strands)',
       promoters: PORTAL_TERMS.promoterPredictions,

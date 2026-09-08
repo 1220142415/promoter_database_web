@@ -1,0 +1,289 @@
+{
+  "repository": "liurulong/bacterial-promoter-genomes",
+  "revision": "cfef2cfc082c6d02b529a5b4cdcda0aed65cdc0b",
+  "version": "2ab4dcbe8b9a70eea7f5f34e4b6dab94daa607ee34913673a906caf91aebf9b9",
+  "scorePath": "cyanobacteria/smoothed_score_bigwig_sigma1_no_cutoff_no_peaks",
+  "genomes": {
+    "ASM970v1": {
+      "source": "ASM970v1.all_positions.parquet",
+      "sourceSha256": "70589dc776bdc47a5286fa5189547ffed00499e740791b190356456ab0dc7103",
+      "fastaSha256": "0b0f68800914f8531602f8fedfb207bf7b408cef8334f88864b999a6201322fe",
+      "references": {
+        "NC_003272.1": {
+          "length": 6413771,
+          "sequenceSha256": "958c5ed7326f26d22c74a9b00026e2b0cb940bc8ca4ed3ce10b9bea4be4de777"
+        },
+        "NC_003276.1": {
+          "length": 408101,
+          "sequenceSha256": "1f6e856525f3b0974820988eb25405ac1b2abe5387c628d4bec236f52b96a0c7"
+        },
+        "NC_003240.1": {
+          "length": 186614,
+          "sequenceSha256": "ae2cde7eab291fbf4d4caeb4bf72ed842b9c938fd35b614843932504b6068818"
+        },
+        "NC_003273.1": {
+          "length": 55414,
+          "sequenceSha256": "d4d8785aafaae070c48171d280872f3220e810f58baeac5ef7c856490322d54d"
+        },
+        "NC_003270.1": {
+          "length": 40340,
+          "sequenceSha256": "7c75b2be86323efad5cc6201e8f54dfca00dd62c2d8365011b7516c4564c2db7"
+        },
+        "NC_003267.1": {
+          "length": 101965,
+          "sequenceSha256": "7366c889d9e11a38f6153ea851c8dcb4eaae8fb1c74bda3f40973ea8e59f23b0"
+        },
+        "NC_003241.1": {
+          "length": 5584,
+          "sequenceSha256": "e1be17e15014e3fb3618dde3435d6b937b118a58d1b557f7e19ab97ba15f7d63"
+        }
+      },
+      "smoothing": {
+        "method": "scipy.ndimage.gaussian_filter1d",
+        "sigma": 1,
+        "mode": "reflect",
+        "truncate": 4,
+        "grouping": "Sequence_ID and Strand"
+      },
+      "cutoffApplied": false,
+      "peakCallingApplied": false,
+      "coordinates": "input 1-based; BigWig 0-based half-open",
+      "files": [
+        {
+          "path": "promoter_scores.sigma1.plus.bw",
+          "bytes": 38590553,
+          "sha256": "f385f45b0b458e2af5588476d2e41db8f03b34069c1e851ccd898b92185496a8",
+          "records": [
+            {
+              "reference": "NC_003272.1",
+              "start": 80,
+              "end": 6413752,
+              "count": 6413672
+            },
+            {
+              "reference": "NC_003276.1",
+              "start": 80,
+              "end": 408082,
+              "count": 408002
+            },
+            {
+              "reference": "NC_003240.1",
+              "start": 80,
+              "end": 186595,
+              "count": 186515
+            },
+            {
+              "reference": "NC_003273.1",
+              "start": 80,
+              "end": 55395,
+              "count": 55315
+            },
+            {
+              "reference": "NC_003270.1",
+              "start": 80,
+              "end": 40321,
+              "count": 40241
+            },
+            {
+              "reference": "NC_003267.1",
+              "start": 80,
+              "end": 101946,
+              "count": 101866
+            },
+            {
+              "reference": "NC_003241.1",
+              "start": 80,
+              "end": 5565,
+              "count": 5485
+            }
+          ],
+          "allValuesVerified": true
+        },
+        {
+          "path": "promoter_scores.sigma1.minus.bw",
+          "bytes": 38591474,
+          "sha256": "b067116c233e41e81d1dca6784c966bffa4f2d2bf9cbfc911fcdb4ee4006c90c",
+          "records": [
+            {
+              "reference": "NC_003272.1",
+              "start": 19,
+              "end": 6413691,
+              "count": 6413672
+            },
+            {
+              "reference": "NC_003276.1",
+              "start": 19,
+              "end": 408021,
+              "count": 408002
+            },
+            {
+              "reference": "NC_003240.1",
+              "start": 19,
+              "end": 186534,
+              "count": 186515
+            },
+            {
+              "reference": "NC_003273.1",
+              "start": 19,
+              "end": 55334,
+              "count": 55315
+            },
+            {
+              "reference": "NC_003270.1",
+              "start": 19,
+              "end": 40260,
+              "count": 40241
+            },
+            {
+              "reference": "NC_003267.1",
+              "start": 19,
+              "end": 101885,
+              "count": 101866
+            },
+            {
+              "reference": "NC_003241.1",
+              "start": 19,
+              "end": 5504,
+              "count": 5485
+            }
+          ],
+          "allValuesVerified": true
+        }
+      ]
+    },
+    "Cf6912": {
+      "source": "Cf6912.all_positions.parquet",
+      "sourceSha256": "84bf5bf8babe59c3928221fb98dd6dc954d52885c4f6e6b38703c64f6aa928f0",
+      "fastaSha256": "26e4af205b0a15db28685a1335515255e32b24c388b67ef6990da9a7878031e4",
+      "references": {
+        "contig_1": {
+          "length": 7514802,
+          "sequenceSha256": "cc698326ea4a63521c71c69f830b3db3c5ec73bd8bd541e5be25a919459d1257"
+        },
+        "contig_2": {
+          "length": 275681,
+          "sequenceSha256": "6beeb981de27bc6aa0fef3922d66705c0fecbc6d08c4c3657f3d99b194541971"
+        },
+        "contig_3": {
+          "length": 46074,
+          "sequenceSha256": "e832e2f328046f310124e365849e0fc5a1155ac06cc6026c6fd697ab2f5811bf"
+        }
+      },
+      "smoothing": {
+        "method": "scipy.ndimage.gaussian_filter1d",
+        "sigma": 1,
+        "mode": "reflect",
+        "truncate": 4,
+        "grouping": "Sequence_ID and Strand"
+      },
+      "cutoffApplied": false,
+      "peakCallingApplied": false,
+      "coordinates": "input 1-based; BigWig 0-based half-open",
+      "files": [
+        {
+          "path": "promoter_scores.sigma1.plus.bw",
+          "bytes": 41805984,
+          "sha256": "7097f6dbbb1e5431867745c2ecce98c23538eb37ac6a5feee2bd33049a529b29",
+          "records": [
+            {
+              "reference": "contig_1",
+              "start": 80,
+              "end": 7514783,
+              "count": 7514703
+            },
+            {
+              "reference": "contig_2",
+              "start": 80,
+              "end": 275662,
+              "count": 275582
+            },
+            {
+              "reference": "contig_3",
+              "start": 80,
+              "end": 46055,
+              "count": 45975
+            }
+          ],
+          "allValuesVerified": true
+        },
+        {
+          "path": "promoter_scores.sigma1.minus.bw",
+          "bytes": 41805941,
+          "sha256": "b0c94743f9bd56d34fd1a21e0b33429f3ed7b3d76f611ce99b48062d8c168837",
+          "records": [
+            {
+              "reference": "contig_1",
+              "start": 19,
+              "end": 7514722,
+              "count": 7514703
+            },
+            {
+              "reference": "contig_2",
+              "start": 19,
+              "end": 275601,
+              "count": 275582
+            },
+            {
+              "reference": "contig_3",
+              "start": 19,
+              "end": 45994,
+              "count": 45975
+            }
+          ],
+          "allValuesVerified": true
+        }
+      ]
+    },
+    "CP003597.1": {
+      "source": "CP003597.1.all_positions.parquet",
+      "sourceSha256": "17865d71b7d4131d21dfb06859dc1318e49427b309cc4ed2b5a9e86cb4550edb",
+      "fastaSha256": "305629fcd28f3cd11d8b3b84e9a98c8e6b93f8a7472178143fa7604166f8356f",
+      "references": {
+        "CP003597.1": {
+          "length": 6315792,
+          "sequenceSha256": "29804e4c5ffd77427e15b2d0969207f09ad79847a521e2e108b25d4c99fea484"
+        }
+      },
+      "smoothing": {
+        "method": "scipy.ndimage.gaussian_filter1d",
+        "sigma": 1,
+        "mode": "reflect",
+        "truncate": 4,
+        "grouping": "Sequence_ID and Strand"
+      },
+      "cutoffApplied": false,
+      "peakCallingApplied": false,
+      "coordinates": "input 1-based; BigWig 0-based half-open",
+      "files": [
+        {
+          "path": "promoter_scores.sigma1.plus.bw",
+          "bytes": 34101288,
+          "sha256": "b2506ebe7d4d30ba45e820366560754e6a6eef8280b23422479333951c067fa5",
+          "records": [
+            {
+              "reference": "CP003597.1",
+              "start": 80,
+              "end": 6315773,
+              "count": 6315693
+            }
+          ],
+          "allValuesVerified": true
+        },
+        {
+          "path": "promoter_scores.sigma1.minus.bw",
+          "bytes": 34101122,
+          "sha256": "71b8e4de49b58a4ea2d7cab504d9834e1b278530d513f29fd402a335038a6fd1",
+          "records": [
+            {
+              "reference": "CP003597.1",
+              "start": 19,
+              "end": 6315712,
+              "count": 6315693
+            }
+          ],
+          "allValuesVerified": true
+        }
+      ]
+    }
+  }
+}

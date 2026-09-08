@@ -277,14 +277,19 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "peak_count": artifact_writer.peak_count if "gff3" in output_formats else None,
         "output_formats": list(output_formats),
         "output_semantics": (
-            "BigWig/Parquet/JSON contain raw scores; scores.gff3 contains Gaussian-smoothed scores; "
+            "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
+            "scores.gff3 contains Gaussian-smoothed scores; "
             "peaks.gff3 contains fixed-threshold called peaks"
             if "gff3" in output_formats
-            else "all raw scores"
+            else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
+        ),
+        "bigwig_smoothing": (
+            {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
+            if "bigwig" in output_formats else None
         ),
         "smoothing": (
             {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
-            if "gff3" in output_formats else None
+            if {"bigwig", "gff3"}.intersection(output_formats) else None
         ),
         "peak_calling": (
             {"distance": PEAK_DISTANCE, "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF, "operator": ">"}

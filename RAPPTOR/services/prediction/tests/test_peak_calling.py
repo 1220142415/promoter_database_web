@@ -77,23 +77,29 @@ class PeakCallingTests(unittest.TestCase):
             self.assertEqual(writer.peak_count, 0)
             self.assertEqual(rows(path/'peaks.gff3'), [])
 
-    def test_full_score_tracks_are_not_smoothed_or_filtered(self):
+    def test_bigwig_is_smoothed_while_parquet_retains_raw_scores(self):
         import pyBigWig
         import pyarrow.parquet as pq
         with TemporaryDirectory() as folder:
             path = Path(folder)
-            writer = self.writer(path, [('a', 140)], formats=('gff3', 'bigwig', 'parquet'), score_cutoff=.9)
+            writer = ScanArtifactWriter(
+                path, ('bigwig', 'parquet'), [('a', 900)],
+                model_version='test', checkpoint_sha256='test', stride=20,
+            )
             scores = np.linspace(0, 1, 41, dtype=np.float32)
             for strand in ('+', '-'):
-                writer.add_scores('a', 140, strand, scores, upstream_len=80, window_length=100)
+                writer.add_scores('a', 900, strand, scores, upstream_len=80, window_length=100)
             writer.close(success=True)
             for strand, suffix in (('+', 'plus'), ('-', 'minus')):
                 with pyBigWig.open(str(path/f'scores.{suffix}.bw')) as bw:
                     actual = [r[2] for r in bw.intervals('a')]
-                    np.testing.assert_array_equal(actual, scores if strand == '+' else scores[::-1])
+                    ordered = scores if strand == '+' else scores[::-1]
+                    expected = gaussian_filter1d(ordered.astype(float), 1, mode='reflect')
+                    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
             table = pq.read_table(path/'scores.parquet')
             self.assertEqual(table.num_rows, 82)
             self.assertEqual(table.schema.metadata[b'rapptor_window_start_coordinate_system'], b'reference_0based')
+            np.testing.assert_array_equal(table.column('score').to_numpy()[:41], scores)
 
     def test_dense_scan_automatically_calls_peaks_even_with_default_formats(self):
         from prediction_service import jobs
@@ -117,6 +123,7 @@ class PeakCallingTests(unittest.TestCase):
                 self.assertEqual(summary['peak_count'], 0 if stride == 1 else None)
                 self.assertEqual(summary['window_count'], 82 if stride == 1 else 6)
                 self.assertEqual(summary['window_start_coordinate_system'], 'reference_0based')
+                self.assertEqual(summary['bigwig_smoothing'], {'method': 'gaussian', 'sigma': 1.0, 'mode': 'reflect'})
 
     def test_non_dense_gff_is_rejected_before_writing_results(self):
         self.assertIn('gff3', scan_output_formats(['bigwig'], 1))

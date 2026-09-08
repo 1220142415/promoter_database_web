@@ -282,6 +282,10 @@ def current_model():
                 "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
                 "peaks": {"distance": 10, "default_cutoff": 0.9, "configurable_cutoff": True, "operator": ">", "filename": "peaks.gff3"},
             },
+            "bigwig_processing": {
+                "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                "retains_all_scores": True,
+            },
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
             "default_output_formats": ["bigwig", "parquet"],
             "reverse_complementary": {"default": True},

@@ -4,13 +4,16 @@ import { expect, it } from 'vitest';
 import ResultDownloads from '@/features/prediction/components/result-downloads';
 import ResultInformation from '@/features/prediction/components/result-information';
 
-it('prefers peaks GFF3 while retaining both raw BigWigs as one download', () => {
+it('labels new BigWigs as smoothed while retaining raw wording for legacy tasks', () => {
   const artifacts = ['peaks.gff3', 'scores.gff3', 'scores.plus.bw', 'scores.minus.bw'].map(filename => ({ filename, format: 'gff3', size_bytes: 1, sha256: 'hash' }));
-  render(<ResultDownloads jobId="a" artifacts={artifacts} mode="genome_scan" expiresAt="tomorrow" />);
+  const { rerender } = render(<ResultDownloads jobId="a" artifacts={artifacts} mode="genome_scan" expiresAt="tomorrow" bigwigSmoothing={{ method: 'gaussian', sigma: 1, mode: 'reflect' }} />);
   expect(screen.getByRole('link', { name: /Predicted peaks/ })).toHaveAttribute('href', '/api/predictions/jobs/a/artifacts/peaks.gff3');
   expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveAttribute('href', '/api/predictions/jobs/a/artifacts/model-score-tracks.zip');
+  expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveTextContent('Gaussian-smoothed forward and reverse BigWig files in one folder');
   expect(screen.getAllByRole('link')).toHaveLength(2);
   expect(screen.queryByText(/GFF3 is unavailable/)).not.toBeInTheDocument();
+  rerender(<ResultDownloads jobId="a" artifacts={artifacts} mode="genome_scan" expiresAt="tomorrow" />);
+  expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveTextContent('Raw forward and reverse BigWig files in one folder');
 });
 
 it('shows the recorded peak rule without conflating it with a window export cutoff', () => {

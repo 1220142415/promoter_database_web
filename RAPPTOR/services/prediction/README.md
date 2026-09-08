@@ -61,8 +61,9 @@ loads its own model runtime. This adds model startup time per task.
 
 `genome_scan` accepts a configured-range `stride` and an optional
 `score_cutoff` in `[0, 1]`. JSON exports raw scores strictly above this cutoff;
-`scores.gff3` exports Gaussian-smoothed scores strictly above it. BigWig and
-Parquet retain every raw scanned score. `top_k` remains unsupported.
+`scores.gff3` exports Gaussian-smoothed scores strictly above it. BigWig retains
+every Gaussian-smoothed score; Parquet retains every raw scanned score. `top_k`
+remains unsupported.
 
 At **stride 1**, the API and worker automatically include GFF3 postprocessing,
 even when a client requests only BigWig/Parquet. Each contig and strand is ordered
@@ -70,8 +71,9 @@ by reference coordinate, smoothed with Gaussian sigma 1 (`reflect`), then passed
 to `scipy.signal.find_peaks(distance=10)`. Peaks with smoothed model score
 strictly **greater than 0.9** are written to `peaks.gff3`. This fixed peak cutoff
 is independent of `score_cutoff`; a zero-peak scan still produces a valid GFF3
-header. Other strides retain raw score outputs; requesting smoothed GFF3 at
-those strides is rejected. SciPy 1.15.3 is required.
+header. Other strides still produce Gaussian-smoothed BigWig values while
+retaining raw Parquet/JSON values; requesting smoothed GFF3 at those strides is
+rejected. SciPy 1.15.3 is required.
 
 Peak GFF3 records are 1 bp anchors in 1-based reference coordinates. New score
 artifacts use reference-oriented `window_start_0based`, recorded by
@@ -82,10 +84,9 @@ already used reference starts; its smoothing/peak-calling summary fields
 identify that schema before the explicit marker was introduced.
 
 The result page prefers `peaks.gff3`, displays **Called peaks**, and loads the
-peak track beside model-score tracks. For a recorded stride of 1, the browser
-smooths the raw scores with the same Gaussian sigma 1 and reflect boundaries;
-BigWig downloads retain every raw score. The form requests the fixed peak settings
-automatically. Existing jobs are not rescanned.
+peak track beside the already-smoothed BigWig tracks without smoothing them a
+second time. The form requests the fixed peak settings automatically. Existing
+jobs are not rescanned and retain browser-side smoothing for their raw BigWigs.
 
 ```json
 {

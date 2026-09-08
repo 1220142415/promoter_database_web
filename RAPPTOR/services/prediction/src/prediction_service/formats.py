@@ -216,22 +216,25 @@ class ScanArtifactWriter:
         raw_scores = np.asarray(scores, dtype=np.float32)
         smoothed_scores = None
         peak_indices: set[int] = set()
-        if "gff3" in self.formats and len(raw_scores):
+        if ({"bigwig", "gff3"}.intersection(self.formats)) and len(raw_scores):
             from scipy.ndimage import gaussian_filter1d
-            from scipy.signal import find_peaks
 
             ordered_scores = raw_scores if strand == "+" else raw_scores[::-1]
             ordered_smoothed = gaussian_filter1d(
                 ordered_scores.astype(float), SMOOTHING_SIGMA, mode="reflect"
             )
-            indices, _ = find_peaks(ordered_smoothed, distance=PEAK_DISTANCE)
-            ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > self.peak_cutoff}
             if strand == "+":
                 smoothed_scores = ordered_smoothed
-                peak_indices = ordered_peaks
             else:
                 smoothed_scores = ordered_smoothed[::-1]
-                peak_indices = {len(raw_scores) - index - 1 for index in ordered_peaks}
+            if "gff3" in self.formats:
+                from scipy.signal import find_peaks
+
+                indices, _ = find_peaks(ordered_smoothed, distance=PEAK_DISTANCE)
+                ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > self.peak_cutoff}
+                peak_indices = ordered_peaks if strand == "+" else {
+                    len(raw_scores) - index - 1 for index in ordered_peaks
+                }
         for score_indices, window_starts, anchor_positions, values in self._chunks(
             raw_scores, sequence_length, strand, self.stride, upstream_len, window_length
         ):
@@ -240,11 +243,12 @@ class ScanArtifactWriter:
                 continue
             if "bigwig" in self.formats:
                 bigwig = self._bigwigs[strand]
+                bigwig_values = np.asarray(smoothed_scores[score_indices], dtype=np.float32)
                 bigwig.addEntries(
                     [sequence_id] * count,
                     anchor_positions.tolist(),
                     ends=(anchor_positions + 1).tolist(),
-                    values=values.tolist(),
+                    values=bigwig_values.tolist(),
                 )
             if "parquet" in self.formats:
                 import pyarrow as pa
@@ -281,9 +285,11 @@ class ScanArtifactWriter:
                             f"{smoothed_score:.8f}\t{strand}\t.\tID={peak_id};Name={peak_id};"
                             f"prediction_score={smoothed_score:.8f}\n"
                         )
-                passes_cutoff = self.score_cutoff is None or (
-                    float(smoothed_scores[score_indices[index]]) if smoothed_scores is not None else score
-                ) > self.score_cutoff
+                cutoff_score = (
+                    float(smoothed_scores[score_indices[index]])
+                    if "gff3" in self.formats else score
+                )
+                passes_cutoff = self.score_cutoff is None or cutoff_score > self.score_cutoff
                 if passes_cutoff:
                     self._counter += 1
                 if "json" in self.formats and (self.score_cutoff is None or score > self.score_cutoff):

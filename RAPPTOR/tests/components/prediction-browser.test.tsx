@@ -13,6 +13,7 @@ vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
     assets: Record<string, string | null>;
     predictionProcessing?: { sigma: number; distance: number; cutoff: number; positionBase: number };
     smoothScoreTrack?: boolean;
+    precomputedScoreSigma?: number;
     trackLabels?: { annotation?: string };
   }; shareFragment?: string }) => <div
     data-testid="mock-unified-browser"
@@ -28,6 +29,7 @@ vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
     data-peaks-index={prediction.assets.predictedPromotersIndex}
     data-processing={JSON.stringify(prediction.predictionProcessing)}
     data-smoothing={prediction.smoothScoreTrack ? 'on' : 'off'}
+    data-precomputed-sigma={prediction.precomputedScoreSigma ?? ''}
     data-annotation={prediction.assets.ncbiAnnotations || ''}
     data-annotation-label={prediction.trackLabels?.annotation || ''}
     data-share-fragment={shareFragment || ''}
@@ -37,22 +39,25 @@ vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
 describe('prediction browser tracks', () => {
   const browserFiles = ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].map(filename => ({ filename }));
 
-  it('smooths recorded stride-1 tasks without changing raw download assets or smoothing legacy/sparse runs', () => {
+  it('uses pre-smoothed BigWigs without a notice or double smoothing and preserves legacy display', () => {
     const { rerender } = render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{ stride: 1 }} />);
     const browser = screen.getByTestId('mock-unified-browser');
     expect(browser).toHaveAttribute('data-smoothing', 'on');
     expect(browser).toHaveAttribute('data-scores-plus', '/api/predictions/jobs/a/artifacts/scores.plus.bw');
-    expect(screen.getByText(/Gaussian-smoothed/)).toHaveTextContent('BigWig downloads retain the raw scores');
+    expect(screen.queryByText(/Gaussian-smoothed/)).not.toBeInTheDocument();
+    rerender(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{ stride: 1, bigwig_smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' } }} />);
+    expect(browser).toHaveAttribute('data-smoothing', 'off');
+    expect(browser).toHaveAttribute('data-precomputed-sigma', '1');
     for (const summary of [{ stride: 20 }, {}]) {
       rerender(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={summary} />);
       expect(browser).toHaveAttribute('data-smoothing', 'off');
-      expect(screen.queryByText(/Gaussian-smoothed/)).not.toBeInTheDocument();
+      expect(browser).toHaveAttribute('data-precomputed-sigma', '');
     }
   });
 
-  it('explains why a sparse scan has no peak track using the returned stride', () => {
+  it('does not show a peak-status notice for sparse scans', () => {
     render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{ stride: 20 }} />);
-    expect(screen.getByRole('status')).toHaveTextContent('This task used 20 bp; a new 1 bp scan is needed');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByTestId('mock-unified-browser')).toHaveAttribute('data-peaks', '');
   });
 

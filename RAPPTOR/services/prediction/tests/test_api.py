@@ -21,6 +21,8 @@ def load_api(tmp_path, monkeypatch):
     monkeypatch.setenv("RAPPTOR_REQUIRE_WORKER_FOR_READY", "false")
     monkeypatch.setenv("RAPPTOR_MIN_SCAN_STRIDE", "1")
     monkeypatch.setenv("RAPPTOR_FILE_RETENTION_SECONDS", "86400")
+    monkeypatch.setenv("RAPPTOR_PREDICT_QUEUE", "prediction:predict")
+    monkeypatch.setenv("RAPPTOR_SCAN_QUEUE", "prediction:genome_scan")
     import prediction_service.config as config
     import prediction_service.cgr_cache as cgr_cache
     import prediction_service.queueing as queueing
@@ -33,7 +35,11 @@ def load_api(tmp_path, monkeypatch):
     importlib.reload(api)
     connection = fakeredis.FakeRedis()
     monkeypatch.setattr(api, "get_redis_connection", lambda: connection)
-    monkeypatch.setattr(api, "get_queue", lambda connection=None: Queue("prediction", connection=connection, is_async=True))
+    monkeypatch.setattr(
+        api,
+        "get_queue",
+        lambda connection=None, mode=None: Queue(f"prediction:{mode}", connection=connection, is_async=True),
+    )
     return api, connection
 
 
@@ -42,6 +48,24 @@ def test_healthz(tmp_path, monkeypatch):
     assert api.healthz() == {"status": "ok"}
     assert api.readyz()["status"] == "ready"
     assert api.current_model()["requires_complete_genome"] is True
+
+
+def test_ready_requires_both_mode_workers(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    connection.set("rapptor:worker:prediction:predict:host:1:ready", "ready")
+    assert api._worker_ready(connection) is False
+    connection.set("rapptor:worker:prediction:genome_scan:host:2:ready", "ready")
+    assert api._worker_ready(connection) is True
+
+
+def test_mode_specific_queue_names(tmp_path, monkeypatch):
+    _, connection = load_api(tmp_path, monkeypatch)
+    import prediction_service.queueing as queueing
+
+    assert queueing.get_queue(connection, "predict").name == "prediction:predict"
+    assert queueing.get_queue(connection, "genome_scan").name == "prediction:genome_scan"
+    with pytest.raises(ValueError, match="unsupported prediction mode"):
+        queueing.get_queue(connection, "unknown")
 
 
 def write_cgr_cache(tmp_path, accession="GCF_000005845.1"):
@@ -201,27 +225,70 @@ def test_genome_scan_accepts_a_separate_complete_genome_for_cgr(tmp_path, monkey
     assert billed_bases == 280
 
 
-def test_submit_and_token_protected_status(tmp_path, monkeypatch):
-    api, connection = load_api(tmp_path, monkeypatch)
-    created = asyncio.run(api.submit_job(
+def test_docker_rejects_notification_email(tmp_path, monkeypatch):
+    api, _ = load_api(tmp_path, monkeypatch)
+    with pytest.raises(ValidationError, match="notification_email"):
         api.JobSubmission(
             mode="genome_scan",
             complete_genome=True,
             fasta=">contig\n" + "ACGT" * 100,
-            stride=50,
-        ),
-        authorization=None,
-    ))
+            notification_email="person@example.org",
+        )
+
+
+def test_submit_and_token_protected_status(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    submission = api.JobSubmission(
+        mode="genome_scan",
+        complete_genome=True,
+        fasta=">contig\n" + "ACGT" * 100,
+        stride=50,
+    )
+    created = asyncio.run(api.submit_job(submission, authorization=None))
     job_id = created.job_id
     token = created.access_token
+    assert api.Job.fetch(job_id, connection=connection).origin == "prediction:genome_scan"
+    assert created.status_url == f"/v1/jobs/{job_id}"
+    assert created.poll_after_seconds == 3
+    assert created.queue.ahead == 0
     assert (tmp_path / "jobs" / job_id / "request.json").is_file()
     with pytest.raises(HTTPException) as hidden:
         api.get_job(job_id, None)
     assert hidden.value.status_code == 404
     status = api.get_job(job_id, token)
     assert status.status == "queued"
+    assert status.queue.model_dump() == {
+        "ahead": 0,
+        "waiting": 1,
+        "total_waiting": 1,
+        "waiting_by_mode": {"predict": 0, "genome_scan": 1},
+    }
     assert status.artifacts_expires_at == created.artifacts_expires_at
     assert status.artifacts_expires_at is not None
+
+    second = asyncio.run(api.submit_job(submission, authorization=None))
+    second_status = api.get_job(second.job_id, second.access_token)
+    assert second_status.queue.ahead == 1
+    assert second_status.queue.waiting == 2
+    assert second_status.queue.total_waiting == 2
+
+
+def test_status_separates_load_from_job_polling(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    import prediction_service.metrics as metrics
+
+    metrics.record_cpu_sample(connection, 1_789_000_000.0, 62.5)
+    status = api.service_status()
+    assert status["current"] == {"window_seconds": 5, "cpu_percent": 62.5}
+    assert status["queues"] == {"predict": 0, "genome_scan": 0}
+    assert status["workers"] == {"predict": False, "genome_scan": False}
+    assert "history" not in status
+    historical = api.service_status(history="6h", bucket="30m")
+    assert len(historical["history"]["points"]) == 12
+
+    with pytest.raises(HTTPException) as invalid:
+        api.service_status(history="24h")
+    assert invalid.value.status_code == 400
 
 
 def test_result_requires_completed_job(tmp_path, monkeypatch):

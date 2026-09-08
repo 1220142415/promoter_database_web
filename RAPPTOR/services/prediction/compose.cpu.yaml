@@ -23,6 +23,8 @@ services:
     environment: &service_env
       RAPPTOR_REDIS_URL: redis://redis:6379/0
       RAPPTOR_QUEUE: prediction
+      RAPPTOR_PREDICT_QUEUE: prediction:predict
+      RAPPTOR_SCAN_QUEUE: prediction:genome_scan
       RAPPTOR_MODEL_DIR: /models
       RAPPTOR_DATA_ROOT: /data
       RAPPTOR_CGR_CACHE_ROOT: ${RAPPTOR_CGR_CACHE_ROOT:-/data/cgr-cache}
@@ -58,11 +60,32 @@ services:
   worker:
     image: rapptor-prediction-cpu:latest
     command: ["python", "-m", "prediction_service.worker"]
+    cpu_shares: ${RAPPTOR_SCAN_CPU_SHARES:-512}
     environment:
       <<: *service_env
-      OMP_NUM_THREADS: ${RAPPTOR_CPU_THREADS:-28}
-      MKL_NUM_THREADS: ${RAPPTOR_CPU_THREADS:-28}
-      OPENBLAS_NUM_THREADS: ${RAPPTOR_CPU_THREADS:-28}
+      RAPPTOR_QUEUE: prediction:genome_scan
+      OMP_NUM_THREADS: ${RAPPTOR_SCAN_CPU_THREADS:-28}
+      MKL_NUM_THREADS: ${RAPPTOR_SCAN_CPU_THREADS:-28}
+      OPENBLAS_NUM_THREADS: ${RAPPTOR_SCAN_CPU_THREADS:-28}
+    volumes:
+      - rapptor-prediction-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [rapptor-prediction]
+
+  predict-worker:
+    image: rapptor-prediction-cpu:latest
+    command: ["python", "-m", "prediction_service.worker"]
+    cpu_shares: ${RAPPTOR_PREDICT_CPU_SHARES:-1024}
+    environment:
+      <<: *service_env
+      RAPPTOR_QUEUE: prediction:predict
+      RAPPTOR_WORKER_MAINTENANCE: "false"
+      OMP_NUM_THREADS: ${RAPPTOR_PREDICT_CPU_THREADS:-28}
+      MKL_NUM_THREADS: ${RAPPTOR_PREDICT_CPU_THREADS:-28}
+      OPENBLAS_NUM_THREADS: ${RAPPTOR_PREDICT_CPU_THREADS:-28}
     volumes:
       - rapptor-prediction-data:/data
     depends_on:

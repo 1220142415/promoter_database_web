@@ -6,7 +6,7 @@ import threading
 import time
 
 from rq import Queue
-from rq.worker import SimpleWorker
+from rq.worker import Worker
 
 from .callbacks import flush_pending_job_events
 from .config import SETTINGS
@@ -47,23 +47,24 @@ def main() -> None:
     connection.ping()
     runtime = preload_runtime()
     hostname = socket.gethostname()
-    key = f"rapptor:worker:{hostname}:{os.getpid()}:ready"
+    key = f"rapptor:worker:{SETTINGS.queue_name}:{hostname}:{os.getpid()}:ready"
     stop = threading.Event()
-    thread = threading.Thread(target=_heartbeat, args=(connection, key, stop), daemon=True)
-    thread.start()
-    cleanup_thread = threading.Thread(target=_cleanup, args=(stop,), daemon=True)
-    cleanup_thread.start()
-    callback_thread = threading.Thread(target=_callbacks, args=(stop,), daemon=True)
-    callback_thread.start()
+    threads = [threading.Thread(target=_heartbeat, args=(connection, key, stop), daemon=True)]
+    if SETTINGS.worker_maintenance:
+        threads.extend([
+            threading.Thread(target=_cleanup, args=(stop,), daemon=True),
+            threading.Thread(target=_callbacks, args=(stop,), daemon=True),
+        ])
+    for thread in threads:
+        thread.start()
     print({"status": "worker_ready", **runtime.metadata()}, flush=True)
     try:
-        worker = SimpleWorker([Queue(SETTINGS.queue_name, connection=connection)], connection=connection)
+        worker = Worker([Queue(SETTINGS.queue_name, connection=connection)], connection=connection)
         worker.work(with_scheduler=False)
     finally:
         stop.set()
-        thread.join(timeout=2)
-        cleanup_thread.join(timeout=2)
-        callback_thread.join(timeout=2)
+        for thread in threads:
+            thread.join(timeout=2)
         try:
             connection.delete(key)
         except Exception:

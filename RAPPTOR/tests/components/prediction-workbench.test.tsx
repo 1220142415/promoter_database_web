@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
 import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/prediction/history';
@@ -96,6 +96,7 @@ describe('live prediction result layout', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     window.history.replaceState(null, '', '/');
     vi.unstubAllGlobals();
   });
@@ -184,6 +185,7 @@ describe('live prediction result layout', () => {
   });
 
   it('refreshes service scan counters while a task is running', async () => {
+    vi.useFakeTimers();
     let polls = 0;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({
       job_id: saved.jobId, status: 'running', progress: {
@@ -191,13 +193,18 @@ describe('live prediction result layout', () => {
         scan_percent: 40, contig: 'chr1', strand: '-',
       },
     })));
-    render(<PredictionWorkbench initialJobId={saved.jobId} />);
-    const scan = await screen.findByRole('region', { name: 'Genome scan progress' });
+    await act(async () => { render(<PredictionWorkbench initialJobId={saved.jobId} />); });
+    const scan = screen.getByRole('region', { name: 'Genome scan progress' });
     expect(scan).toHaveTextContent('40 / 100');
     expect(scan).toHaveTextContent('Reverse strand (−)');
     expect(within(scan).getByRole('progressbar')).toHaveAttribute('value', '40');
     expect(screen.queryByRole('region', { name: 'Download result' })).not.toBeInTheDocument();
-    await waitFor(() => expect(scan).toHaveTextContent('60 / 100'), { timeout: 4500 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+    expect(polls).toBe(1);
+    expect(scan).toHaveTextContent('40 / 100');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(polls).toBe(2);
+    expect(scan).toHaveTextContent('60 / 100');
     expect(within(scan).getByRole('progressbar')).toHaveAttribute('value', '60');
   });
 

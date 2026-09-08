@@ -128,11 +128,11 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
         const updated = { ...entry, status: next.status };
         localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), updated)));
         sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(updated));
-        if (next.status === 'queued' || next.status === 'running' || next.status === 'unknown') timer = window.setTimeout(load, 3000);
+        if (next.status === 'queued' || next.status === 'running' || next.status === 'unknown') timer = window.setTimeout(load, 30_000);
       } catch (cause) {
         if (!cancelled) {
           setMessage(cause instanceof Error ? cause.message : 'Prediction status could not be loaded.');
-          timer = window.setTimeout(load, 3000);
+          timer = window.setTimeout(load, 30_000);
         }
       }
     };

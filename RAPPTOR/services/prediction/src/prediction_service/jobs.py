@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import json
+import threading
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
 from rq import get_current_job
 
-from .callbacks import report_job_event
+from .callbacks import persist_job_event, report_job_event
 from .cgr_cache import ensure_reference_cgr
 from .config import SETTINGS
 from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, scan_output_formats
-from .queue_eta import record_progress, save_completed_profile
+from .queue_eta import process_heartbeat_key, record_progress, save_completed_profile
 from .runtime import get_runtime, sha256_file
 from .scan_progress import ScanProgress, count_scan_windows
 from .storage import JobStorage
@@ -36,8 +37,54 @@ def _progress(stage: str, percent: float, **extra) -> None:
     if job is None:
         return
     job.meta["progress"] = payload
-    record_progress(job.meta, stage, extra.get("windows"))
+    record_progress(job.meta, stage, extra.get("windows"), percent=payload["percent"])
     job.save_meta()
+
+
+def _failed_progress(last_progress: dict | None) -> dict:
+    last = dict(last_progress or {})
+    percent = last.get("percent", 0.0)
+    if not isinstance(percent, (int, float)) or percent >= 100:
+        percent = 99.9 if last else 0.0
+    return {
+        "stage": "failed",
+        "percent": float(max(0.0, percent)),
+        "last_valid_progress": last or None,
+    }
+
+
+def mark_job_failed_externally(job, code: str, message: str) -> None:
+    """Record a watchdog failure before RQ stops an unresponsive child."""
+    ended_at = utc_now()
+    safe_error = {"code": code, "type": "JobStalledError", "message": message}
+    last_progress = job.meta.get("progress")
+    job.meta.update({
+        "ended_at": ended_at,
+        "error": safe_error,
+        "progress": _failed_progress(last_progress),
+    })
+    job.save_meta()
+    try:
+        submission = JobStorage(SETTINGS.data_root).read_json(job.id, "submission.json")
+        persist_job_event(_permanent_event(
+            submission,
+            "failed",
+            startedAt=job.meta.get("started_at"),
+            endedAt=ended_at,
+            error=safe_error,
+        ))
+    except Exception:
+        pass
+
+
+def _job_process_heartbeat(job, stop: threading.Event) -> None:
+    key = process_heartbeat_key(job.id)
+    while not stop.is_set():
+        try:
+            job.connection.set(key, str(int(datetime.now(timezone.utc).timestamp())), ex=SETTINGS.worker_heartbeat_ttl)
+        except Exception:
+            pass
+        stop.wait(SETTINGS.worker_heartbeat_interval)
 
 
 def _file_metadata(path: Path, fmt: str) -> dict:
@@ -174,6 +221,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         window_count = sum(len(scores) for _, scores in scores_by_strand)
         _progress("writing_outputs", 90.0, windows=window_count, scores_written=window_count)
         artifacts = score_writer.close(success=True)
+        _progress("writing_outputs", 97.0, windows=window_count, scores_written=window_count)
     except Exception:
         score_writer.close(success=False)
         raise
@@ -274,6 +322,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
             {**_file_metadata(fasta_path, "fasta"), "content_type": "text/plain; charset=utf-8"},
             {**_file_metadata(fasta_index_path, "fai"), "content_type": "text/plain; charset=utf-8"},
         ])
+        _progress("writing_outputs", 97.0, **scan_progress.snapshot(), scores_written=total_windows)
     except Exception:
         artifact_writer.close(success=False)
         raise
@@ -323,11 +372,17 @@ def process_job(job_id: str) -> dict:
     request = storage.read_json(job_id, "request.json")
     submission = storage.read_json(job_id, "submission.json")
     started_at = utc_now()
-    _job_meta_update(started_at=started_at, progress={"stage": "starting", "percent": 1.0})
     job = get_current_job()
+    heartbeat_stop = threading.Event()
+    heartbeat_thread = None
+    _job_meta_update(started_at=started_at, progress={"stage": "starting", "percent": 1.0})
     if job is not None:
-        record_progress(job.meta, "starting")
+        record_progress(job.meta, "starting", percent=1.0)
         job.save_meta()
+        heartbeat_thread = threading.Thread(
+            target=_job_process_heartbeat, args=(job, heartbeat_stop), daemon=True,
+        )
+        heartbeat_thread.start()
     report_job_event(_permanent_event(submission, "running", startedAt=started_at))
     try:
         if request["mode"] == "predict":
@@ -354,12 +409,15 @@ def process_job(job_id: str) -> dict:
     except Exception as exc:
         # Do not persist raw sequence data or a full traceback in Redis/API responses.
         ended_at = utc_now()
-        safe_error = {"type": type(exc).__name__, "message": str(exc)[:500]}
-        _job_meta_update(
-            ended_at=ended_at,
-            error=safe_error,
-            progress={"stage": "failed", "percent": 100.0},
-        )
+        safe_error = {"code": "JOB_FAILED", "type": type(exc).__name__, "message": str(exc)[:500]}
+        current_job = get_current_job()
+        if current_job is not None:
+            current_job.meta.update({
+                "ended_at": ended_at,
+                "error": safe_error,
+                "progress": _failed_progress(current_job.meta.get("progress")),
+            })
+            current_job.save_meta()
         report_job_event(_permanent_event(
             submission,
             "failed",
@@ -370,3 +428,7 @@ def process_job(job_id: str) -> dict:
         trace_path = storage.job_dir(job_id) / "worker-error.log"
         trace_path.write_text(traceback.format_exc(), encoding="utf-8")
         raise
+    finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=2)

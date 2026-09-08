@@ -20,6 +20,8 @@ from prediction_service.validation import InputValidationError, validate_fasta, 
         ("max_ambiguous_fraction", 1.1),
         ("default_batch_size", SETTINGS.max_batch_size + 1),
         ("worker_heartbeat_interval", SETTINGS.worker_heartbeat_ttl),
+        ("job_stall_timeout_seconds", 0),
+        ("job_timeout_seconds", 3600),
         ("ticket_validation_mode", "unknown"),
     ],
 )
@@ -31,6 +33,11 @@ def test_invalid_service_settings_fail_fast(field, value):
 def test_job_callback_requires_url_and_secret_together():
     with pytest.raises(ValueError, match="callback"):
         replace(SETTINGS, job_callback_url="https://example.test/callback", job_callback_secret=None)
+
+
+def test_job_runtime_is_unbounded_but_stall_detection_remains_bounded():
+    assert SETTINGS.job_timeout_seconds == -1
+    assert SETTINGS.job_stall_timeout_seconds > 0
 
 
 @pytest.mark.parametrize("value", ["", "invalid", "0", "-1"])

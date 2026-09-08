@@ -18,11 +18,32 @@ PROFILE_MAX_AGE_SECONDS = 600.0
 PROFILE_LIMIT = 8
 
 
-def record_progress(meta: dict, stage: str, windows: int | None = None, *, now: float | None = None) -> None:
+def record_progress(
+    meta: dict, stage: str, windows: int | None = None, *,
+    percent: float | None = None, now: float | None = None,
+) -> None:
     """Update bounded ETA telemetry in job metadata; the caller persists meta."""
     now = time.time() if now is None else float(now)
     eta = dict(meta.get("queue_eta") or {})
     eta.setdefault("started_at", now)
+    previous_stage = eta.get("last_stage")
+    previous_windows = eta.get("last_windows")
+    previous_percent = eta.get("last_percent")
+    advanced = (
+        previous_stage != stage
+        or (isinstance(windows, int) and (not isinstance(previous_windows, int) or windows > previous_windows))
+        or (
+            isinstance(percent, (int, float))
+            and (not isinstance(previous_percent, (int, float)) or percent > previous_percent)
+        )
+    )
+    if advanced:
+        eta["last_progress_at"] = now
+    eta["last_stage"] = stage
+    if isinstance(windows, int):
+        eta["last_windows"] = windows
+    if isinstance(percent, (int, float)):
+        eta["last_percent"] = float(percent)
     if stage in {"inference", "scanning"}:
         eta.setdefault("inference_started_at", now)
     if stage == "writing_outputs":
@@ -39,6 +60,10 @@ def record_progress(meta: dict, stage: str, windows: int | None = None, *, now: 
             samples.append([now, windows])
         eta["samples"] = samples[-128:]
     meta["queue_eta"] = eta
+
+
+def process_heartbeat_key(job_id: str) -> str:
+    return f"rapptor:job:{job_id}:process-heartbeat"
 
 
 def _recent_rate(meta: dict, now: float) -> float | None:

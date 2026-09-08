@@ -298,6 +298,7 @@ def test_submit_and_token_protected_status(tmp_path, monkeypatch):
     job_id = created.job_id
     token = created.access_token
     assert api.Job.fetch(job_id, connection=connection).origin == "prediction:genome_scan"
+    assert api.Job.fetch(job_id, connection=connection).timeout == -1
     assert created.status_url == f"/v1/jobs/{job_id}"
     assert created.poll_after_seconds == 3
     assert created.queue.ahead == 0

@@ -133,3 +133,12 @@ def test_completed_timing_profile_round_trips_through_redis():
         "preparation_seconds": 10.0,
         "output_seconds": 5.0,
     }]
+
+
+def test_process_heartbeat_does_not_count_as_useful_progress():
+    meta = {}
+    record_progress(meta, "scanning", 100, percent=20.0, now=100.0)
+    record_progress(meta, "scanning", 100, percent=20.0, now=110.0)
+    assert meta["queue_eta"]["last_progress_at"] == 100.0
+    record_progress(meta, "scanning", 101, percent=20.1, now=111.0)
+    assert meta["queue_eta"]["last_progress_at"] == 111.0

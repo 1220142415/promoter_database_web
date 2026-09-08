@@ -7,6 +7,7 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from functools import lru_cache
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -21,6 +22,8 @@ from .cgr_cache import ReferenceCgrNotFound, load_reference_cgr, normalize_refer
 from .jobs import process_job
 from .metrics import cpu_history, latest_cpu_sample, sample_cpu_loop, stop_sampler
 from .queueing import get_queue, get_redis_connection
+from .queue_eta import estimate_wait_seconds
+from .scan_progress import count_scan_windows
 from .schemas import JobCreated, JobStatus, JobSubmission
 from .security import new_access_token, token_digest, token_matches
 from .storage import JobStorage
@@ -117,10 +120,43 @@ def _queue_status(connection, job: Job, status: str) -> dict:
             pass
     return {
         "ahead": ahead,
+        "estimated_wait_seconds": estimate_wait_seconds(connection, job, status, own_ids),
         "waiting": len(own_ids),
         "total_waiting": sum(len(ids) for ids in queued_ids.values()),
         "waiting_by_mode": {mode: len(queued_ids[queue.name]) for mode, queue in queues.items()},
     }
+
+
+@lru_cache(maxsize=1)
+def _model_window_length() -> int | None:
+    try:
+        config = json.loads((SETTINGS.model_dir / "model_config.json").read_text(encoding="utf-8"))
+        value = int(config["seq_length"])
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return value if value > 0 else None
+
+
+def _request_window_count(request_payload: dict) -> int | None:
+    window_length = _model_window_length()
+    if window_length is None:
+        return None
+    reverse = bool(request_payload.get("reverse_complementary", True))
+    if request_payload["mode"] == "predict":
+        lengths = (len(request_payload["sequence"]),)
+        stride = 1
+    else:
+        try:
+            validated = validate_fasta(
+                request_payload["fasta"],
+                max_bases=SETTINGS.max_genome_bases,
+                max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
+            )
+        except (KeyError, InputValidationError):
+            return None
+        lengths = (len(record.sequence) for record in validated.records)
+        stride = int(request_payload["stride"])
+    return count_scan_windows(lengths, window_length, stride, reverse)
 
 
 def _workload_snapshot(job_ids: list[str], connection) -> dict:
@@ -469,6 +505,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
                 "model_version": SETTINGS.model_version,
                 "mode": payload.mode,
                 "input_bases": billed_bases,
+                "eta_total_windows": _request_window_count(request_payload),
                 "submitted_at": submitted_at,
                 "artifacts_expires_at": expires_at,
                 "progress": {"stage": "queued", "percent": 0.0},

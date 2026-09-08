@@ -11,6 +11,7 @@ from .callbacks import report_job_event
 from .cgr_cache import ensure_reference_cgr
 from .config import SETTINGS
 from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, scan_output_formats
+from .queue_eta import record_progress, save_completed_profile
 from .runtime import get_runtime, sha256_file
 from .scan_progress import ScanProgress, count_scan_windows
 from .storage import JobStorage
@@ -31,7 +32,12 @@ def _job_meta_update(**values) -> None:
 
 def _progress(stage: str, percent: float, **extra) -> None:
     payload = {"stage": stage, "percent": round(max(0.0, min(100.0, percent)), 1), **extra}
-    _job_meta_update(progress=payload)
+    job = get_current_job()
+    if job is None:
+        return
+    job.meta["progress"] = payload
+    record_progress(job.meta, stage, extra.get("windows"))
+    job.save_meta()
 
 
 def _file_metadata(path: Path, fmt: str) -> dict:
@@ -126,12 +132,25 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         context_bases = len(genome_context)
         context_fasta = storage.write_text(job_id, "genome_context.fasta", f">genome_context\n{genome_context}\n")
         cgr = runtime.make_cgr(context_fasta, job_dir)
-    _progress("inference", 45.0)
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
-    scores_by_strand = [("+", runtime.score_sequence(sequence, cgr, stride=1, batch_size=batch_size))]
-    if request.get("reverse_complementary", True):
+    reverse = bool(request.get("reverse_complementary", True))
+    total_windows = count_scan_windows((len(sequence),), runtime.seq_length, 1, reverse)
+    inference_progress = ScanProgress(
+        total_windows, _progress, stage="inference", percent_start=45.0, percent_span=45.0,
+    )
+    scores_by_strand = []
+    strand_sequences = [("+", sequence)]
+    if reverse:
         reverse_sequence = runtime.reverse_complement(sequence)
-        scores_by_strand.append(("-", runtime.score_sequence(reverse_sequence, cgr, stride=1, batch_size=batch_size)))
+        strand_sequences.append(("-", reverse_sequence))
+    for strand, strand_sequence in strand_sequences:
+        inference_progress.start_sequence("target_sequence", strand)
+        scores = runtime.score_sequence(
+            strand_sequence, cgr, stride=1, batch_size=batch_size,
+            progress_callback=inference_progress.batch_completed,
+        )
+        scores_by_strand.append((strand, scores))
+        inference_progress.report(force=True, scores_written=sum(len(item) for _, item in scores_by_strand))
     if not any(len(scores) for _, scores in scores_by_strand):
         raise ValueError("sequence produced no model windows")
     score_writer = ScanArtifactWriter(
@@ -166,7 +185,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         "reference_accession": reference_accession,
         "cgr_source": request["cgr_source"],
         "complete_genome": "submitter_asserted",
-        "reverse_complementary": bool(request.get("reverse_complementary", True)),
+        "reverse_complementary": reverse,
         "window_count": int(sum(len(scores) for _, scores in scores_by_strand)),
         "max_score": float(max(scores.max() for _, scores in scores_by_strand if len(scores))),
         "score_filename": "scores.json",
@@ -178,8 +197,9 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)
+    result = _result_metadata(artifacts, summary_path, runtime)
     _progress("complete", 100.0)
-    return _result_metadata(artifacts, summary_path, runtime)
+    return result
 
 
 def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
@@ -293,8 +313,9 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)
+    result = _result_metadata(artifacts, summary_path, runtime)
     _progress("complete", 100.0, **scan_progress.snapshot(), scores_written=total_windows)
-    return _result_metadata(artifacts, summary_path, runtime)
+    return result
 
 
 def process_job(job_id: str) -> dict:
@@ -303,6 +324,10 @@ def process_job(job_id: str) -> dict:
     submission = storage.read_json(job_id, "submission.json")
     started_at = utc_now()
     _job_meta_update(started_at=started_at, progress={"stage": "starting", "percent": 1.0})
+    job = get_current_job()
+    if job is not None:
+        record_progress(job.meta, "starting")
+        job.save_meta()
     report_job_event(_permanent_event(submission, "running", startedAt=started_at))
     try:
         if request["mode"] == "predict":
@@ -313,6 +338,9 @@ def process_job(job_id: str) -> dict:
             raise ValueError(f"unsupported job mode: {request.get('mode')}")
         ended_at = utc_now()
         _job_meta_update(ended_at=ended_at, result=result, error=None)
+        job = get_current_job()
+        if job is not None:
+            save_completed_profile(job)
         report_job_event(_permanent_event(
             submission,
             "succeeded",

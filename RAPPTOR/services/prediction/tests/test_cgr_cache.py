@@ -82,11 +82,13 @@ class FakeRuntime:
     def __init__(self):
         self.scored_sequences = []
 
-    def score_sequence(self, sequence, cgr, *, stride, batch_size):
+    def score_sequence(self, sequence, cgr, *, stride, batch_size, progress_callback=None):
         assert cgr.shape == (1, 128, 128)
         self.scored_sequences.append(sequence)
         count = (len(sequence) - self.seq_length) // stride + 1
         offset = 1000 if len(self.scored_sequences) == 2 else 0
+        if progress_callback is not None:
+            progress_callback(count, count)
         return np.arange(count, dtype=np.float32) + offset
 
     def reverse_complement(self, sequence):

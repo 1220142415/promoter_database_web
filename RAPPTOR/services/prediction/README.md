@@ -138,6 +138,19 @@ statistics without exposing job IDs, sequences, tickets, or user data. A
 token-protected `GET /v1/jobs/{job_id}` response also includes that job's
 `mode` and `input_bases`.
 
+The same token-protected job response includes
+`queue.estimated_wait_seconds`, an estimate of time until that job starts (not
+time until it completes). It remains `null` when workers are offline or recent
+measurements are insufficient or stalled, and becomes `0` once the job starts.
+The estimator keeps at most 120 seconds of bounded window-progress samples in
+RQ metadata. Per queue, Redis retains a small set of recent completed timing
+profiles containing measured windows/second plus preparation and output-writing
+overhead. Queued workload is calculated from input lengths, stride, strand
+count, and the model's configured window length, then assigned FIFO across the
+currently heartbeating worker slots. No other job identifiers or inputs are
+included in the response. `queue.ahead` continues to count only waiting jobs in
+front of the current job and excludes running work.
+
 ## Local validation
 
 ```bash

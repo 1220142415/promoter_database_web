@@ -41,11 +41,51 @@ then records that the caller asserted complete-genome input.
 
 ## Sequence-scan outputs
 
+During `genome_scan`, `GET /v1/jobs/{job_id}` reports `progress.windows`,
+`progress.total_windows`, and `progress.scan_percent`, plus the current `contig`
+and `strand`. Counts include every evaluated window on the requested strands,
+using each sequence length, the model window length, and the scan stride.
+Each completed inference batch updates the counters; worker metadata is
+published at most once per second, with immediate updates at strand boundaries
+and the last batch. `progress.percent` remains overall task progress: a scan at
+100% still needs the output-writing stage before the task succeeds.
+
+These fields require an updated prediction worker image. Updating only the web
+app cannot add batch updates to an older worker; the web app displays any
+reported window count without inventing a scan percentage when totals are absent.
+
+The worker uses RQ `SpawnWorker` so each task starts in a fresh Python process.
+Forking a worker after model preload can deadlock PyTorch CPU thread pools
+during the CGR transform. Model readiness is checked in the parent; each task
+loads its own model runtime. This adds model startup time per task.
+
 `genome_scan` accepts a configured-range `stride` and an optional
-`score_cutoff` in `[0, 1]`. The cutoff uses the strict rule
-`score > score_cutoff` and applies only to sparse GFF3/JSON records. BigWig and
-Parquet always retain every scanned window, so changing a display/export cutoff
-never destroys the underlying probability track. `top_k` remains unsupported.
+`score_cutoff` in `[0, 1]`. JSON exports raw scores strictly above this cutoff;
+`scores.gff3` exports Gaussian-smoothed scores strictly above it. BigWig and
+Parquet retain every raw scanned score. `top_k` remains unsupported.
+
+At **stride 1**, the API and worker automatically include GFF3 postprocessing,
+even when a client requests only BigWig/Parquet. Each contig and strand is ordered
+by reference coordinate, smoothed with Gaussian sigma 1 (`reflect`), then passed
+to `scipy.signal.find_peaks(distance=10)`. Peaks with smoothed model score
+strictly **greater than 0.9** are written to `peaks.gff3`. This fixed peak cutoff
+is independent of `score_cutoff`; a zero-peak scan still produces a valid GFF3
+header. Other strides retain raw score outputs; requesting smoothed GFF3 at
+those strides is rejected. SciPy 1.15.3 is required.
+
+Peak GFF3 records are 1 bp anchors in 1-based reference coordinates. New score
+artifacts use reference-oriented `window_start_0based`, recorded by
+`window_start_coordinate_system: "reference_0based"` in the summary, a GFF3
+header, and Parquet metadata. Readers must preserve the older strand-oriented
+window-start convention for legacy tasks. The first smoothed-peaks release
+already used reference starts; its smoothing/peak-calling summary fields
+identify that schema before the explicit marker was introduced.
+
+The result page prefers `peaks.gff3`, displays **Called peaks**, and loads the
+peak track beside model-score tracks. For a recorded stride of 1, the browser
+smooths the raw scores with the same Gaussian sigma 1 and reflect boundaries;
+BigWig downloads retain every raw score. The form requests the fixed peak settings
+automatically. Existing jobs are not rescanned.
 
 ```json
 {
@@ -98,6 +138,12 @@ docker-compose -f services/prediction/compose.yaml config
 python -m pip install -r services/prediction/requirements-test.txt
 PYTHONPATH=services/prediction/src python -m pytest services/prediction/tests
 ```
+
+`test_worker_process.py` also provides an opt-in integration regression against
+an isolated Redis instance. Set `RAPPTOR_TEST_REDIS_URL`, provide the normal
+model assets, and run it with the service dependencies installed. It starts the
+actual worker, waits for model preload, and checks that a CPU tensor job finishes
+in its child process. Never point this test at production Redis.
 
 Production must enable Cloudflare ticket validation and use the same service
 secret as the web application's internal ticket-consumption route.

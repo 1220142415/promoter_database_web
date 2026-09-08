@@ -41,11 +41,11 @@ then records that the caller asserted complete-genome input.
 
 ## Sequence-scan outputs
 
-`genome_scan` accepts a configured `stride` and optional
+`genome_scan` accepts a configured-range `stride` and an optional
 `score_cutoff` in `[0, 1]`. The cutoff uses the strict rule
 `score > score_cutoff` and applies only to sparse GFF3/JSON records. BigWig and
-Parquet retain every window, so an export cutoff never changes the raw model-score
-tracks. `top_k` remains unsupported.
+Parquet always retain every scanned window, so changing a display/export cutoff
+never destroys the underlying probability track. `top_k` remains unsupported.
 
 ```json
 {

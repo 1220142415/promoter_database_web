@@ -31,19 +31,19 @@ class JobSubmission(BaseModel):
     stride: int | None = Field(
         default=None,
         ge=1,
-        description="Window stride in bp. Limits: /v1/models/current.",
+        description="Bases between adjacent genome-scan windows; deployment limits are published by /v1/models/current.",
     )
     score_cutoff: float | None = Field(
         default=None,
         ge=0,
         le=1,
         description=(
-            "Optional export cutoff for sparse GFF3/JSON records (score > score_cutoff). "
-            "BigWig and Parquet keep every window."
+            "Optional strict score cutoff for sparse GFF3/JSON records. "
+            "BigWig and Parquet always retain every scanned window."
         ),
     )
-    batch_size: int | None = Field(default=None, ge=1, description="Inference batch size (deployment-limited).")
-    reverse_complementary: bool = Field(default=True, description="Scan the reverse-complement strand.")
+    batch_size: int | None = Field(default=None, ge=1, description="Inference tuning parameter bounded by the deployment.")
+    reverse_complementary: bool = Field(default=True, description="Also scan the reverse-complement strand.")
     output_formats: list[OutputFormat] | None = Field(
         default=None,
         description="Sequence-scan artifacts. Defaults: BigWig and Parquet.",

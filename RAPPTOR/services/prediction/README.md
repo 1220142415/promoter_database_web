@@ -131,6 +131,13 @@ default). Configure `RAPPTOR_JOB_CALLBACK_URL` and
 metadata to D1 through `/api/internal/prediction-jobs`. D1 stores the artifact
 manifest and hashes, never FASTA, CGR, model weights, or BigWig bytes.
 
+## Service workload status
+
+`GET /v1/status` returns aggregate queued/running job counts and input-size
+statistics without exposing job IDs, sequences, tickets, or user data. A
+token-protected `GET /v1/jobs/{job_id}` response also includes that job's
+`mode` and `input_bases`.
+
 ## Local validation
 
 ```bash

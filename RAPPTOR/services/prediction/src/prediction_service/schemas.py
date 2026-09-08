@@ -97,6 +97,8 @@ class JobStatus(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     job_id: str
     status: Literal["queued", "running", "succeeded", "failed", "unknown"]
+    mode: Literal["predict", "genome_scan"] | None = None
+    input_bases: int | None = None
     model_version: str | None = None
     progress: dict | None = None
     submitted_at: str | None = None

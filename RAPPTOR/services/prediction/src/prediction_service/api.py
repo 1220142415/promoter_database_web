@@ -277,10 +277,20 @@ def current_model():
                 "unfiltered_formats": ["bigwig", "parquet"],
             },
             "gff3_postprocessing": {
-                "required_stride": 1,
+                "required_stride": None,
+                "supported_stride": {"minimum": SETTINGS.min_scan_stride, "maximum": SETTINGS.max_scan_stride},
                 "automatic": True,
                 "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
-                "peaks": {"distance": 10, "default_cutoff": 0.9, "configurable_cutoff": True, "operator": ">", "filename": "peaks.gff3"},
+                "peaks": {
+                    "distance": 10,
+                    "distance_unit": "bp",
+                    "sample_distance_rule": "ceil(distance_bp/stride)",
+                    "coordinate_resolution": "stride",
+                    "default_cutoff": 0.9,
+                    "configurable_cutoff": True,
+                    "operator": ">",
+                    "filename": "peaks.gff3",
+                },
             },
             "bigwig_processing": {
                 "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},

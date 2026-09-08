@@ -375,7 +375,11 @@ describe('prototype prediction workbench', () => {
     expect(ticketRequest).toMatchObject({ mode: 'genome_scan', bases: 261 });
   });
 
-  it.each([false, true])('reuses the CGR input and submits the correct scan outputs (peaks: %s)', async (peaks) => {
+  it.each([
+    { label: 'unsupported peaks', supportsPeaks: false, requiresStride1: true, stride: 37, peaks: false },
+    { label: 'dense peaks', supportsPeaks: true, requiresStride1: true, stride: 1, peaks: true },
+    { label: 'sampled peaks', supportsPeaks: true, requiresStride1: false, stride: 37, peaks: true },
+  ])('reuses the CGR input and submits the correct scan outputs ($label)', async ({ supportsPeaks, requiresStride1, stride: selectedStride, peaks }) => {
     let jobRequest: Record<string, unknown> | null = null;
     let ticketRequest: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -396,16 +400,17 @@ describe('prototype prediction workbench', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: "candidate-github-93cf", supportsScoreCutoff: peaks, supportsPeakCalling: peaks, gff3RequiresStride1: peaks, siteKey: "" }} />);
+    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: "candidate-github-93cf", supportsScoreCutoff: supportsPeaks, supportsPeakCalling: supportsPeaks, gff3RequiresStride1: requiresStride1, siteKey: "" }} />);
 
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
     const stride = screen.getByRole('spinbutton', { name: 'Stride' });
     await user.clear(stride);
-    await user.type(stride, peaks ? '1' : '37');
+    await user.type(stride, String(selectedStride));
     const cutoff = screen.getByRole('spinbutton', { name: peaks ? /^Peak cutoff/ : /^Export cutoff/ });
     if (peaks) {
       expect(cutoff).toBeEnabled();
+      expect(screen.getByText(`Local maxima above this cutoff are called as peaks at ${selectedStride} bp sampling resolution.`)).toBeInTheDocument();
       await user.clear(cutoff);
       await user.type(cutoff, '0.73');
     } else {
@@ -417,7 +422,7 @@ describe('prototype prediction workbench', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'b'.repeat(32)}`));
     expect(jobRequest).toMatchObject({
       mode: 'genome_scan',
-      stride: peaks ? 1 : 37,
+      stride: selectedStride,
       reverse_complementary: false,
       output_formats: peaks ? ['bigwig', 'gff3'] : ['bigwig', 'parquet'],
     });

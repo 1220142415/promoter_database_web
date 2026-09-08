@@ -66,16 +66,18 @@ every Gaussian-smoothed score; Parquet retains every raw scanned score. `top_k`
 remains unsupported.
 
 At **stride 1**, the API and worker automatically include GFF3 postprocessing,
-even when a client requests only BigWig/Parquet. Each contig and strand is ordered
-by reference coordinate, smoothed with Gaussian sigma 1 (`reflect`), then passed
-to `scipy.signal.find_peaks(distance=10)`. Peaks with smoothed model score
-strictly **greater than 0.9** are written to `peaks.gff3`. This fixed peak cutoff
-is independent of `score_cutoff`; a zero-peak scan still produces a valid GFF3
-header. Other strides still produce Gaussian-smoothed BigWig values while
-retaining raw Parquet/JSON values; requesting smoothed GFF3 at those strides is
-rejected. SciPy 1.15.3 is required.
+even when a client requests only BigWig/Parquet. Clients can also request GFF3
+at every configured stride. Each contig and strand is ordered by reference
+coordinate, smoothed with Gaussian sigma 1 on the sampled-score grid (`reflect`),
+then passed to `scipy.signal.find_peaks`. The 10 bp minimum separation is converted
+to `ceil(10 / stride)` sampled scores. Peaks with smoothed model score strictly
+greater than `score_cutoff` (or 0.9 when no cutoff is supplied) are written to
+`peaks.gff3`; a zero-peak scan still produces a valid GFF3 header. SciPy 1.15.3
+is required.
 
-Peak GFF3 records are 1 bp anchors in 1-based reference coordinates. New score
+Peak GFF3 records are sampled 1 bp anchors in 1-based reference coordinates.
+They record `sampled_anchor=true` and `resolution_bp=stride`; no unsupported
+interpolation is used between evaluated windows. New score
 artifacts use reference-oriented `window_start_0based`, recorded by
 `window_start_coordinate_system: "reference_0based"` in the summary, a GFF3
 header, and Parquet metadata. Readers must preserve the older strand-oriented

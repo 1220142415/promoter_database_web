@@ -47,7 +47,14 @@ def test_healthz(tmp_path, monkeypatch):
     api, connection = load_api(tmp_path, monkeypatch)
     assert api.healthz() == {"status": "ok"}
     assert api.readyz()["status"] == "ready"
-    assert api.current_model()["requires_complete_genome"] is True
+    model = api.current_model()
+    assert model["requires_complete_genome"] is True
+    postprocessing = model["genome_scan"]["gff3_postprocessing"]
+    assert postprocessing["required_stride"] is None
+    assert postprocessing["supported_stride"] == {"minimum": 1, "maximum": api.SETTINGS.max_scan_stride}
+    assert postprocessing["peaks"]["distance_unit"] == "bp"
+    assert postprocessing["peaks"]["sample_distance_rule"] == "ceil(distance_bp/stride)"
+    assert postprocessing["peaks"]["coordinate_resolution"] == "stride"
 
 
 def test_ready_requires_both_mode_workers(tmp_path, monkeypatch):

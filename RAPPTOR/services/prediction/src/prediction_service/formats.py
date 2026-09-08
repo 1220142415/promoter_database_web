@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 from typing import Iterable
@@ -19,6 +20,11 @@ FORMAT_MIME = {
 SMOOTHING_SIGMA = 1.0
 PEAK_DISTANCE = 10
 PEAK_CUTOFF = 0.9
+
+
+def peak_distance_samples(stride: int) -> int:
+    """Convert the 10 bp separation rule to the sampled score grid."""
+    return max(1, math.ceil(PEAK_DISTANCE / stride))
 
 
 def scan_output_formats(formats: Iterable[str] | None, stride: int) -> tuple[str, ...]:
@@ -64,6 +70,9 @@ class ScanArtifactWriter:
             raise ArtifactFormatError(f"unsupported output format(s): {', '.join(sorted(unknown))}")
         self.records = tuple(records)
         self.stride = int(stride)
+        if self.stride < 1:
+            raise ArtifactFormatError("stride must be at least 1")
+        self.peak_distance_samples = peak_distance_samples(self.stride)
         self.score_cutoff = float(score_cutoff) if score_cutoff is not None else None
         self.peak_cutoff = self.score_cutoff if self.score_cutoff is not None else PEAK_CUTOFF
         self._counter = 0
@@ -79,8 +88,6 @@ class ScanArtifactWriter:
         self._bigwigs: dict[str, object] = {}
 
         try:
-            if "gff3" in self.formats and self.stride != 1:
-                raise ArtifactFormatError("smoothed GFF3 and peak output requires stride=1")
             for fmt in self.formats:
                 if fmt == "bigwig":
                     self._open_bigwig("+", model_version, checkpoint_sha256)
@@ -106,6 +113,9 @@ class ScanArtifactWriter:
                     peak_handle.write(f"##RAPPtor-scan-stride {self.stride}\n")
                     peak_handle.write(f"##RAPPtor-score-smoothing gaussian sigma={SMOOTHING_SIGMA:g} mode=reflect\n")
                     peak_handle.write(f"##RAPPtor-peak-distance {PEAK_DISTANCE}\n")
+                    peak_handle.write("##RAPPtor-peak-distance-unit bp\n")
+                    peak_handle.write(f"##RAPPtor-peak-distance-samples {self.peak_distance_samples}\n")
+                    peak_handle.write(f"##RAPPtor-peak-coordinate-resolution-bp {self.stride}\n")
                     peak_handle.write(f"##RAPPtor-peak-cutoff >{self.peak_cutoff:g}\n")
                 elif fmt == "json":
                     self._open_text("scores.json", "json")
@@ -230,7 +240,7 @@ class ScanArtifactWriter:
             if "gff3" in self.formats:
                 from scipy.signal import find_peaks
 
-                indices, _ = find_peaks(ordered_smoothed, distance=PEAK_DISTANCE)
+                indices, _ = find_peaks(ordered_smoothed, distance=self.peak_distance_samples)
                 ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > self.peak_cutoff}
                 peak_indices = ordered_peaks if strand == "+" else {
                     len(raw_scores) - index - 1 for index in ordered_peaks
@@ -283,7 +293,8 @@ class ScanArtifactWriter:
                         self._handles["peaks"].write(
                             f"{sequence_id}\tRAPPtor\tpromoter_peak\t{anchor + 1}\t{anchor + 1}\t"
                             f"{smoothed_score:.8f}\t{strand}\t.\tID={peak_id};Name={peak_id};"
-                            f"prediction_score={smoothed_score:.8f}\n"
+                            f"prediction_score={smoothed_score:.8f};anchor_position_0based={anchor};"
+                            f"stride={self.stride};sampled_anchor=true;resolution_bp={self.stride}\n"
                         )
                 cutoff_score = (
                     float(smoothed_scores[score_indices[index]])

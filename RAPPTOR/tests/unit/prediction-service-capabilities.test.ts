@@ -3,18 +3,29 @@ import { queuedPredictionCapabilities, queuedPredictionLocalTest } from '@/featu
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('queued service capability detection', () => {
-  it.each([1, 2])('validates the declared peak parameters (sigma %i)', async (sigma) => {
+  it.each([1, 2])('validates stride-aware peak parameters (sigma %i)', async (sigma) => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
     vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : {
       model_version: 'candidate-github-93cf', genome_scan: { gff3_postprocessing: {
-        required_stride: 1, smoothing: { method: 'gaussian', sigma, mode: 'reflect' },
+        required_stride: null, smoothing: { method: 'gaussian', sigma, mode: 'reflect' },
         peaks: sigma === 1
-          ? { distance: 10, default_cutoff: .9, configurable_cutoff: true, operator: '>', filename: 'peaks.gff3' }
+          ? { distance: 10, distance_unit: 'bp', sample_distance_rule: 'ceil(distance_bp/stride)', coordinate_resolution: 'stride', default_cutoff: .9, configurable_cutoff: true, operator: '>', filename: 'peaks.gff3' }
           : { distance: 10, cutoff: .9, operator: '>', filename: 'peaks.gff3' },
       } },
     })));
-    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, gff3RequiresStride1: true, supportsPeakCalling: sigma === 1 });
+    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, gff3RequiresStride1: false, supportsPeakCalling: sigma === 1 });
+  });
+  it('keeps dense-only peak services compatible during rollout', async () => {
+    vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
+    vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : {
+      model_version: 'candidate-github-93cf', genome_scan: { gff3_postprocessing: {
+        required_stride: 1, smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' },
+        peaks: { distance: 10, default_cutoff: .9, configurable_cutoff: true, operator: '>', filename: 'peaks.gff3' },
+      } },
+    })));
+    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, gff3RequiresStride1: true, supportsPeakCalling: true });
   });
   it('requires ticket and Turnstile configuration but no email settings in IP mode', async () => {
     const settings = {

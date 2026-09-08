@@ -10,7 +10,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 
-from prediction_service.formats import ScanArtifactWriter, scan_output_formats, ArtifactFormatError
+from prediction_service.formats import ScanArtifactWriter, scan_output_formats, peak_distance_samples
 
 
 def rows(path):
@@ -125,13 +125,38 @@ class PeakCallingTests(unittest.TestCase):
                 self.assertEqual(summary['window_start_coordinate_system'], 'reference_0based')
                 self.assertEqual(summary['bigwig_smoothing'], {'method': 'gaussian', 'sigma': 1.0, 'mode': 'reflect'})
 
-    def test_non_dense_gff_is_rejected_before_writing_results(self):
+    def test_stride_aware_peaks_use_bp_distance_and_sampled_anchor_coordinates(self):
+        with TemporaryDirectory() as folder:
+            path = Path(folder)
+            stride = 3
+            scores = np.zeros(21, dtype=np.float32)
+            scores[10] = 1
+            writer = ScanArtifactWriter(
+                path, ['gff3'], [('a', 160)], model_version='test', checkpoint_sha256='test',
+                stride=stride, score_cutoff=.2,
+            )
+            writer.add_scores('a', 160, '+', scores, upstream_len=80, window_length=100)
+            writer.close(success=True)
+            peak_text = (path/'peaks.gff3').read_text()
+            peak_rows = rows(path/'peaks.gff3')
+            self.assertEqual(peak_distance_samples(stride), 4)
+            self.assertIn('##RAPPtor-peak-distance 10', peak_text)
+            self.assertIn('##RAPPtor-peak-distance-unit bp', peak_text)
+            self.assertIn('##RAPPtor-peak-distance-samples 4', peak_text)
+            self.assertIn('##RAPPtor-peak-coordinate-resolution-bp 3', peak_text)
+            self.assertEqual(len(peak_rows), 1)
+            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (111, 111))
+            self.assertIn('anchor_position_0based=110', peak_rows[0][8])
+            self.assertIn('sampled_anchor=true', peak_rows[0][8])
+            self.assertIn('resolution_bp=3', peak_rows[0][8])
+
+    def test_non_dense_gff_is_supported_without_changing_default_formats(self):
         self.assertIn('gff3', scan_output_formats(['bigwig'], 1))
         self.assertEqual(scan_output_formats(['bigwig'], 20), ('bigwig',))
         with TemporaryDirectory() as folder:
-            with self.assertRaises(ArtifactFormatError):
-                ScanArtifactWriter(Path(folder), ['gff3'], [('a', 140)], model_version='test', checkpoint_sha256='test', stride=20)
-            self.assertEqual(list(Path(folder).iterdir()), [])
+            writer = ScanArtifactWriter(Path(folder), ['gff3'], [('a', 140)], model_version='test', checkpoint_sha256='test', stride=20)
+            writer.close(success=True)
+            self.assertTrue((Path(folder)/'peaks.gff3').exists())
 
 
 if __name__ == '__main__':

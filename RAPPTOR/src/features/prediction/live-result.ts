@@ -10,7 +10,7 @@ export type JobSummary = {
   peak_count?: number | null;
   smoothing?: { method: string; sigma: number; mode: string } | null;
   bigwig_smoothing?: { method: string; sigma: number; mode: string } | null;
-  peak_calling?: { distance: number; cutoff: number; operator: string } | null;
+  peak_calling?: { distance: number; distance_unit?: string; sample_distance?: number; resolution_bp?: number; cutoff: number; operator: string } | null;
   window_start_coordinate_system?: 'reference_0based';
   sequence_bases?: number;
   genome_context_bases?: number | null;

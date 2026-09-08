@@ -10,7 +10,7 @@ from rq import get_current_job
 from .callbacks import report_job_event
 from .cgr_cache import ensure_reference_cgr
 from .config import SETTINGS
-from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, scan_output_formats
+from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, peak_distance_samples, scan_output_formats
 from .runtime import get_runtime, sha256_file
 from .scan_progress import ScanProgress, count_scan_windows
 from .storage import JobStorage
@@ -279,7 +279,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "output_semantics": (
             "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
             "scores.gff3 contains Gaussian-smoothed scores; "
-            "peaks.gff3 contains fixed-threshold called peaks"
+            "peaks.gff3 contains cutoff-filtered sampled peaks"
             if "gff3" in output_formats
             else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
         ),
@@ -292,7 +292,14 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
             if {"bigwig", "gff3"}.intersection(output_formats) else None
         ),
         "peak_calling": (
-            {"distance": PEAK_DISTANCE, "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF, "operator": ">"}
+            {
+                "distance": PEAK_DISTANCE,
+                "distance_unit": "bp",
+                "sample_distance": peak_distance_samples(stride),
+                "resolution_bp": stride,
+                "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF,
+                "operator": ">",
+            }
             if "gff3" in output_formats else None
         ),
         "completed_at": utc_now(),

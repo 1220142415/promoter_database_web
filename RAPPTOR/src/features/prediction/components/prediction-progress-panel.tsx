@@ -11,6 +11,10 @@ import {
 } from '../progress';
 import styles from './prediction-progress.module.css';
 
+function queueCount(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 export default function PredictionProgressPanel({
   mode,
   snapshot,
@@ -24,6 +28,19 @@ export default function PredictionProgressPanel({
   const steps = predictionProgressSteps(mode);
   const currentStep = predictionProgressStepIndex(progress);
   const failed = progress.state === 'failed';
+  const queued = progress.state === 'queued' && !progress.simulated;
+  const ahead = queueCount(progress.queue?.ahead);
+  const running = queueCount(progress.queue?.running);
+  const waiting = queueCount(progress.queue?.waiting);
+  const workerReady = progress.queue?.worker_ready;
+  const busy = (running ?? 0) > 0 || (ahead ?? 0) > 0;
+  const serverStatus = workerReady === false ? 'Temporarily unavailable'
+    : busy ? 'Busy' : workerReady === true ? 'Available' : 'Status unavailable';
+  const waitSeconds = progress.queue?.estimated_wait_seconds;
+  const estimateAvailable = workerReady !== false && typeof waitSeconds === 'number' && Number.isFinite(waitSeconds) && waitSeconds >= 0;
+  const waitLabel = estimateAvailable
+    ? waitSeconds < 60 ? 'Less than 1 min' : `About ${Math.ceil(waitSeconds / 60).toLocaleString()} min`
+    : 'Not available yet';
   const showScan = mode === 'scan' && progress.state !== 'succeeded' && currentStep >= 2
     && (progress.stage === 'scanning' || progress.windows !== undefined || progress.totalWindows !== undefined);
   const scanPercent = progress.scanPercent;
@@ -42,9 +59,9 @@ export default function PredictionProgressPanel({
       <div className={styles.heading}>
         <div>
           <span>{progress.simulated ? 'Simulated queue preview' : 'Prediction task'}</span>
-          <strong>{failed ? 'Prediction failed' : steps[currentStep].label}</strong>
+          <strong>{failed ? 'Prediction failed' : queued ? 'Your task is in the queue' : steps[currentStep].label}</strong>
         </div>
-        <span className={styles.percent}>{failed ? 'Stopped' : progress.percent === null ? 'In progress' : `${Math.round(progress.percent)}%`}{showScan && !failed && progress.percent !== null ? <small>overall</small> : null}</span>
+        <span className={styles.percent}>{failed ? 'Stopped' : queued ? 'Queued' : progress.percent === null ? 'In progress' : `${Math.round(progress.percent)}%`}{showScan && !failed && progress.percent !== null ? <small>overall</small> : null}</span>
       </div>
 
       <ol className={styles.steps} aria-label="Prediction stages">
@@ -60,7 +77,19 @@ export default function PredictionProgressPanel({
         })}
       </ol>
 
-      {progress.percent === null
+      {queued ? <section className={styles.queue} aria-label="Queue status">
+        <div className={styles.queueHeading}><strong>{mode === 'scan' ? 'Genome scan queue' : 'Short-sequence queue'}</strong><span data-busy={busy}>{serverStatus}</span></div>
+        <dl className={styles.queueMetrics}>
+          <div><dt>Running now</dt><dd>{running ?? '—'}</dd></div>
+          <div><dt>Queued ahead of you</dt><dd>{ahead ?? '—'}</dd></div>
+          <div><dt>Estimated wait to start</dt><dd>{waitLabel}</dd></div>
+        </dl>
+        <p>{workerReady === false ? 'The service is temporarily unavailable. Your task is still queued.'
+          : ahead === 0 ? 'You are first in the waiting queue. Your task starts when a processing slot becomes available.'
+            : 'Your task will start when a processing slot becomes available.'}</p>
+        <p>Counts refer to this processing queue; queued-ahead counts exclude running tasks.{waiting === null ? '' : ` ${waiting.toLocaleString()} waiting in total, including your task.`}</p>
+        <p>{estimateAvailable ? 'The wait estimate may change with server load and task sizes.' : 'A reliable wait estimate is not available yet.'} Updates every 30 seconds. No need to resubmit.</p>
+      </section> : progress.percent === null
         ? <progress aria-label="Prediction task progress" max={100} />
         : <progress aria-label="Prediction task progress" max={100} value={progress.percent} />}
       {showScan ? <section className={styles.scan} aria-label="Genome scan progress">

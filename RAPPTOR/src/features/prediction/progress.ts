@@ -3,6 +3,14 @@ import type { PrototypePredictionRun } from './prototype';
 export type PredictionProgressState = 'queued' | 'running' | 'succeeded' | 'failed';
 export type PredictionProgressMode = 'focused' | 'scan';
 
+export interface PredictionQueueStatus {
+  ahead?: number | null;
+  waiting?: number | null;
+  running?: number | null;
+  worker_ready?: boolean | null;
+  estimated_wait_seconds?: number | null;
+}
+
 export interface PredictionProgressSnapshot {
   state: PredictionProgressState;
   stage: string;
@@ -14,6 +22,7 @@ export interface PredictionProgressSnapshot {
   totalWindows?: number;
   scanPercent?: number | null;
   simulated?: boolean;
+  queue?: PredictionQueueStatus;
 }
 
 interface TimelineSegment {

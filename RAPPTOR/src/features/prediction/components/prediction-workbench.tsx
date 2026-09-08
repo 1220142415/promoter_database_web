@@ -15,7 +15,7 @@ import PredictionProgressPanel from './prediction-progress-panel';
 import ResultDownloads from './result-downloads';
 import ResultInformation from './result-information';
 import { windowCoordinateSystem, type JobArtifact, type JobSummary } from '../live-result';
-import { normalizePredictionProgress } from '../progress';
+import { normalizePredictionProgress, type PredictionQueueStatus } from '../progress';
 import { PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from '../prototype-result.module.css';
 
@@ -27,6 +27,7 @@ type JobState = {
   model_version?: string;
   progress?: { stage?: string; percent?: number; contig?: string; strand?: string; windows?: number; total_windows?: number; scan_percent?: number };
   submitted_at?: string;
+  queue?: PredictionQueueStatus;
   artifacts_expires_at?: string | null;
   result?: { artifacts?: JobArtifact[] };
   error?: { type?: string; message?: string };
@@ -196,6 +197,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
     windows: job?.progress?.windows ?? summary?.window_count,
     totalWindows: job?.progress?.total_windows ?? summary?.window_count,
     scanPercent: job?.progress?.scan_percent,
+    queue: job?.queue,
   });
 
   return <main className={styles.page}>

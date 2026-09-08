@@ -6,6 +6,40 @@ import { describe, expect, it, vi } from 'vitest';
 import PredictionProgressPanel from '@/features/prediction/components/prediction-progress-panel';
 
 describe('prediction progress panel', () => {
+  it('separates running jobs from jobs waiting ahead and avoids invented wait times', () => {
+    render(<PredictionProgressPanel mode="scan" snapshot={{
+      state: 'queued', stage: 'queued', percent: 0, message: 'Waiting for an available worker.',
+      queue: { ahead: 0, waiting: 1, running: 1, worker_ready: true },
+    }} />);
+    const queue = screen.getByRole('region', { name: 'Queue status' });
+    expect(queue).toHaveTextContent('Busy');
+    expect(within(queue).getByText('Running now').parentElement).toHaveTextContent('1');
+    expect(within(queue).getByText('Queued ahead of you').parentElement).toHaveTextContent('0');
+    expect(queue).toHaveTextContent('You are first in the waiting queue');
+    expect(queue).toHaveTextContent('Not available yet');
+    expect(queue).toHaveTextContent('Updates every 30 seconds');
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows a supplied wait estimate but suppresses it while the service is unavailable', () => {
+    const snapshot = { state: 'queued' as const, stage: 'queued', percent: 0, message: 'Waiting.',
+      queue: { ahead: 2, running: 1, worker_ready: true, estimated_wait_seconds: 125 } };
+    const { rerender } = render(<PredictionProgressPanel mode="scan" snapshot={snapshot} />);
+    expect(screen.getByRole('region', { name: 'Queue status' })).toHaveTextContent('About 3 min');
+    rerender(<PredictionProgressPanel mode="scan" snapshot={{ ...snapshot, queue: { ...snapshot.queue, worker_ready: false } }} />);
+    expect(screen.getByRole('region', { name: 'Queue status' })).toHaveTextContent('Temporarily unavailable');
+    expect(screen.queryByText('About 3 min')).not.toBeInTheDocument();
+  });
+
+  it('keeps missing or invalid queue data unknown instead of showing zero or an idle server', () => {
+    render(<PredictionProgressPanel mode="scan" snapshot={{ state: 'queued', stage: 'queued', percent: 0, message: 'Waiting.',
+      queue: { ahead: -1, running: NaN, estimated_wait_seconds: -30 } }} />);
+    const queue = screen.getByRole('region', { name: 'Queue status' });
+    expect(queue).toHaveTextContent('Status unavailable');
+    expect(queue).toHaveTextContent('Not available yet');
+    expect(queue).not.toHaveTextContent('You are first');
+  });
+
   it('exposes the current scan stage and determinate progress without relying on color', () => {
     render(<PredictionProgressPanel mode="scan" snapshot={{
       state: 'running', stage: 'scanning', percent: 48.4, message: 'Scanning sequence windows.',

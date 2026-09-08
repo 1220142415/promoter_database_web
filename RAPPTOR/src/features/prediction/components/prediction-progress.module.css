@@ -37,6 +37,16 @@
 .scanCounts span, .scan p { color: var(--muted); font-size: 11px; }
 .scan p { margin: 7px 0 0; overflow-wrap: anywhere; }
 
+.queue { margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 6px; background: #f3f8f6; }
+.queueHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--ink); }
+.queueHeading > span { padding: 4px 9px; border-radius: 999px; background: var(--teal-soft); color: var(--teal-dark); font-size: 11px; }
+.queueHeading > span[data-busy="true"] { background: #fff0d7; color: #795316; }
+.queueMetrics { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 16px; margin: 18px 0; }
+.queueMetrics dt { color: var(--muted); font-size: 11px; }
+.queueMetrics dd { margin: 7px 0 0; color: var(--ink); font-size: 22px; font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.queueMetrics > div:last-child dd { font-size: 16px; }
+.queue p { margin: 7px 0 0; color: var(--ink-soft); font-size: 11px; line-height: 1.6; }
+
 .status { min-height: 24px; display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--ink-soft); }
 .status svg { width: 19px; color: #9b3932; }
 .status > div { display: grid; gap: 3px; }
@@ -49,6 +59,8 @@
 .actions button, .actions a { min-height: 38px; display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 5px; background: white; padding: 7px 12px; color: var(--teal-dark); font-size: 10px; font-weight: 800; cursor: pointer; }
 
 @media (max-width: 760px) {
+  .queueMetrics { grid-template-columns: 1fr 1fr; }
+  .queueMetrics > div:last-child { grid-column: 1 / -1; }
   .panel { padding: 17px 14px; }
   .steps { grid-template-columns: 1fr; gap: 7px; }
   .steps li:not(:last-child)::after { left: 11px; right: auto; top: 22px; bottom: -8px; width: 2px; height: auto; }

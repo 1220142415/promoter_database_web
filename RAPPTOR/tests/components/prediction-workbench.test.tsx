@@ -208,6 +208,18 @@ describe('live prediction result layout', () => {
     expect(within(scan).getByRole('progressbar')).toHaveAttribute('value', '60');
   });
 
+  it('passes actual queue information from the job endpoint into the waiting UI', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      job_id: saved.jobId, status: 'queued', mode: 'genome_scan',
+      queue: { ahead: 3, waiting: 4, running: 1, worker_ready: true },
+    })));
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    const queue = await screen.findByRole('region', { name: 'Queue status' });
+    await waitFor(() => expect(queue).toHaveTextContent('Busy'));
+    expect(within(queue).getByText('Queued ahead of you').parentElement).toHaveTextContent('3');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('offers only GFF3 and a track ZIP, with three basic information fields', async () => {
     mockApi('genome_scan');
     render(<PredictionWorkbench initialJobId={saved.jobId} />);

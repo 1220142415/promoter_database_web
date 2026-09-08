@@ -46,6 +46,7 @@ export interface UnifiedJBrowseViewerProps {
   prediction?: JBrowseReleaseAssembly | null;
   experimental?: ExperimentalTssGenome | null;
   onRegionChange?: (region: BrowserRegion) => void;
+  shareFragment?: string;
 }
 
 function resolveAsset(base: string, path: string) {
@@ -112,7 +113,7 @@ export function inspectUnifiedJBrowseFailures(
   return { referenceFailed, optionalTrackLabels: [...new Set(optionalTrackLabels)] };
 }
 
-export default function UnifiedJBrowseViewer({ prediction, experimental, onRegionChange }: UnifiedJBrowseViewerProps) {
+export default function UnifiedJBrowseViewer({ prediction, experimental, onRegionChange, shareFragment }: UnifiedJBrowseViewerProps) {
   if (!prediction && !experimental) throw new Error('A prediction or experimental assembly is required.');
 
   const studies = useMemo(() => sortedStudies(experimental?.studies || []), [experimental?.studies]);
@@ -743,7 +744,9 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       setShareFeedback({ message });
       return;
     }
-    const url = buildJBrowseShareUrl(window.location, extracted.state, allowedStudyIds);
+    const sharedUrl = new URL(buildJBrowseShareUrl(window.location, extracted.state, allowedStudyIds));
+    if (shareFragment) sharedUrl.hash = shareFragment;
+    const url = sharedUrl.toString();
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(url);

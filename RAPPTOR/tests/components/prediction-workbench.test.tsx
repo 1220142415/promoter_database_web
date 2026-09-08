@@ -10,7 +10,7 @@ vi.mock('next/dynamic', () => ({
 }));
 
 vi.mock('@/features/prediction/components/prediction-browser', () => ({
-  default: () => <div data-testid="live-prediction-browser">Live genome browser</div>,
+  default: ({ accessToken }: { accessToken: string }) => <div data-testid="live-prediction-browser" data-access-token={accessToken}>Live genome browser</div>,
 }));
 
 const saved: PredictionHistoryEntry = {
@@ -96,6 +96,7 @@ describe('live prediction result layout', () => {
     expect(await screen.findByRole('heading', { name: 'Prediction result' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Genome browser' })).toBeInTheDocument();
     expect(screen.getByTestId('live-prediction-browser')).toBeInTheDocument();
+    expect(screen.getByTestId('live-prediction-browser')).toHaveAttribute('data-access-token', saved.token);
     expect(screen.getByText('442')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.queryByText('Recent predictions')).not.toBeInTheDocument();

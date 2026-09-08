@@ -395,6 +395,26 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(copiedUrl.searchParams.get('tracks')).toBe('sequence:120,scores:180,promoters:170,annotation:170');
   });
 
+  it('adds a capability fragment to shared prediction task views', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    window.history.replaceState({}, '', '/predict/task/1234567890abcdef1234567890abcdef');
+    render(<UnifiedJBrowseViewer
+      prediction={assembly(true, true)}
+      shareFragment={`access=shared_access_token_1234567890abcdef&ref=${mockAssemblyName}&mode=genome_scan`}
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'Share current view' }));
+
+    const copiedUrl = new URL(writeText.mock.calls[0][0]);
+    expect(copiedUrl.pathname).toBe('/predict/task/1234567890abcdef1234567890abcdef');
+    expect(copiedUrl.hash).toBe(`#access=shared_access_token_1234567890abcdef&ref=${mockAssemblyName}&mode=genome_scan`);
+  });
+
   it('offers a readonly share link when clipboard access fails', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockRejectedValueOnce(new Error('permission denied'));

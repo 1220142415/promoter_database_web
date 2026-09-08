@@ -5,7 +5,7 @@ import UnifiedBrowserPanel from '@/features/genome-browser/components/unified-br
 import type { JBrowseAssemblyConfig } from '@/features/genome-browser/types';
 import styles from './prediction.module.css';
 
-export default function PredictionBrowser({ jobId, refName, artifacts }: { jobId: string; refName: string; artifacts?: readonly { filename: string }[] }) {
+export default function PredictionBrowser({ jobId, refName, accessToken, artifacts }: { jobId: string; refName: string; accessToken: string; artifacts?: readonly { filename: string }[] }) {
   const [annotation, setAnnotation] = useState<{ name: string; url: string } | null>(null);
   const base = `/api/predictions/jobs/${jobId}/artifacts`;
   const missing = artifacts ? ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].filter((name) => !artifacts.some((item) => item.filename === name)) : [];
@@ -55,6 +55,9 @@ export default function PredictionBrowser({ jobId, refName, artifacts }: { jobId
         {annotation && <button type="button" onClick={() => setAnnotation(null)}>Remove</button>}
       </div>
     </div>
-    <UnifiedBrowserPanel prediction={assembly} />
+    <UnifiedBrowserPanel
+      prediction={assembly}
+      shareFragment={new URLSearchParams({ access: accessToken, ref: refName, mode: 'genome_scan' }).toString()}
+    />
   </>;
 }

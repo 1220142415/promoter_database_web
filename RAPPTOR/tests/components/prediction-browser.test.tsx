@@ -6,12 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PredictionBrowser from '@/features/prediction/components/prediction-browser';
 
 vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
-  default: ({ prediction }: { prediction: {
+  default: ({ prediction, shareFragment }: { prediction: {
     assemblyName: string;
     defaultLocus: string;
     assets: Record<string, string | null>;
     trackLabels?: { annotation?: string };
-  } }) => <div
+  }; shareFragment?: string }) => <div
     data-testid="mock-unified-browser"
     data-assembly={prediction.assemblyName}
     data-locus={prediction.defaultLocus}
@@ -21,6 +21,7 @@ vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
     data-scores-minus={prediction.assets.promoterScoresMinus}
     data-annotation={prediction.assets.ncbiAnnotations || ''}
     data-annotation-label={prediction.trackLabels?.annotation || ''}
+    data-share-fragment={shareFragment || ''}
   />,
 }));
 
@@ -34,7 +35,7 @@ describe('prediction browser tracks', () => {
 
   it('maps prediction artifacts and a browser-local GFF3 into the unified browser', async () => {
     const user = userEvent.setup();
-    render(<PredictionBrowser jobId="job-1" refName="chr1" />);
+    render(<PredictionBrowser jobId="job-1" refName="chr1" accessToken="shared_access_token_1234567890abcdef" />);
 
     const browser = screen.getByTestId('mock-unified-browser');
     expect(browser).toHaveAttribute('data-assembly', 'prediction-job-1');
@@ -43,6 +44,7 @@ describe('prediction browser tracks', () => {
     expect(browser).toHaveAttribute('data-fai', '/api/predictions/jobs/job-1/artifacts/input.fasta.fai');
     expect(browser).toHaveAttribute('data-scores-plus', '/api/predictions/jobs/job-1/artifacts/scores.plus.bw');
     expect(browser).toHaveAttribute('data-scores-minus', '/api/predictions/jobs/job-1/artifacts/scores.minus.bw');
+    expect(browser).toHaveAttribute('data-share-fragment', 'access=shared_access_token_1234567890abcdef&ref=chr1&mode=genome_scan');
 
     await user.upload(screen.getByLabelText('Add GFF3 annotation'), new File([
       '##gff-version 3\nchr1\ttest\tgene\t10\t40\t.\t+\t.\tID=gene1\n',

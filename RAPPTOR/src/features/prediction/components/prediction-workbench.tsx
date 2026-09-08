@@ -223,7 +223,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
           {!hasReference ? <p role="alert">Required browser artifacts are missing: {missingBrowserFiles.join(', ')}.</p> : null}
           {hasReference && refName ? <section className={styles.panel} aria-labelledby="genome-browser-heading">
             <div className={styles.panelHeader}><h2 id="genome-browser-heading">Genome browser</h2><p>Reference sequence and model-score tracks from this completed scan.</p></div>
-            <PredictionBrowser jobId={entry.jobId} refName={refName} artifacts={artifacts} />
+            <PredictionBrowser jobId={entry.jobId} refName={refName} accessToken={entry.token} artifacts={artifacts} />
           </section> : null}
         </>}
 

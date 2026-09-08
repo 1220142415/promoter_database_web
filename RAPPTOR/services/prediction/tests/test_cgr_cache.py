@@ -79,9 +79,18 @@ class FakeRuntime:
     checkpoint_sha256 = "b" * 64
     model_config_sha256 = "c" * 64
 
+    def __init__(self):
+        self.scored_sequences = []
+
     def score_sequence(self, sequence, cgr, *, stride, batch_size):
         assert cgr.shape == (1, 128, 128)
-        return np.array([0.25], dtype=np.float32)
+        self.scored_sequences.append(sequence)
+        count = (len(sequence) - self.seq_length) // stride + 1
+        offset = 1000 if len(self.scored_sequences) == 2 else 0
+        return np.arange(count, dtype=np.float32) + offset
+
+    def reverse_complement(self, sequence):
+        return sequence.translate(str.maketrans("ACGTN", "TGCAN"))[::-1]
 
     def make_cgr(self, fasta_path, job_dir):
         assert fasta_path.name == "genome_context.fasta"
@@ -89,6 +98,73 @@ class FakeRuntime:
 
     def metadata(self):
         return {"model_version": "test"}
+
+
+def _predict_with_context(tmp_path, monkeypatch, sequence, *, reverse_complementary):
+    runtime = FakeRuntime()
+    monkeypatch.setattr(jobs, "get_runtime", lambda: runtime)
+    storage = JobStorage(tmp_path / "data")
+    job_id = "4" * 32
+    storage.create(job_id)
+    jobs._predict(job_id, {
+        "sequence": sequence,
+        "genome_context": "ACGT" * 100,
+        "cgr_source": "complete_genome_sequence",
+        "batch_size": 32,
+        "reverse_complementary": reverse_complementary,
+    }, storage)
+    rows = storage.read_json(job_id, "scores.json")
+    summary = storage.read_json(job_id, "summary.json")
+    return runtime, rows, summary
+
+
+def test_predict_100bp_writes_one_window_per_strand(tmp_path, monkeypatch):
+    sequence = "A" * 99 + "C"
+    runtime, rows, summary = _predict_with_context(
+        tmp_path, monkeypatch, sequence, reverse_complementary=True
+    )
+    assert [row["strand"] for row in rows] == ["+", "-"]
+    assert [row["window_start_0based"] for row in rows] == [0, 0]
+    assert [row["anchor_position_0based"] for row in rows] == [50, 49]
+    assert summary["window_count"] == 2
+    assert summary["reverse_complementary"] is True
+    assert runtime.scored_sequences == [sequence, runtime.reverse_complement(sequence)]
+
+
+def test_predict_300bp_writes_complete_unique_coordinates_for_both_strands(tmp_path, monkeypatch):
+    sequence = "A" * 299 + "C"
+    runtime, rows, summary = _predict_with_context(
+        tmp_path, monkeypatch, sequence, reverse_complementary=True
+    )
+    plus = [row for row in rows if row["strand"] == "+"]
+    minus = [row for row in rows if row["strand"] == "-"]
+    expected_starts = set(range(201))
+    assert len(rows) == 402
+    assert len(plus) == len(minus) == 201
+    assert {row["window_start_0based"] for row in plus} == expected_starts
+    assert {row["window_start_0based"] for row in minus} == expected_starts
+    assert len({(row["strand"], row["window_start_0based"]) for row in rows}) == 402
+    assert all(0 <= row["anchor_position_0based"] < len(sequence) for row in rows)
+    assert all(row["anchor_position_0based"] == row["window_start_0based"] + 50 for row in plus)
+    assert all(row["anchor_position_0based"] == row["window_start_0based"] + 49 for row in minus)
+    assert minus[0]["score"] == 1200.0
+    assert minus[-1]["score"] == 1000.0
+    assert summary["window_count"] == 402
+    assert summary["reverse_complementary"] is True
+    assert runtime.scored_sequences == [sequence, runtime.reverse_complement(sequence)]
+
+
+def test_predict_300bp_can_disable_reverse_complement(tmp_path, monkeypatch):
+    sequence = "A" * 299 + "C"
+    runtime, rows, summary = _predict_with_context(
+        tmp_path, monkeypatch, sequence, reverse_complementary=False
+    )
+    assert len(rows) == 201
+    assert {row["strand"] for row in rows} == {"+"}
+    assert {row["window_start_0based"] for row in rows} == set(range(201))
+    assert summary["window_count"] == 201
+    assert summary["reverse_complementary"] is False
+    assert runtime.scored_sequences == [sequence]
 
 
 def test_reference_accession_completes_predict_without_fasta(tmp_path, monkeypatch):

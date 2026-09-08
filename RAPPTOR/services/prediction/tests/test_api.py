@@ -144,6 +144,25 @@ def test_predict_accepts_uploaded_fasta(tmp_path, monkeypatch):
     assert bases == 500
 
 
+def test_predict_reverse_complementary_survives_validation_and_enqueue(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    payload = api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 300,
+        genome_context="ACGT" * 100,
+        reverse_complementary=False,
+    )
+    request, _ = api._validate_submission(payload)
+    assert request["reverse_complementary"] is False
+
+    created = asyncio.run(api.submit_job(payload, authorization=None))
+    saved = json.loads((tmp_path / "jobs" / created.job_id / "request.json").read_text(encoding="utf-8"))
+    queued = api.Job.fetch(created.job_id, connection=connection)
+    assert saved["reverse_complementary"] is False
+    assert queued.args == (created.job_id,)
+
+
 def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
     api, connection = load_api(tmp_path, monkeypatch)
     payload = api.JobSubmission(

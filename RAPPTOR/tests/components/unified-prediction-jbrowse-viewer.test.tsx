@@ -454,7 +454,7 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/shared location unavailable.*default view/i);
   });
 
-  it('falls back when JBrowse clamps a valid ref to a different center', async () => {
+  it('keeps the nearest shared center when viewport width makes the exact center unavailable', async () => {
     const stateTree = makeStateTree();
     stateTree.session.view.pxToBp.mockReturnValue({
       assemblyName: mockAssemblyName,
@@ -476,12 +476,12 @@ describe('prediction-only unified JBrowse configuration', () => {
 
     render(<UnifiedJBrowseViewer prediction={assembly(true)} />);
 
-    await waitFor(() => expect(stateTree.session.view.navToLocString).toHaveBeenCalledTimes(2));
-    expect(stateTree.session.view.navToLocString.mock.calls).toEqual([
-      [`${mockAssemblyName}:99999`, mockAssemblyName],
-      [`${mockAssemblyName}:1-10000`, mockAssemblyName],
-    ]);
-    expect(await screen.findByRole('status')).toHaveTextContent(/center or orientation unavailable.*default view/i);
+    await waitFor(() => expect(stateTree.session.view.navToLocString).toHaveBeenCalledOnce());
+    expect(stateTree.session.view.navToLocString).toHaveBeenCalledWith(
+      `${mockAssemblyName}:99999`,
+      mockAssemblyName,
+    );
+    expect(screen.queryByText(/center or orientation unavailable/i)).not.toBeInTheDocument();
   });
 
   it('disables sharing and exposes the multi-region reason', async () => {

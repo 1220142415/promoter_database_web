@@ -683,12 +683,10 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
               warnings.push('Exact shared zoom unavailable; showing the nearest level.');
             }
             const center = view.pxToBp(view.width / 2);
-            const centerMatches = !center.oob
+            const targetMatches = !center.oob
               && center.refName === sharedState.refName
-              && Number.isSafeInteger(center.coord)
-              && Math.abs(center.coord - sharedState.center) <= 1
               && (center.reversed === true) === sharedState.reversed;
-            if (!centerMatches) {
+            if (!targetMatches) {
               warnings.push('Shared center or orientation unavailable; showing the default view.');
               await view.navToLocString(defaultLocus, assemblyName);
             }

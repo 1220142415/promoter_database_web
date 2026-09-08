@@ -50,7 +50,7 @@ def main() -> None:
     key = f"rapptor:worker:{SETTINGS.queue_name}:{hostname}:{os.getpid()}:ready"
     stop = threading.Event()
     threads = [threading.Thread(target=_heartbeat, args=(connection, key, stop), daemon=True)]
-    if getattr(SETTINGS, "worker_maintenance", True):
+    if SETTINGS.worker_maintenance:
         threads.extend([
             threading.Thread(target=_cleanup, args=(stop,), daemon=True),
             threading.Thread(target=_callbacks, args=(stop,), daemon=True),

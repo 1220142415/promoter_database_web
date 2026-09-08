@@ -395,6 +395,26 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(copiedUrl.searchParams.get('tracks')).toBe('sequence:120,scores:180,promoters:170,annotation:170');
   });
 
+  it('adds a capability fragment to shared prediction task views', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    window.history.replaceState({}, '', '/predict/task/1234567890abcdef1234567890abcdef');
+    render(<UnifiedJBrowseViewer
+      prediction={assembly(true, true)}
+      shareFragment={`access=shared_access_token_1234567890abcdef&ref=${mockAssemblyName}&mode=genome_scan`}
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'Share current view' }));
+
+    const copiedUrl = new URL(writeText.mock.calls[0][0]);
+    expect(copiedUrl.pathname).toBe('/predict/task/1234567890abcdef1234567890abcdef');
+    expect(copiedUrl.hash).toBe(`#access=shared_access_token_1234567890abcdef&ref=${mockAssemblyName}&mode=genome_scan`);
+  });
+
   it('offers a readonly share link when clipboard access fails', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockRejectedValueOnce(new Error('permission denied'));
@@ -434,7 +454,7 @@ describe('prediction-only unified JBrowse configuration', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/shared location unavailable.*default view/i);
   });
 
-  it('falls back when JBrowse clamps a valid ref to a different center', async () => {
+  it('keeps the nearest shared center when viewport width makes the exact center unavailable', async () => {
     const stateTree = makeStateTree();
     stateTree.session.view.pxToBp.mockReturnValue({
       assemblyName: mockAssemblyName,
@@ -456,12 +476,12 @@ describe('prediction-only unified JBrowse configuration', () => {
 
     render(<UnifiedJBrowseViewer prediction={assembly(true)} />);
 
-    await waitFor(() => expect(stateTree.session.view.navToLocString).toHaveBeenCalledTimes(2));
-    expect(stateTree.session.view.navToLocString.mock.calls).toEqual([
-      [`${mockAssemblyName}:99999`, mockAssemblyName],
-      [`${mockAssemblyName}:1-10000`, mockAssemblyName],
-    ]);
-    expect(await screen.findByRole('status')).toHaveTextContent(/center or orientation unavailable.*default view/i);
+    await waitFor(() => expect(stateTree.session.view.navToLocString).toHaveBeenCalledOnce());
+    expect(stateTree.session.view.navToLocString).toHaveBeenCalledWith(
+      `${mockAssemblyName}:99999`,
+      mockAssemblyName,
+    );
+    expect(screen.queryByText(/center or orientation unavailable/i)).not.toBeInTheDocument();
   });
 
   it('disables sharing and exposes the multi-region reason', async () => {

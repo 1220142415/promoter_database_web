@@ -18,13 +18,18 @@ def test_json_scan_writer_streams_plus_and_minus(tmp_path):
         checkpoint_sha256="sha",
         stride=1,
     )
-    writer.add_scores("contig", 105, "+", np.array([0.1, 0.2], dtype=np.float32), upstream_len=80, window_length=100)
-    writer.add_scores("contig", 105, "-", np.array([0.3, 0.4], dtype=np.float32), upstream_len=80, window_length=100)
+    writer.add_scores(
+        "contig", 105, "+", np.array([0.1, 0.2], dtype=np.float32), upstream_len=80, window_length=104
+    )
+    writer.add_scores(
+        "contig", 105, "-", np.array([0.3, 0.4], dtype=np.float32), upstream_len=80, window_length=104
+    )
     artifacts = writer.close(success=True)
 
     rows = json.loads((tmp_path / "scores.json").read_text(encoding="utf-8"))
     assert [row["strand"] for row in rows] == ["+", "+", "-", "-"]
     assert [row["anchor_position_0based"] for row in rows] == [80, 81, 23, 24]
+    assert [row["window_start_0based"] for row in rows] == [0, 1, 0, 1]
     assert artifacts[0]["filename"] == "scores.json"
 
 
@@ -48,7 +53,9 @@ def test_cutoff_filters_sparse_outputs_with_strict_operator(tmp_path):
         stride=1,
         score_cutoff=0.5,
     )
-    writer.add_scores("contig", 103, "+", np.array([0.49, 0.5, 0.51], dtype=np.float32), upstream_len=80, window_length=100)
+    writer.add_scores(
+        "contig", 103, "+", np.array([0.49, 0.5, 0.51], dtype=np.float32), upstream_len=80, window_length=100
+    )
     writer.close(success=True)
 
     rows = json.loads((tmp_path / "scores.json").read_text(encoding="utf-8"))

@@ -74,6 +74,13 @@ class JobSubmission(BaseModel):
         return self
 
 
+class JobQueueStatus(BaseModel):
+    ahead: int | None = None
+    waiting: int
+    total_waiting: int
+    waiting_by_mode: dict[str, int]
+
+
 class JobCreated(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     job_id: str
@@ -81,6 +88,9 @@ class JobCreated(BaseModel):
     access_token: str
     model_version: str
     artifacts_expires_at: str | None = None
+    queue: JobQueueStatus
+    status_url: str
+    poll_after_seconds: int = 3
 
 
 class JobStatus(BaseModel):
@@ -93,5 +103,6 @@ class JobStatus(BaseModel):
     started_at: str | None = None
     ended_at: str | None = None
     artifacts_expires_at: str | None = None
+    queue: JobQueueStatus
     result: dict | None = None
     error: dict | None = None

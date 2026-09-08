@@ -97,3 +97,16 @@ The browser was checked at `NC_000913.3_excerpt_1_4000:528..712`. Thirty-nine
 focused tests, TypeScript, scoped ESLint and an isolated production build passed.
 This follow-up changes the local website only; no service deployment was needed.
 Numerical verification is saved in `.codex-runtime/score-smoothing-20260908/`.
+
+## Git integration validation
+
+Integrated collaborator `origin/main` at `9502ceb`, preserving split queues,
+load status, reverse-strand coordinates, and capability sharing across browser
+sessions. Sharing receives both the access token and the result summary; the
+worker retains SpawnWorker with queue-specific heartbeat and maintenance rules.
+
+The integrated frontend's 750 tests passed after updating one stale raw-BigWig
+download-copy assertion and rerunning its 17-test suite. TypeScript, full ESLint,
+and the production build passed. All 71 Python service tests passed in an
+isolated, network-disabled container using its own Redis, including the actual
+SpawnWorker regression. Production containers and queues were not modified.

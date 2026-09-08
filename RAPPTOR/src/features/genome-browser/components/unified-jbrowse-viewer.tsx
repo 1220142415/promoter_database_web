@@ -47,6 +47,7 @@ export interface UnifiedJBrowseViewerProps {
   prediction?: JBrowseReleaseAssembly | null;
   experimental?: ExperimentalTssGenome | null;
   onRegionChange?: (region: BrowserRegion) => void;
+  shareFragment?: string;
 }
 
 function resolveAsset(base: string, path: string) {
@@ -113,7 +114,7 @@ export function inspectUnifiedJBrowseFailures(
   return { referenceFailed, optionalTrackLabels: [...new Set(optionalTrackLabels)] };
 }
 
-export default function UnifiedJBrowseViewer({ prediction, experimental, onRegionChange }: UnifiedJBrowseViewerProps) {
+export default function UnifiedJBrowseViewer({ prediction, experimental, onRegionChange, shareFragment }: UnifiedJBrowseViewerProps) {
   if (!prediction && !experimental) throw new Error('A prediction or experimental assembly is required.');
 
   const studies = useMemo(() => sortedStudies(experimental?.studies || []), [experimental?.studies]);
@@ -691,12 +692,10 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
               warnings.push('Exact shared zoom unavailable; showing the nearest level.');
             }
             const center = view.pxToBp(view.width / 2);
-            const centerMatches = !center.oob
+            const targetMatches = !center.oob
               && center.refName === sharedState.refName
-              && Number.isSafeInteger(center.coord)
-              && Math.abs(center.coord - sharedState.center) <= 1
               && (center.reversed === true) === sharedState.reversed;
-            if (!centerMatches) {
+            if (!targetMatches) {
               warnings.push('Shared center or orientation unavailable; showing the default view.');
               await view.navToLocString(defaultLocus, assemblyName);
             }
@@ -752,7 +751,9 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       setShareFeedback({ message });
       return;
     }
-    const url = buildJBrowseShareUrl(window.location, extracted.state, allowedStudyIds);
+    const sharedUrl = new URL(buildJBrowseShareUrl(window.location, extracted.state, allowedStudyIds));
+    if (shareFragment) sharedUrl.hash = shareFragment;
+    const url = sharedUrl.toString();
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(url);

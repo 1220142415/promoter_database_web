@@ -7,11 +7,11 @@ import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/
 import type { JobSummary } from '@/features/prediction/live-result';
 
 vi.mock('next/dynamic', () => ({
-  default: () => ({ refName }: { refName: string }) => <div data-testid="live-prediction-browser" data-reference={refName}>Live genome browser</div>,
-}));
-
-vi.mock('@/features/prediction/components/prediction-browser', () => ({
-  default: () => <div data-testid="live-prediction-browser">Live genome browser</div>,
+  default: () => ({ refName, accessToken }: { refName: string; accessToken: string }) => (
+    <div data-testid="live-prediction-browser" data-reference={refName} data-access-token={accessToken}>
+      Live genome browser
+    </div>
+  ),
 }));
 
 const saved: PredictionHistoryEntry = {
@@ -107,6 +107,7 @@ describe('live prediction result layout', () => {
     expect(await screen.findByRole('heading', { name: 'Prediction result' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Genome browser' })).toBeInTheDocument();
     expect(screen.getByTestId('live-prediction-browser')).toBeInTheDocument();
+    expect(screen.getByTestId('live-prediction-browser')).toHaveAttribute('data-access-token', saved.token);
     expect(screen.getByText('442')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.queryByText('Recent predictions')).not.toBeInTheDocument();
@@ -208,7 +209,7 @@ describe('live prediction result layout', () => {
     expect(within(downloads).getByRole('link', { name: /Prediction results GFF3/ })).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/scores.gff3`);
     const tracks = within(downloads).getByRole('link', { name: /Model score tracks ZIP/ });
     expect(tracks).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/model-score-tracks.zip`);
-    expect(tracks).toHaveTextContent('Forward and reverse BigWig files in one folder');
+    expect(tracks).toHaveTextContent('Raw forward and reverse BigWig files in one folder');
     expect(screen.getByText('Exported windows')).toBeInTheDocument();
     expect(screen.queryByText('Run context')).not.toBeInTheDocument();
     expect(screen.queryByText(/private temporary access link/)).not.toBeInTheDocument();

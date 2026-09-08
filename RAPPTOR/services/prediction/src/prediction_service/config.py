@@ -30,6 +30,8 @@ def _positive_int(name: str, default: int) -> int:
 class ServiceSettings:
     redis_url: str
     queue_name: str
+    predict_queue_name: str
+    scan_queue_name: str
     data_root: Path
     cgr_cache_root: Path
     cgr_version: str
@@ -58,6 +60,7 @@ class ServiceSettings:
     worker_heartbeat_ttl: int
     worker_heartbeat_interval: int
     require_worker_for_ready: bool
+    worker_maintenance: bool
 
     def __post_init__(self) -> None:
         positive = {
@@ -93,6 +96,8 @@ class ServiceSettings:
             raise ValueError("model_version must not be empty")
         if not self.cgr_version.strip():
             raise ValueError("cgr_version must not be empty")
+        if not self.predict_queue_name.strip() or not self.scan_queue_name.strip():
+            raise ValueError("prediction queue names must not be empty")
         if self.file_retention_seconds < 0:
             raise ValueError("file_retention_seconds must be zero or positive")
         if bool(self.job_callback_url) != bool(self.job_callback_secret):
@@ -103,9 +108,12 @@ class ServiceSettings:
         data_root = Path(os.getenv("RAPPTOR_DATA_ROOT", "/data")).resolve()
         cgr_cache_root = Path(os.getenv("RAPPTOR_CGR_CACHE_ROOT", "/data/cgr-cache")).resolve()
         model_dir = Path(os.getenv("RAPPTOR_MODEL_DIR", "/models")).resolve()
+        queue_name = os.getenv("RAPPTOR_QUEUE", "prediction")
         return cls(
             redis_url=os.getenv("RAPPTOR_REDIS_URL", "redis://redis:6379/0"),
-            queue_name=os.getenv("RAPPTOR_QUEUE", "prediction"),
+            queue_name=queue_name,
+            predict_queue_name=os.getenv("RAPPTOR_PREDICT_QUEUE", queue_name),
+            scan_queue_name=os.getenv("RAPPTOR_SCAN_QUEUE", queue_name),
             data_root=data_root,
             cgr_cache_root=cgr_cache_root,
             cgr_version=os.getenv("RAPPTOR_CGR_VERSION", "cgr-128-v1"),
@@ -134,6 +142,7 @@ class ServiceSettings:
             worker_heartbeat_ttl=int(os.getenv("RAPPTOR_WORKER_HEARTBEAT_TTL", "30")),
             worker_heartbeat_interval=int(os.getenv("RAPPTOR_WORKER_HEARTBEAT_INTERVAL", "10")),
             require_worker_for_ready=_bool("RAPPTOR_REQUIRE_WORKER_FOR_READY", True),
+            worker_maintenance=_bool("RAPPTOR_WORKER_MAINTENANCE", True),
         )
 
 

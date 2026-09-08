@@ -14,10 +14,12 @@ export default function UnifiedBrowserPanel({
   prediction,
   experimental,
   onRegionChange,
+  shareFragment,
 }: {
   prediction?: JBrowseReleaseAssembly | null;
   experimental?: ExperimentalTssGenome | null;
   onRegionChange?: (region: BrowserRegion) => void;
+  shareFragment?: string;
 }) {
-  return <UnifiedJBrowseViewer prediction={prediction} experimental={experimental} onRegionChange={onRegionChange} />;
+  return <UnifiedJBrowseViewer prediction={prediction} experimental={experimental} onRegionChange={onRegionChange} shareFragment={shareFragment} />;
 }

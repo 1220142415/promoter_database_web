@@ -1,21 +1,25 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from redis.exceptions import RedisError
+from rq import Queue
 from rq.job import Job
 from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
 
 from .config import SETTINGS
-from .callbacks import deliver_job_event_async, persist_job_event
+from .callbacks import persist_job_event
 from .cgr_cache import ReferenceCgrNotFound, load_reference_cgr, normalize_reference_source
 from .jobs import process_job
+from .metrics import cpu_history, latest_cpu_sample, sample_cpu_loop, stop_sampler
 from .queueing import get_queue, get_redis_connection
 from .schemas import JobCreated, JobStatus, JobSubmission
 from .security import new_access_token, token_digest, token_matches
@@ -24,7 +28,16 @@ from .tickets import ReferenceSourceUnavailable, TicketRejected, consume_ticket,
 from .validation import InputValidationError, validate_fasta, validate_sequence
 
 
-app = FastAPI(title="RAPPTOR Prediction Service", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    sampler = asyncio.create_task(sample_cpu_loop())
+    try:
+        yield
+    finally:
+        await stop_sampler(sampler)
+
+
+app = FastAPI(title="RAPPTOR Prediction Service", version="0.1.0", lifespan=lifespan)
 
 ARTIFACT_CONTENT_TYPES = {
     ".bw": "application/x-bigwig",
@@ -71,8 +84,43 @@ def _status_name(job: Job) -> str:
 
 
 def _worker_ready(connection) -> bool:
-    keys = connection.keys("rapptor:worker:*:ready")
-    return bool(keys)
+    return all(_workers_status(connection).values())
+
+
+def _workers_status(connection) -> dict[str, bool]:
+    return {
+        "predict": bool(connection.keys(f"rapptor:worker:{SETTINGS.predict_queue_name}:*:ready")),
+        "genome_scan": bool(connection.keys(f"rapptor:worker:{SETTINGS.scan_queue_name}:*:ready")),
+    }
+
+
+def _queues(connection) -> dict[str, Queue]:
+    return {mode: get_queue(connection, mode) for mode in ("predict", "genome_scan")}
+
+
+def _queue_counts(connection) -> dict[str, int]:
+    return {mode: queue.count for mode, queue in _queues(connection).items()}
+
+
+def _queue_status(connection, job: Job, status: str) -> dict:
+    queues = _queues(connection)
+    unique_queues = {queue.name: queue for queue in queues.values()}
+    queued_ids = {name: queue.get_job_ids() for name, queue in unique_queues.items()}
+    own_ids = queued_ids.get(job.origin)
+    if own_ids is None:
+        own_ids = Queue(job.origin, connection=connection).get_job_ids()
+    ahead = None
+    if status == "queued":
+        try:
+            ahead = own_ids.index(job.id)
+        except ValueError:
+            pass
+    return {
+        "ahead": ahead,
+        "waiting": len(own_ids),
+        "total_waiting": sum(len(ids) for ids in queued_ids.values()),
+        "waiting_by_mode": {mode: len(queued_ids[queue.name]) for mode, queue in queues.items()},
+    }
 
 
 def _parse_range(value: str | None, size: int):
@@ -249,6 +297,37 @@ def readyz():
     return {"status": "ready", "redis": True, "worker": worker_ready}
 
 
+@app.get("/v1/status")
+def service_status(history: str | None = None, bucket: str = "30m"):
+    if history not in (None, "6h") or bucket != "30m":
+        _http_error(400, "INVALID_STATUS_WINDOW", "supported history and bucket are 6h and 30m")
+    try:
+        connection = get_redis_connection()
+        connection.ping()
+        latest = latest_cpu_sample(connection)
+        response = {
+            "sampled_at": (
+                datetime.fromtimestamp(float(latest["sampled_at"]), timezone.utc).isoformat()
+                if latest else None
+            ),
+            "current": {
+                "window_seconds": 5,
+                "cpu_percent": float(latest["cpu_percent"]) if latest else None,
+            },
+            "queues": _queue_counts(connection),
+            "workers": _workers_status(connection),
+        }
+        if history == "6h":
+            response["history"] = {
+                "window_hours": 6,
+                "bucket_minutes": 30,
+                "points": cpu_history(connection),
+            }
+        return response
+    except RedisError:
+        _http_error(503, "STATUS_UNAVAILABLE", "server status is unavailable")
+
+
 @app.post("/v1/jobs", response_model=JobCreated, status_code=202)
 async def submit_job(payload: JobSubmission, authorization: str | None = Header(default=None)):
     try:
@@ -291,9 +370,11 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
     connection = get_redis_connection()
     try:
         connection.ping()
-        queue = get_queue(connection)
-        if queue.count >= SETTINGS.max_queue_length:
+        queues = _queues(connection)
+        unique_queues = {queue.name: queue for queue in queues.values()}
+        if sum(queue.count for queue in unique_queues.values()) >= SETTINGS.max_queue_length:
             _http_error(429, "RATE_LIMITED", "Prediction queue is full.")
+        queue = queues[payload.mode]
     except RedisError:
         _http_error(503, "QUEUE_UNAVAILABLE", "Prediction queue is unavailable.")
 
@@ -348,20 +429,19 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
                 "submitted_at": submitted_at,
                 "artifacts_expires_at": expires_at,
                 "progress": {"stage": "queued", "percent": 0.0},
+                "permanent_record": "pending" if SETTINGS.job_callback_url else "disabled",
             },
         )
     except Exception:
         _http_error(503, "QUEUE_UNAVAILABLE", "Prediction could not be queued.")
-
-    callback_recorded = await deliver_job_event_async(callback_payload) if SETTINGS.job_callback_url else False
-    job.meta["permanent_record"] = "recorded" if callback_recorded else "pending"
-    job.save_meta()
 
     return JobCreated(
         job_id=job.id,
         access_token=access_token,
         model_version=SETTINGS.model_version,
         artifacts_expires_at=expires_at,
+        queue=_queue_status(connection, job, "queued"),
+        status_url=f"/v1/jobs/{job.id}",
     )
 
 
@@ -388,6 +468,7 @@ def get_job(job_id: str, x_job_token: str | None = Header(default=None, alias="X
         started_at=job.meta.get("started_at"),
         ended_at=job.meta.get("ended_at"),
         artifacts_expires_at=job.meta.get("artifacts_expires_at"),
+        queue=_queue_status(connection, job, status),
         result=result,
         error=error,
     )

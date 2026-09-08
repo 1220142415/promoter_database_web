@@ -109,6 +109,6 @@ the active worker, preserve it under a different name, restore the chosen
 backup to `rapptor-prediction-worker`, and restore its `unless-stopped` restart
 policy. Do not run two maintenance workers or delete the shared data volume.
 
-Before a future full deployment, combine the local progress/spawn corrections
-with the latest collaborator changes and validate that integrated source.
-Deploying the current Git image alone would lose these uncommitted corrections.
+At the time of this deployment, progress/spawn corrections were local overlays.
+The subsequent Git integration combined them with collaborator commit `9502ceb`;
+see `prediction-peaks-2026-09-08.md` for the integrated validation results.

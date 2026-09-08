@@ -216,7 +216,7 @@ describe('live prediction result layout', () => {
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
     const queue = await screen.findByRole('region', { name: 'Queue status' });
     await waitFor(() => expect(queue).toHaveTextContent('Busy'));
-    expect(within(queue).getByText('Queued ahead of you').parentElement).toHaveTextContent('3');
+    expect(within(queue).getByText('Queued ahead').parentElement).toHaveTextContent('3');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 

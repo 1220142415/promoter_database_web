@@ -18,7 +18,9 @@ Displayed fields:
 | Estimated wait to start | Optional job `queue.estimated_wait_seconds` | Approximate seconds until this task starts, not time until results |
 
 The current Docker contract does not supply an ETA. Until it does, the UI
-explicitly says that an estimate is not available. A zero queued-ahead count
+shows a dash. The compact card keeps Running, Queued ahead, and Est. wait in
+three columns, including narrow screens, without explanatory paragraphs.
+A zero queued-ahead count
 means first in the waiting list, not immediate execution. Missing counters are
 shown as unknown, and task progress is not displayed as 0% while queued.
 

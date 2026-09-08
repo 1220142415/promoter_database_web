@@ -31,7 +31,6 @@ export default function PredictionProgressPanel({
   const queued = progress.state === 'queued' && !progress.simulated;
   const ahead = queueCount(progress.queue?.ahead);
   const running = queueCount(progress.queue?.running);
-  const waiting = queueCount(progress.queue?.waiting);
   const workerReady = progress.queue?.worker_ready;
   const busy = (running ?? 0) > 0 || (ahead ?? 0) > 0;
   const serverStatus = workerReady === false ? 'Temporarily unavailable'
@@ -39,8 +38,8 @@ export default function PredictionProgressPanel({
   const waitSeconds = progress.queue?.estimated_wait_seconds;
   const estimateAvailable = workerReady !== false && typeof waitSeconds === 'number' && Number.isFinite(waitSeconds) && waitSeconds >= 0;
   const waitLabel = estimateAvailable
-    ? waitSeconds < 60 ? 'Less than 1 min' : `About ${Math.ceil(waitSeconds / 60).toLocaleString()} min`
-    : 'Not available yet';
+    ? waitSeconds < 60 ? '<1 min' : `~${Math.ceil(waitSeconds / 60).toLocaleString()} min`
+    : '—';
   const showScan = mode === 'scan' && progress.state !== 'succeeded' && currentStep >= 2
     && (progress.stage === 'scanning' || progress.windows !== undefined || progress.totalWindows !== undefined);
   const scanPercent = progress.scanPercent;
@@ -77,18 +76,13 @@ export default function PredictionProgressPanel({
         })}
       </ol>
 
-      {queued ? <section className={styles.queue} aria-label="Queue status">
+      {queued ? <section className={styles.queue} aria-label="Queue status" aria-live="polite">
         <div className={styles.queueHeading}><strong>{mode === 'scan' ? 'Genome scan queue' : 'Short-sequence queue'}</strong><span data-busy={busy}>{serverStatus}</span></div>
         <dl className={styles.queueMetrics}>
-          <div><dt>Running now</dt><dd>{running ?? '—'}</dd></div>
-          <div><dt>Queued ahead of you</dt><dd>{ahead ?? '—'}</dd></div>
-          <div><dt>Estimated wait to start</dt><dd>{waitLabel}</dd></div>
+          <div><dt>Running</dt><dd>{running ?? '—'}</dd></div>
+          <div><dt>Queued ahead</dt><dd>{ahead ?? '—'}</dd></div>
+          <div><dt title="Estimated wait until your task starts">Est. wait</dt><dd>{waitLabel}</dd></div>
         </dl>
-        <p>{workerReady === false ? 'The service is temporarily unavailable. Your task is still queued.'
-          : ahead === 0 ? 'You are first in the waiting queue. Your task starts when a processing slot becomes available.'
-            : 'Your task will start when a processing slot becomes available.'}</p>
-        <p>Counts refer to this processing queue; queued-ahead counts exclude running tasks.{waiting === null ? '' : ` ${waiting.toLocaleString()} waiting in total, including your task.`}</p>
-        <p>{estimateAvailable ? 'The wait estimate may change with server load and task sizes.' : 'A reliable wait estimate is not available yet.'} Updates every 30 seconds. No need to resubmit.</p>
       </section> : progress.percent === null
         ? <progress aria-label="Prediction task progress" max={100} />
         : <progress aria-label="Prediction task progress" max={100} value={progress.percent} />}
@@ -107,10 +101,10 @@ export default function PredictionProgressPanel({
         {scanDetails.length && currentStep === 2 ? <p>{scanDetails.join(' · ')}</p> : null}
         {progress.totalWindows === undefined ? <p>Total window count is not available from this service.</p> : null}
       </section> : null}
-      <div className={styles.status} role="status" aria-live="polite">
+      {!queued && <div className={styles.status} role="status" aria-live="polite">
         {failed ? <ErrorOutlineRoundedIcon aria-hidden="true" /> : null}
         <div><strong>{progress.message}</strong>{details.length ? <span>{details.join(' · ')}</span> : null}</div>
-      </div>
+      </div>}
       {progress.simulated ? <p className={styles.simulatedNote}>Demo only: simulated queue stages; no model was run.</p> : null}
       {failed ? <div className={styles.actions}>{onRetry ? <button type="button" onClick={onRetry}>Check status again</button> : null}<Link href="/predict">Return to prediction input</Link></div> : null}
     </section>

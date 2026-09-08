@@ -149,6 +149,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
                 strand,
                 scores,
                 upstream_len=runtime.upstream_len,
+                window_length=runtime.seq_length,
             )
         window_count = sum(len(scores) for _, scores in scores_by_strand)
         _progress("writing_outputs", 90.0, windows=window_count, scores_written=window_count)
@@ -229,6 +230,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                     strand,
                     scores,
                     upstream_len=runtime.upstream_len,
+                    window_length=runtime.seq_length,
                 )
                 completed_units += 1
                 percent = 15.0 + 75.0 * (completed_units / max(total_units, 1))

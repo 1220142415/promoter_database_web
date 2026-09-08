@@ -137,7 +137,14 @@ class ScanArtifactWriter:
         del model_version, checkpoint_sha256
 
     @staticmethod
-    def _chunks(scores: np.ndarray, sequence_length: int, strand: str, stride: int, upstream_len: int):
+    def _chunks(
+        scores: np.ndarray,
+        sequence_length: int,
+        strand: str,
+        stride: int,
+        upstream_len: int,
+        window_length: int,
+    ):
         size = len(scores)
         for start in range(0, size, 100_000):
             stop = min(size, start + 100_000)
@@ -145,10 +152,20 @@ class ScanArtifactWriter:
                 indices = np.arange(start, stop, dtype=np.int64)
             else:
                 indices = np.arange(size - start - 1, size - stop - 1, -1, dtype=np.int64)
-            window_starts = indices * stride
-            anchor_positions = window_starts + upstream_len
-            if strand == "-":
-                anchor_positions = sequence_length - anchor_positions - 1
+            strand_starts = indices * stride
+            if strand == "+":
+                window_starts = strand_starts
+                anchor_positions = window_starts + upstream_len
+            else:
+                window_starts = sequence_length - window_length - strand_starts
+                anchor_positions = sequence_length - strand_starts - upstream_len - 1
+            if (
+                np.any(window_starts < 0)
+                or np.any(window_starts + window_length > sequence_length)
+                or np.any(anchor_positions < 0)
+                or np.any(anchor_positions >= sequence_length)
+            ):
+                raise ValueError("score coordinates fall outside the input sequence")
             yield indices, window_starts, anchor_positions, np.asarray(scores[indices], dtype=np.float32)
 
     def add_scores(
@@ -159,13 +176,16 @@ class ScanArtifactWriter:
         scores: np.ndarray,
         *,
         upstream_len: int,
+        window_length: int,
     ) -> None:
         if self._closed:
             raise RuntimeError("artifact writer is closed")
         if strand not in {"+", "-"}:
             raise ValueError("strand must be '+' or '-'")
+        if window_length <= 0 or window_length > sequence_length:
+            raise ValueError("window_length must be within the input sequence")
         for _indices, window_starts, anchor_positions, values in self._chunks(
-            scores, sequence_length, strand, self.stride, upstream_len
+            scores, sequence_length, strand, self.stride, upstream_len, window_length
         ):
             count = len(values)
             if not count:

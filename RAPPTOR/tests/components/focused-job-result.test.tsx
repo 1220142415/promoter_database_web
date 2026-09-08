@@ -40,15 +40,27 @@ describe('protected 100 bp result', () => {
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
   });
 
-  it('shows ranked sliding-window probabilities for a sequence longer than 100 bp', async () => {
+  it('shows ranked sliding-window scores for a sequence longer than 100 bp', async () => {
     const scores = Array.from({ length: 201 }, (_, index) => ({
       strand: '+', score: index / 200, window_start_0based: index, anchor_position_0based: index + 80,
     }));
     vi.stubGlobal('fetch', vi.fn(async () => Response.json(scores)));
     render(<FocusedJobResult jobId="long-job" bothStrands={false} hasScores sequenceBases={300} />);
     expect(await screen.findByRole('heading', { name: 'Short-sequence result' })).toBeInTheDocument();
-    expect(screen.getByText('201 overlapping 100 bp windows were scored. The table shows the 20 highest probabilities.')).toBeInTheDocument();
+    expect(screen.getByText(/201 overlapping 100 bp windows were scored. The table shows the 20 highest model scores/)).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '201–300' })).toBeInTheDocument();
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+  });
+
+  it('maps reverse windows onto the original input sequence in the ranked table', async () => {
+    const scores = ['+', '-'].flatMap((strand) => Array.from({ length: 201 }, (_, index) => ({
+      strand, score: strand === '-' && index === 0 ? 1 : 0,
+      window_start_0based: index, anchor_position_0based: strand === '+' ? index + 80 : 219 - index,
+    })));
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(scores)));
+    render(<FocusedJobResult jobId="reverse-job" bothStrands hasScores sequenceBases={300} />);
+    const row = (await screen.findByRole('cell', { name: '1.000000' })).closest('tr');
+    expect(row).toHaveTextContent('201–300');
+    expect(row).toHaveTextContent('220');
   });
 });

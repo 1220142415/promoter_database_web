@@ -61,4 +61,13 @@ describe('prediction progress', () => {
     expect(unknown.percent).toBe(100);
     expect(predictionProgressStepIndex(unknown)).toBe(2);
   });
+
+  it('derives scan percent only from valid scan counters or the explicit service value', () => {
+    const base = { state: 'running' as const, stage: 'scanning', percent: 52.5, message: 'Scanning.' };
+    expect(normalizePredictionProgress({ ...base, windows: 400, totalWindows: 1000, scanPercent: 12 }).scanPercent).toBe(40);
+    expect(normalizePredictionProgress(base).scanPercent).toBeNull();
+    expect(normalizePredictionProgress({ ...base, scanPercent: 25 }).scanPercent).toBe(25);
+    expect(normalizePredictionProgress({ ...base, windows: -1, totalWindows: NaN })).toMatchObject({ windows: undefined, totalWindows: undefined, scanPercent: null });
+    expect(normalizePredictionProgress({ ...base, windows: 0, totalWindows: 0 }).scanPercent).toBeNull();
+  });
 });

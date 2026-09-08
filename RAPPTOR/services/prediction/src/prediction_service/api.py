@@ -175,7 +175,10 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     request["cgr_source"] = "separate_complete_genome_sequence" if genome_context else "complete_genome_assembly_fasta"
     request["stride"] = stride
     request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
-    request["output_formats"] = list(payload.output_formats or ["bigwig", "parquet"])
+    from .formats import scan_output_formats
+    request["output_formats"] = list(scan_output_formats(payload.output_formats, stride))
+    if "gff3" in request["output_formats"] and stride != 1:
+        raise InputValidationError("Smoothed GFF3 and peak output requires stride=1.")
     return request, validated.total_bases + (len(genome_context) if genome_context else 0)
 
 
@@ -208,6 +211,12 @@ def current_model():
                 "operator": ">",
                 "applies_to": ["gff3", "json"],
                 "unfiltered_formats": ["bigwig", "parquet"],
+            },
+            "gff3_postprocessing": {
+                "required_stride": 1,
+                "automatic": True,
+                "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                "peaks": {"distance": 10, "cutoff": 0.9, "operator": ">", "filename": "peaks.gff3"},
             },
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
             "default_output_formats": ["bigwig", "parquet"],

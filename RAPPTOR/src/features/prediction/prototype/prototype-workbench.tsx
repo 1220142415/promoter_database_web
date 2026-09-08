@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded';
 import type { GenomeCatalogRow, GenomeSearchResponse } from '@/features/genomes/types';
 import { predictionApi, sha256File, sha256Text } from '@/features/prediction/client';
+import { genomeScanOutputs } from '../scan-options';
 import { parsePredictionHistory, PREDICTION_HISTORY_KEY, upsertPredictionHistory, type PredictionHistoryEntry } from '@/features/prediction/history';
 import {
   DEFAULT_PROTOTYPE_MODEL_SPEC,
@@ -277,7 +278,8 @@ export default function PrototypePredictionWorkbench({
     || (contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = inferredMode === 'candidate' && contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.accession !== REAL_PREDICTION_REFERENCE.accession;
-  const cutoffUnavailable = !preview && (inferredMode === 'candidate' || !service.supportsScoreCutoff);
+  const automaticPeaks = !preview && inferredMode !== 'candidate' && strideBases === 1 && service.supportsPeakCalling;
+  const cutoffUnavailable = !preview && (inferredMode === 'candidate' || !service.supportsScoreCutoff || !!service.gff3RequiresStride1);
   const parametersReady = cutoffUnavailable || (Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1);
   const genomeLimitLabel = formatPredictionMaxRequestBytes(maxGenomeBytes);
   const activeThresholdLabel = inferredMode
@@ -527,8 +529,8 @@ export default function PrototypePredictionWorkbench({
         request = {
           mode: 'genome_scan', complete_genome: true, fasta: genome.fasta,
           ...(scanSourceProvidesCgr ? {} : { genome_context: context.sequence }),
-          stride: strideBases, ...(service.supportsScoreCutoff ? { score_cutoff: cutoff } : {}), reverse_complementary: strandMode === 'both',
-          output_formats: service.supportsScoreCutoff ? ['bigwig', 'gff3'] : ['bigwig', 'parquet'],
+          stride: strideBases, reverse_complementary: strandMode === 'both',
+          ...genomeScanOutputs(strideBases, service, cutoff),
         };
         bases = genome.totalLength + (scanSourceProvidesCgr ? 0 : context.totalLength);
         referenceName = genome.referenceName;
@@ -557,7 +559,7 @@ export default function PrototypePredictionWorkbench({
         submittedAt: new Date().toISOString(),
         label,
         bases,
-        ...(historyMode === 'genome_scan' && service.supportsScoreCutoff ? { cutoff } : {}),
+        ...(historyMode === 'genome_scan' && service.supportsScoreCutoff ? { cutoff: automaticPeaks ? 0.9 : service.gff3RequiresStride1 ? undefined : cutoff } : {}),
         strandMode,
         strideBases: historyMode === 'predict' ? 1 : strideBases,
       };
@@ -683,7 +685,7 @@ export default function PrototypePredictionWorkbench({
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
                 <label><span>Strands</span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
-                <label><span>{activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{cutoffUnavailable ? (inferredMode === 'candidate' ? 'This task returns model scores without applying a classification threshold.' : 'This service does not support export filtering. All computed scores are retained.') : parametersReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : PORTAL_COPY.genomeScanCutoffHelp) : 'Enter a value from 0 to 1.'}</small></label>
+                <label><span>{automaticPeaks ? 'Peak cutoff' : activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={automaticPeaks ? 0.9 : Number.isNaN(cutoff) ? '' : cutoff} aria-invalid={!parametersReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPeaks ? 'Automatic peak calling: smoothed model score > 0.9, sigma 1, minimum distance 10 bp.' : cutoffUnavailable ? (inferredMode === 'candidate' ? 'This task returns model scores without applying a classification threshold.' : service.gff3RequiresStride1 ? 'All model scores are retained. Use a 1 bp stride to call peaks automatically.' : 'This service does not support export filtering. All computed scores are retained.') : parametersReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : PORTAL_COPY.genomeScanCutoffHelp) : 'Enter a value from 0 to 1.'}</small></label>
                 <label><span>{PORTAL_TERMS.stride}</span><select aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" disabled={!preview && inferredMode === 'candidate'} value={!preview && inferredMode === 'candidate' ? 1 : strideBases} onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? preview ? 'A 100 bp input contains one window.' : 'Short sequences use overlapping 100 bp windows at a fixed 1 bp stride.' : 'Bases between consecutive 100 bp windows.'}</small></label>
               </div>
             </fieldset>

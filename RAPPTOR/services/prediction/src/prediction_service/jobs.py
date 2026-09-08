@@ -10,8 +10,9 @@ from rq import get_current_job
 from .callbacks import report_job_event
 from .cgr_cache import ensure_reference_cgr
 from .config import SETTINGS
-from .formats import ScanArtifactWriter
+from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, scan_output_formats
 from .runtime import get_runtime, sha256_file
+from .scan_progress import ScanProgress, count_scan_windows
 from .storage import JobStorage
 from .validation import validate_fasta, validate_sequence
 
@@ -135,7 +136,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         raise ValueError("sequence produced no model windows")
     score_writer = ScanArtifactWriter(
         job_dir,
-        ("json",),
+        ("json", "gff3"),
         (("target_sequence", len(sequence)),),
         model_version=SETTINGS.model_version,
         checkpoint_sha256=runtime.checkpoint_sha256,
@@ -149,6 +150,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
                 strand,
                 scores,
                 upstream_len=runtime.upstream_len,
+                window_length=runtime.seq_length,
             )
         window_count = sum(len(scores) for _, scores in scores_by_strand)
         _progress("writing_outputs", 90.0, windows=window_count, scores_written=window_count)
@@ -158,6 +160,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         raise
     payload = {
         "mode": "predict",
+        "window_start_coordinate_system": "reference_0based",
         "sequence_bases": len(sequence),
         "genome_context_bases": context_bases,
         "reference_accession": reference_accession,
@@ -167,6 +170,11 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         "window_count": int(sum(len(scores) for _, scores in scores_by_strand)),
         "max_score": float(max(scores.max() for _, scores in scores_by_strand if len(scores))),
         "score_filename": "scores.json",
+        "smoothed_score_filename": "scores.gff3",
+        "peak_filename": "peaks.gff3",
+        "smoothing": {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"},
+        "peak_calling": {"distance": PEAK_DISTANCE, "cutoff": PEAK_CUTOFF, "operator": ">"},
+        "peak_count": score_writer.peak_count,
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)
@@ -196,7 +204,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
     stride = int(request.get("stride") or SETTINGS.default_scan_stride)
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
     reverse = bool(request.get("reverse_complementary", True))
-    output_formats = tuple(request.get("output_formats") or ("bigwig", "parquet"))
+    output_formats = scan_output_formats(request.get("output_formats"), stride)
     score_cutoff = request.get("score_cutoff")
     artifact_writer = ScanArtifactWriter(
         job_dir,
@@ -207,11 +215,12 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         stride=stride,
         score_cutoff=score_cutoff,
     )
-    total_units = len(validated.records) * (2 if reverse else 1)
-    completed_units = 0
+    scan_progress = ScanProgress(count_scan_windows(
+        (len(record.sequence) for record in validated.records), runtime.seq_length, stride, reverse,
+    ), _progress)
     total_windows = 0
     artifacts: list[dict] = []
-    _progress("scanning", 15.0, contigs=len(validated.records), stride=stride)
+    _progress("scanning", 15.0, **scan_progress.snapshot(), contigs=len(validated.records), stride=stride)
     try:
         for record in validated.records:
             tasks = [("+", record.sequence)]
@@ -219,9 +228,12 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                 tasks.append(("-", runtime.reverse_complement(record.sequence)))
             for strand, sequence in tasks:
                 if len(sequence) < runtime.seq_length:
-                    completed_units += 1
                     continue
-                scores = runtime.score_sequence(sequence, cgr, stride=stride, batch_size=batch_size)
+                scan_progress.start_sequence(record.identifier, strand)
+                scores = runtime.score_sequence(
+                    sequence, cgr, stride=stride, batch_size=batch_size,
+                    progress_callback=scan_progress.batch_completed,
+                )
                 total_windows += len(scores)
                 artifact_writer.add_scores(
                     record.identifier,
@@ -229,19 +241,14 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                     strand,
                     scores,
                     upstream_len=runtime.upstream_len,
+                    window_length=runtime.seq_length,
                 )
-                completed_units += 1
-                percent = 15.0 + 75.0 * (completed_units / max(total_units, 1))
-                _progress(
-                    "scanning",
-                    percent,
-                    contig=record.identifier,
-                    strand=strand,
-                    windows=total_windows,
+                scan_progress.report(
+                    force=True,
                     scores_written=total_windows,
                     passing_windows=artifact_writer.passing_score_count,
                 )
-        _progress("writing_outputs", 92.0, windows=total_windows, scores_written=total_windows)
+        _progress("writing_outputs", 92.0, **scan_progress.snapshot(), scores_written=total_windows)
         artifacts = artifact_writer.close(success=True)
         artifacts.extend([
             {**_file_metadata(fasta_path, "fasta"), "content_type": "text/plain; charset=utf-8"},
@@ -252,6 +259,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         raise
     payload = {
         "mode": "genome_scan",
+        "window_start_coordinate_system": "reference_0based",
         "total_bases": validated.total_bases,
         "contig_count": len(validated.records),
         "ambiguous_fraction": validated.ambiguous_fraction,
@@ -266,12 +274,26 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "score_cutoff": score_cutoff,
         "score_cutoff_operator": ">" if score_cutoff is not None else None,
         "passing_window_count": artifact_writer.passing_score_count,
+        "peak_count": artifact_writer.peak_count if "gff3" in output_formats else None,
         "output_formats": list(output_formats),
-        "output_semantics": "all raw scores; optional cutoff applies only to GFF3/JSON records",
+        "output_semantics": (
+            "BigWig/Parquet/JSON contain raw scores; scores.gff3 contains Gaussian-smoothed scores; "
+            "peaks.gff3 contains fixed-threshold called peaks"
+            if "gff3" in output_formats
+            else "all raw scores"
+        ),
+        "smoothing": (
+            {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
+            if "gff3" in output_formats else None
+        ),
+        "peak_calling": (
+            {"distance": PEAK_DISTANCE, "cutoff": PEAK_CUTOFF, "operator": ">"}
+            if "gff3" in output_formats else None
+        ),
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)
-    _progress("complete", 100.0, windows=total_windows, scores_written=total_windows)
+    _progress("complete", 100.0, **scan_progress.snapshot(), scores_written=total_windows)
     return _result_metadata(artifacts, summary_path, runtime)
 
 

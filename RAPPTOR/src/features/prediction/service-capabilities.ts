@@ -8,6 +8,8 @@ export type QueuedPredictionCapabilities = {
   available: boolean;
   modelVersion: string;
   supportsScoreCutoff: boolean;
+  supportsPeakCalling?: boolean;
+  gff3RequiresStride1?: boolean;
   siteKey: string;
   reason?: string;
   submissionIssue?: string;
@@ -40,11 +42,21 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
       fetch(`${base}/readyz`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) }),
     ]);
     if (!metadata.ok || !readiness.ok) throw new Error();
-    const model = await metadata.json() as { model_version?: string; genome_scan?: { score_cutoff?: { operator?: string } } };
+    const model = await metadata.json() as { model_version?: string; genome_scan?: {
+      score_cutoff?: { operator?: string };
+      gff3_postprocessing?: { required_stride?: number; smoothing?: { method?: string; sigma?: number; mode?: string }; peaks?: { distance?: number; cutoff?: number; operator?: string; filename?: string } };
+    } };
     const ready = await readiness.json() as { status?: string };
     if (model.model_version !== modelVersion) return { ...initial, reason: 'The active model does not match this deployment.' };
     if (ready.status !== 'ready') throw new Error();
-    return { ...initial, available: true, supportsScoreCutoff: model.genome_scan?.score_cutoff?.operator === '>' };
+    const processing = model.genome_scan?.gff3_postprocessing;
+    return { ...initial, available: true, supportsScoreCutoff: model.genome_scan?.score_cutoff?.operator === '>',
+      gff3RequiresStride1: processing?.required_stride === 1,
+      supportsPeakCalling: processing?.required_stride === 1 && processing.smoothing?.method === 'gaussian'
+        && processing.smoothing.sigma === 1 && processing.smoothing.mode === 'reflect'
+        && processing.peaks?.distance === 10 && processing.peaks.cutoff === 0.9
+        && processing.peaks.operator === '>' && processing.peaks.filename === 'peaks.gff3',
+    };
   } catch {
     return { ...initial, reason: 'Prediction service is temporarily unavailable. Retry shortly.' };
   }

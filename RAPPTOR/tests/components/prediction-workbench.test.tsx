@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
 import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/prediction/history';
+import type { JobSummary } from '@/features/prediction/live-result';
 
 vi.mock('next/dynamic', () => ({
   default: () => ({ refName }: { refName: string }) => <div data-testid="live-prediction-browser" data-reference={refName}>Live genome browser</div>,
@@ -60,7 +61,7 @@ function completedJob(mode: PredictionHistoryEntry['mode']) {
   };
 }
 
-function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?: number; missingArtifacts?: string[]; fai?: string } = {}) {
+function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?: number; missingArtifacts?: string[]; fai?: string; summary?: Partial<JobSummary> } = {}) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
     if (String(input).endsWith('/session')) return new Response(null, { status: options.sessionStatus || 200 });
     if (String(input).endsWith('/artifacts/input.fasta.fai')) return new Response(options.fai || 'chr1\t320\t6\t60\t61\n');
@@ -68,8 +69,8 @@ function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?
     job.result.artifacts = job.result.artifacts.filter((item) => !options.missingArtifacts?.includes(item.filename));
     return Response.json(String(input).endsWith('/artifacts/summary.json')
       ? mode === 'predict'
-        ? { mode: 'predict', sequence_bases: 100, genome_context_bases: 4_641_652, window_count: 2, max_score: 0.3121 }
-        : { mode: 'genome_scan', total_bases: 320, genome_context_bases: 320, contig_count: 1, window_count: 442, passing_window_count: 7, stride: 1 }
+        ? { mode: 'predict', sequence_bases: 100, genome_context_bases: 4_641_652, window_count: 2, max_score: 0.3121, reverse_complementary: true, ...options.summary }
+        : { mode: 'genome_scan', total_bases: 320, genome_context_bases: 320, contig_count: 1, window_count: 442, passing_window_count: 7, stride: 1, score_cutoff: .9, score_cutoff_operator: '>', cgr_source: 'complete_genome_assembly_fasta', reverse_complementary: true, model: { seq_length: 100, model_version: 'candidate-v1', model_asset_status: 'candidate_not_production', checkpoint_sha256: 'checkpoint-test' }, ...options.summary }
       : String(input).endsWith('/artifacts/scores.json')
         ? [{ strand: '+', score: 0.3121, window_start_0based: 0, anchor_position_0based: 80 }, { strand: '-', score: 0.1842, window_start_0based: 0, anchor_position_0based: 19 }]
         : job);
@@ -77,6 +78,16 @@ function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?
 }
 
 describe('live prediction result layout', () => {
+  it('reports a legitimate zero peak result from the service on a shared task', async () => {
+    mockApi('genome_scan', { summary: { peak_count: 0 } });
+    localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', `/predict/task/${saved.jobId}#access=shared_access_token_1234567890abcdef`);
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByText('Called peaks')).toBeInTheDocument();
+    expect(screen.getByText('Called peaks').parentElement).toHaveTextContent('0');
+    expect(screen.queryByText('Exported windows')).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage());
     vi.stubGlobal('sessionStorage', memoryStorage());
@@ -169,5 +180,90 @@ describe('live prediction result layout', () => {
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('no scores.json artifact');
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+  });
+
+  it('refreshes service scan counters while a task is running', async () => {
+    let polls = 0;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({
+      job_id: saved.jobId, status: 'running', progress: {
+        stage: 'scanning', percent: 45, windows: ++polls === 1 ? 40 : 60, total_windows: 100,
+        scan_percent: 40, contig: 'chr1', strand: '-',
+      },
+    })));
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    const scan = await screen.findByRole('region', { name: 'Genome scan progress' });
+    expect(scan).toHaveTextContent('40 / 100');
+    expect(scan).toHaveTextContent('Reverse strand (−)');
+    expect(within(scan).getByRole('progressbar')).toHaveAttribute('value', '40');
+    expect(screen.queryByRole('region', { name: 'Download result' })).not.toBeInTheDocument();
+    await waitFor(() => expect(scan).toHaveTextContent('60 / 100'), { timeout: 4500 });
+    expect(within(scan).getByRole('progressbar')).toHaveAttribute('value', '60');
+  });
+
+  it('offers only GFF3 and a track ZIP, with three basic information fields', async () => {
+    mockApi('genome_scan');
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    const downloads = await screen.findByRole('region', { name: 'Download result' });
+    expect(within(downloads).getAllByRole('link')).toHaveLength(2);
+    expect(within(downloads).getByRole('link', { name: /Prediction results GFF3/ })).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/scores.gff3`);
+    const tracks = within(downloads).getByRole('link', { name: /Model score tracks ZIP/ });
+    expect(tracks).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/model-score-tracks.zip`);
+    expect(tracks).toHaveTextContent('Forward and reverse BigWig files in one folder');
+    expect(screen.getByText('Exported windows')).toBeInTheDocument();
+    expect(screen.queryByText('Run context')).not.toBeInTheDocument();
+    expect(screen.queryByText(/private temporary access link/)).not.toBeInTheDocument();
+    for (const removed of ['Additional files', 'Run details', 'input.fasta', 'input.fasta.fai', 'checkpoint-test', 'Genome context (CGR)', 'Stride', 'Window length']) expect(screen.queryByText(removed)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Prediction information' })).getAllByRole('term')).toHaveLength(3);
+    expect(screen.getByText('Model').closest('div')).toHaveTextContent('RAPPtor');
+  });
+
+  it('uses the completed parameters when local request history disagrees', async () => {
+    mockApi('genome_scan', { summary: { score_cutoff: .75, stride: 20, reverse_complementary: false } });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByText('Export cutoff: Model score > 0.75')).toBeInTheDocument();
+    expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('Forward strand only');
+    expect(screen.queryByText(/configured threshold/)).not.toBeInTheDocument();
+  });
+
+  it('requires the returned both-strand track even when local history requested only forward', async () => {
+    localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify([{ ...saved, strandMode: 'forward' }]));
+    mockApi('genome_scan', { missingArtifacts: ['scores.minus.bw'], summary: { reverse_complementary: true } });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('scores.minus.bw');
+  });
+
+  it('does not infer a missing cutoff or strand setting from local history', async () => {
+    mockApi('genome_scan', { summary: { score_cutoff: undefined, cgr_source: undefined, stride: undefined, reverse_complementary: undefined } });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    await screen.findByRole('heading', { name: 'Prediction information' });
+    expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('Strands not recorded');
+    expect(screen.getByText('Export cutoff: Not recorded')).toBeInTheDocument();
+    expect(screen.queryByText('Same as input genome')).not.toBeInTheDocument();
+  });
+
+  it('distinguishes explicitly unfiltered results and shows actual parameters in a shared task', async () => {
+    localStorage.clear(); sessionStorage.clear();
+    window.location.hash = 'access=shared_access_token_1234567890abcdef';
+    mockApi('genome_scan', { summary: { score_cutoff: null, cgr_source: 'separate_complete_genome_sequence' } });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    await screen.findByRole('heading', { name: 'Prediction information' });
+    expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('No export filtering');
+  });
+
+  it('shows a GFF3-unavailable explanation for older scans while preserving the track download', async () => {
+    mockApi('genome_scan', { missingArtifacts: ['scores.gff3'] });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByText(/GFF3 is unavailable for this task/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Prediction results TSV/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Model score tracks ZIP/ })).toBeInTheDocument();
+  });
+
+  it('keeps a result table for short-sequence tasks that have no GFF3', async () => {
+    mockApi('predict', { summary: { cgr_source: 'reference_accession', reference_accession: 'GCF_000005845.2', genome_context_bases: null } });
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(await screen.findByRole('link', { name: /Prediction results TSV/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Prediction positions/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Model score tracks' })).not.toBeInTheDocument();
+    expect(screen.getByText('Prediction settings').closest('div')).toHaveTextContent('No export filtering');
   });
 });

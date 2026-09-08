@@ -166,6 +166,24 @@ def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
     assert "top_k" in capabilities["unsupported_filters"]
 
 
+@pytest.mark.parametrize("stride", [1, 20])
+def test_genome_scan_automatically_selects_peak_outputs_only_at_stride_one(tmp_path, monkeypatch, stride):
+    api, _ = load_api(tmp_path, monkeypatch)
+    request, _ = api._validate_submission(api.JobSubmission(
+        mode="genome_scan", complete_genome=True, fasta=">contig\n" + "ACGT" * 100, stride=stride,
+    ))
+    assert ("gff3" in request["output_formats"]) == (stride == 1)
+
+
+def test_sparse_scan_rejects_smoothed_gff3(tmp_path, monkeypatch):
+    api, _ = load_api(tmp_path, monkeypatch)
+    with pytest.raises(api.InputValidationError, match="stride=1"):
+        api._validate_submission(api.JobSubmission(
+            mode="genome_scan", complete_genome=True, fasta=">contig\n" + "ACGT" * 100,
+            stride=20, output_formats=["gff3"],
+        ))
+
+
 def test_genome_scan_accepts_a_separate_complete_genome_for_cgr(tmp_path, monkeypatch):
     api, connection = load_api(tmp_path, monkeypatch)
     payload = api.JobSubmission(

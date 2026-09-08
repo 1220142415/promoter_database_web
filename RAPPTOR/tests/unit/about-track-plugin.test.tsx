@@ -1,17 +1,55 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { getSession } from '@jbrowse/core/util';
 import {
   RapptorAbout,
   replaceRapptorAbout,
 } from '@/features/genome-browser/plugins/about-track-plugin';
+
+vi.mock('@jbrowse/core/util', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@jbrowse/core/util')>(),
+  getSession: vi.fn(),
+}));
 
 function renderAbout(config: Record<string, unknown>) {
   return render(<RapptorAbout config={config} />);
 }
 
 describe('RAPPTOR About track presentation', () => {
+  it.each([
+    ['reference', 'reference'],
+    ['scores-plus', 'scores'],
+    ['annotation', 'annotation'],
+  ])('shows the contig name instead of the internal assembly key for a live %s track', (kind, panel) => {
+    renderAbout({
+      assemblyNames: ['prediction-private-job'],
+      metadata: {
+        rapptorAssembly: { label: 'Contig', name: 'NC_000913.3' },
+        rapptorDownload: { kind, accession: 'prediction-private-job' },
+      },
+    });
+    const about = screen.getByTestId(`rapptor-about-${panel}`);
+    expect(about).toHaveTextContent('Contig');
+    expect(about).toHaveTextContent('NC_000913.3');
+    expect(about).not.toHaveTextContent('Input');
+    expect(about).not.toHaveTextContent('prediction-private-job');
+    expect(about).not.toHaveTextContent('Assembly');
+  });
+
+  it('uses the currently displayed contig after navigation instead of the initial reference', () => {
+    vi.mocked(getSession).mockReturnValueOnce({ view: { displayedRegions: [{ refName: 'contig_2' }] } } as never);
+    renderAbout({
+      metadata: {
+        rapptorAssembly: { label: 'Contig', name: 'contig_1' },
+        rapptorDownload: { kind: 'reference', accession: 'prediction-private-job' },
+      },
+    });
+    expect(screen.getByText('contig_2')).toBeInTheDocument();
+    expect(screen.queryByText('contig_1')).not.toBeInTheDocument();
+  });
+
   it('shows curated prediction details while hiding implementation metadata', () => {
     renderAbout({
       type: 'FeatureTrack',

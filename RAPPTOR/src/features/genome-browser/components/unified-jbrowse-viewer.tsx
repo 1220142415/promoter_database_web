@@ -7,6 +7,7 @@ import ShareRoundedIcon from '@mui/icons-material/ShareRounded';
 import RapptorJBrowseLinearView from '@/features/genome-browser/components/rapptor-jbrowse-linear-view';
 import RapptorExperimentalTssPlugin, { EXPERIMENTAL_TSS_RENDERER } from '@/features/genome-browser/plugins/experimental-tss-plugin';
 import RapptorMirroredScorePlugin from '@/features/genome-browser/plugins/mirrored-score-plugin';
+import RapptorSmoothedScorePlugin, { SMOOTHED_SCORE_ADAPTER } from '@/features/genome-browser/plugins/smoothed-score-plugin';
 import RapptorStrandFeaturePlugin, {
   DIRECTIONAL_ANNOTATION_RENDERER,
   PROMOTER_FEATURE_RENDERER,
@@ -152,7 +153,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
   const { viewState, trackRegistry, initialWarnings, trackLabels } = useMemo(() => {
     const predictionUnindexed = prediction?.adapterMode === 'unindexed';
     const sequenceTrackId = `${assemblyName}-reference-sequence`;
-    const tracks: Array<Record<string, unknown>> = [];
+    const tracks: Array<Record<string, unknown> & { metadata?: Record<string, unknown> }> = [];
     const alwaysIncludedSnapshots: SessionTrackSnapshot[] = [];
     const definitions: SessionTrackDefinition[] = [{
       token: 'sequence',
@@ -187,6 +188,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       },
     });
 
+    const scoreAdapterType = prediction?.smoothScoreTrack ? SMOOTHED_SCORE_ADAPTER : 'BigWigAdapter';
     if (prediction?.assets.promoterScoresPlus && prediction.assets.promoterScoresMinus) {
       const trackId = `${assemblyName}-promoter-scores`;
       const plusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresPlus);
@@ -198,6 +200,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         name: scoreTrackLabel,
         metadata: {
           rapptorMirroredScore: true,
+          rapptorScoreSmoothing: prediction.smoothScoreTrack ? 'Gaussian σ = 1' : undefined,
           rapptorDownloads: [
             predictionDownload('scores-plus', `${scoreTrackLabel} (+ strand)`, plusUrl, false).rapptorDownload,
             predictionDownload('scores-minus', `${scoreTrackLabel} (- strand)`, minusUrl, false).rapptorDownload,
@@ -208,8 +211,8 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         adapter: {
           type: 'MultiWiggleAdapter',
           subadapters: [
-            { type: 'BigWigAdapter', source: 'plus', name: '+ strand', bigWigLocation: { uri: plusUrl } },
-            { type: 'BigWigAdapter', source: 'minus', name: '- strand', bigWigLocation: { uri: minusUrl } },
+            { type: scoreAdapterType, source: 'plus', name: '+ strand', bigWigLocation: { uri: plusUrl } },
+            { type: scoreAdapterType, source: 'minus', name: '- strand', bigWigLocation: { uri: minusUrl } },
           ],
         },
         displays: [{
@@ -241,10 +244,10 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       tracks.push({
         trackId,
         name: scoreTrackLabel,
-        metadata: predictionDownload('scores-plus', scoreTrackLabel, plusUrl, false),
+        metadata: { ...predictionDownload('scores-plus', scoreTrackLabel, plusUrl, false), rapptorScoreSmoothing: prediction.smoothScoreTrack ? 'Gaussian σ = 1' : undefined },
         assemblyNames: [assemblyName],
         type: 'QuantitativeTrack',
-        adapter: { type: 'BigWigAdapter', bigWigLocation: { uri: plusUrl } },
+        adapter: { type: scoreAdapterType, bigWigLocation: { uri: plusUrl } },
         displays: [{
           displayId: `${trackId}-display`,
           type: 'LinearWiggleDisplay',
@@ -584,6 +587,10 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     const referenceAccession = prediction?.assemblyName || experimental!.accession;
     const referenceUrl = resolveAsset(referenceBase, referenceAssets.fasta);
     const referenceUnindexed = predictionUnindexed || !referenceAssets.fastaFai;
+    const assemblyMetadata = prediction?.assemblyAbout ? { rapptorAssembly: prediction.assemblyAbout } : {};
+    for (const track of tracks) {
+      track.metadata = { ...track.metadata, ...assemblyMetadata };
+    }
     const stateTree = createViewState({
       assembly: {
         name: assemblyName,
@@ -592,6 +599,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           trackId: sequenceTrackId,
           name: prediction?.trackLabels?.reference || 'Reference sequence',
           metadata: {
+            ...assemblyMetadata,
             rapptorDownload: prediction
               ? predictionDownload('reference', 'Reference sequence', referenceUrl).rapptorDownload
               : {
@@ -620,6 +628,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       },
       tracks,
       plugins: [
+        ...(prediction?.smoothScoreTrack ? [RapptorSmoothedScorePlugin] : []),
         RapptorMirroredScorePlugin,
         RapptorStrandFeaturePlugin,
         ...(experimental ? [RapptorExperimentalTssPlugin] : []),

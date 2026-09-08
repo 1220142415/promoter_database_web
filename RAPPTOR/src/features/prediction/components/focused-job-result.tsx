@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { parseSequenceScores, type FocusedScore } from '../focused-scores';
+import { referenceWindow } from '../live-result';
 import styles from './prediction.module.css';
 
-export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequenceBases = 100 }: { jobId: string; bothStrands: boolean; hasScores: boolean; sequenceBases?: number }) {
+export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequenceBases = 100, coordinateSystem }: { jobId: string; bothStrands: boolean; hasScores: boolean; sequenceBases?: number; coordinateSystem?: string }) {
   const [scores, setScores] = useState<FocusedScore[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -37,8 +38,11 @@ export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequen
           <strong>{row.score.toFixed(6)}</strong><small>Model score</small>
           <meter aria-label={`${row.strand === '+' ? 'Forward' : 'Reverse'} strand model score`} min={0} max={1} value={row.score} />
         </div>)}</div> : <>
-          <p>{scores.length.toLocaleString()} overlapping 100 bp windows were scored. The table shows the 20 highest probabilities.</p>
-          <div className={styles.tableWrap}><table className={styles.windowTable}><thead><tr><th>Rank</th><th>Model score</th><th>Strand</th><th>Window (1-based)</th><th>Prediction anchor</th></tr></thead><tbody>{topScores.map((row, index) => <tr key={`${row.strand}-${row.window_start_0based}`}><td>{index + 1}</td><td>{row.score.toFixed(6)}</td><td>{row.strand}</td><td>{row.window_start_0based + 1}–{row.window_start_0based + 100}</td><td>{row.anchor_position_0based + 1}</td></tr>)}</tbody></table></div>
+          <p>{scores.length.toLocaleString()} overlapping 100 bp windows were scored. The table shows the 20 highest model scores. Coordinates refer to the original input sequence.</p>
+          <div className={styles.tableWrap}><table className={styles.windowTable}><thead><tr><th>Rank</th><th>Model score</th><th>Strand</th><th>Window (1-based)</th><th>Prediction anchor</th></tr></thead><tbody>{topScores.map((row, index) => {
+            const window = referenceWindow(row.window_start_0based, row.strand, 100, sequenceBases, coordinateSystem)!;
+            return <tr key={`${row.strand}-${row.window_start_0based}`}><td>{index + 1}</td><td>{row.score.toFixed(6)}</td><td>{row.strand}</td><td>{window.start}–{window.end}</td><td>{row.anchor_position_0based + 1}</td></tr>;
+          })}</tbody></table></div>
         </>}
       </> : <p role="status">Loading model scores…</p>}
   </section>;

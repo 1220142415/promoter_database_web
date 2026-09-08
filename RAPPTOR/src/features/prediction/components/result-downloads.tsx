@@ -1,0 +1,34 @@
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import { RESULT_TABLE_FILENAME, SCORE_TRACKS_ZIP_FILENAME, SCORE_TRACK_FILENAMES, resultTableSource, type JobArtifact, type JobSummary } from '../live-result';
+import styles from '../prototype-result.module.css';
+
+export default function ResultDownloads({ jobId, artifacts, mode, expiresAt }: {
+  jobId: string; artifacts: JobArtifact[]; mode: JobSummary['mode']; expiresAt: string;
+}) {
+  const base = `/api/predictions/jobs/${jobId}/artifacts`;
+  const table = mode === 'predict' && resultTableSource(artifacts, mode);
+  const peaks = artifacts.find((item) => item.filename === 'peaks.gff3');
+  const positions = peaks || artifacts.find((item) => item.filename === 'scores.gff3');
+  const tracks = SCORE_TRACK_FILENAMES.filter((name) => artifacts.some((item) => item.filename === name));
+  const legacy = !table && !positions && !tracks.length
+    ? artifacts.find((item) => item.filename === 'scores.parquet' || item.filename === 'scores.json') : undefined;
+  return <section className={styles.panel} aria-labelledby="download-heading">
+    <div className={styles.panelHeader}><h2 id="download-heading">Download result</h2><p>Temporary result files are available until {expiresAt}.</p></div>
+    <div className={styles.primaryDownloads}>
+      {table && <a className={styles.resultDownload} href={`${base}/${RESULT_TABLE_FILENAME}`} download>
+        <DownloadRoundedIcon aria-hidden="true" /><span><strong>Prediction results <small>TSV</small></strong><span>One row per exported window, with coordinates, strand and model score.</span></span>
+      </a>}
+      {positions && <a className={styles.resultDownload} href={`${base}/${positions.filename}`} download>
+        <DownloadRoundedIcon aria-hidden="true" /><span><strong>{peaks ? 'Predicted peaks' : 'Prediction results'} <small>GFF3</small></strong><span>{peaks ? 'Peak anchor positions, strands and smoothed model scores.' : 'Predicted positions, strands and model scores.'}</span></span>
+      </a>}
+      {tracks.length > 0 && <a className={styles.resultDownload} href={`${base}/${SCORE_TRACKS_ZIP_FILENAME}`} download>
+        <DownloadRoundedIcon aria-hidden="true" /><span><strong>Model score tracks <small>ZIP</small></strong><span>{tracks.length === 2 ? 'Raw forward and reverse BigWig files in one folder.' : 'Raw BigWig file for the available strand.'} Includes scores below the export cutoff.</span></span>
+      </a>}
+      {legacy && <a className={styles.resultDownload} href={`${base}/${legacy.filename}`} download>
+        <DownloadRoundedIcon aria-hidden="true" /><span><strong>Model scores <small>{legacy.format.toUpperCase()}</small></strong><span>Original score file from this task.</span></span>
+      </a>}
+    </div>
+    {mode !== 'predict' && !positions && <p className={styles.downloadNote}>GFF3 is unavailable for this task.</p>}
+    {mode === 'predict' && !table && !legacy && <p className={styles.downloadNote}>Result files are unavailable for this task.</p>}
+  </section>;
+}

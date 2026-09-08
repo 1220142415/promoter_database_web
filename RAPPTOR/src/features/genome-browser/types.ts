@@ -46,6 +46,8 @@ export interface JBrowseAnnotationAbout {
 
 export interface JBrowseAssemblyConfig {
   assemblyName: string;
+  /** Human-readable identity for About panels; assemblyName remains the internal key. */
+  assemblyAbout?: { label: 'Assembly' | 'Contig'; name: string };
   defaultLocus: string;
   assetBase: string;
   assets: JBrowseAssemblyAssets;
@@ -60,6 +62,8 @@ export interface JBrowseAssemblyConfig {
     annotation?: string;
   };
   predictionProcessing?: JBrowsePredictionProcessing | null;
+  /** Smooth raw stride-1 score tracks with Gaussian sigma=1 and reflect edges. */
+  smoothScoreTrack?: boolean;
   annotationAbout?: JBrowseAnnotationAbout | null;
   /**
    * Local, illustrative tracks for the browser-only prediction prototype.

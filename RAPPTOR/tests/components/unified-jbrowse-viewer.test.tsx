@@ -120,6 +120,22 @@ function stateTree() {
 }
 
 describe('unified JBrowse viewer', () => {
+  it.each([true, false])('installs smoothing for an opted-in %s dual-strand score track', (bothStrands) => {
+    vi.mocked(createViewState).mockImplementation(() => stateTree() as never);
+    const scan = prediction();
+    render(<UnifiedJBrowseViewer prediction={{ ...scan, smoothScoreTrack: true, assets: { ...scan.assets, promoterScoresMinus: bothStrands ? scan.assets.promoterScoresMinus : null } }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ adapter: { type: string; subadapters?: Array<{ type: string; source: string }> } }>;
+      plugins: Array<{ name: string }>;
+    };
+    expect(config.plugins.map(plugin => plugin.name)).toContain('RapptorSmoothedScorePlugin');
+    if (bothStrands) {
+      expect(config.tracks[0].adapter.subadapters).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'RapptorSmoothedBigWigAdapter', source: 'plus' }),
+        expect.objectContaining({ type: 'RapptorSmoothedBigWigAdapter', source: 'minus' }),
+      ]));
+    } else expect(config.tracks[0].adapter.type).toBe('RapptorSmoothedBigWigAdapter');
+  });
   beforeEach(() => {
     window.history.replaceState({}, '', `/genomes/${accession}`);
     vi.mocked(createViewState).mockReset();
@@ -135,6 +151,40 @@ describe('unified JBrowse viewer', () => {
     const slot = screen.getByTestId('genome-file-status-share');
     await waitFor(() => expect(within(slot).getByRole('button', { name: 'Share current view' })).toBeInTheDocument());
     expect(screen.getByTestId('jbrowse-viewer')).not.toContainElement(within(slot).getByRole('button'));
+  });
+
+  it('passes the contig identity to reference, score, and annotation About panels', () => {
+    const assemblyAbout = { label: 'Contig' as const, name: 'NC_016810.1' };
+    render(<UnifiedJBrowseViewer prediction={{ ...prediction(), assemblyAbout }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      assembly: { name: string; sequence: { metadata: Record<string, unknown> } };
+      tracks: Array<{ assemblyNames: string[]; metadata: Record<string, unknown> }>;
+    };
+    expect(config.assembly.name).toBe(accession);
+    expect(config.assembly.sequence.metadata.rapptorAssembly).toEqual(assemblyAbout);
+    for (const track of config.tracks) {
+      expect(track.assemblyNames).toEqual([accession]);
+      expect(track.metadata.rapptorAssembly).toEqual(assemblyAbout);
+    }
+  });
+
+  it('opens a returned prediction peak GFF3 as a visible feature track by default', () => {
+    const scan = prediction();
+    const peakUrl = '/api/predictions/jobs/task/artifacts/peaks.gff3';
+    render(<UnifiedJBrowseViewer prediction={{
+      ...scan,
+      assets: { ...scan.assets, predictedPromoters: peakUrl, predictedPromotersIndex: '' },
+      trackLabels: { promoters: 'RAPPtor predicted peaks' },
+      predictionProcessing: { sigma: 1, distance: 10, cutoff: .9, positionBase: 1 },
+    }} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ trackId: string; name: string; adapter: object; metadata: object }>;
+      defaultSession: { view: { tracks: Array<{ configuration: string }> } };
+    };
+    const peakTrack = config.tracks.find(track => track.name === 'RAPPtor predicted peaks')!;
+    expect(peakTrack.adapter).toEqual({ type: 'Gff3Adapter', gffLocation: { uri: peakUrl } });
+    expect(peakTrack.metadata).toMatchObject({ rapptorEvidenceType: 'prediction', rapptorProcessing: { sigma: 1, distance: 10, cutoff: .9, positionBase: 1 } });
+    expect(config.defaultSession.view.tracks).toEqual(expect.arrayContaining([expect.objectContaining({ configuration: peakTrack.trackId })]));
   });
 
   it('orders prediction and experimental evidence in one state tree', () => {

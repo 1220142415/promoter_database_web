@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import {
   parsePredictionHistory,
@@ -13,34 +12,23 @@ import {
 } from '../history';
 import FocusedJobResult from './focused-job-result';
 import PredictionProgressPanel from './prediction-progress-panel';
+import ResultDownloads from './result-downloads';
+import ResultInformation from './result-information';
+import { windowCoordinateSystem, type JobArtifact, type JobSummary } from '../live-result';
 import { normalizePredictionProgress } from '../progress';
 import { PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from '../prototype-result.module.css';
 
 const PredictionBrowser = dynamic(() => import('./prediction-browser'), { ssr: false });
 
-type Artifact = { filename: string; format: string; size_bytes: number; sha256: string };
-type JobSummary = {
-  mode?: 'genome_scan' | 'predict';
-  total_bases?: number;
-  contig_count?: number;
-  stride?: number;
-  window_count?: number;
-  passing_window_count?: number;
-  sequence_bases?: number;
-  genome_context_bases?: number;
-  max_score?: number;
-  reverse_complementary?: boolean;
-  model?: { model_version?: string; checkpoint_sha256?: string; model_asset_status?: string };
-};
 type JobState = {
   job_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'unknown';
   model_version?: string;
-  progress?: { stage?: string; percent?: number; contig?: string; strand?: string; windows?: number };
+  progress?: { stage?: string; percent?: number; contig?: string; strand?: string; windows?: number; total_windows?: number; scan_percent?: number };
   submitted_at?: string;
   artifacts_expires_at?: string | null;
-  result?: { artifacts?: Artifact[] };
+  result?: { artifacts?: JobArtifact[] };
   error?: { type?: string; message?: string };
 };
 
@@ -50,8 +38,18 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function formatBases(value?: number) {
-  return value === undefined ? 'Not recorded' : `${value.toLocaleString()} bp`;
+function progressMessage(job: JobState | null) {
+  if (!job) return 'Loading prediction status…';
+  if (job.error?.message) return job.error.message;
+  if (job.status === 'succeeded') return 'Result ready.';
+  if (job.status === 'queued') return 'Waiting for an available worker.';
+  switch (job.progress?.stage) {
+    case 'preparing_cgr': return 'Preparing genome CGR.';
+    case 'scanning': return 'Scanning sequence windows.';
+    case 'inference': return 'Scoring the input sequence.';
+    case 'writing_outputs': return 'Scan finished. Preparing result files.';
+    default: return 'Waiting for the next worker update.';
+  }
 }
 
 function resultEntry(jobId: string, stored: PredictionHistoryEntry[]): PredictionHistoryEntry | null {
@@ -185,18 +183,19 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
   const sequenceBases = summary?.sequence_bases || (entry.mode === 'predict' ? 100 : undefined);
   const focused = mode === 'predict' && sequenceBases === 100;
   const refName = entry.refName || resolvedRefName;
-  const bothStrands = summary?.reverse_complementary !== false && entry.strandMode !== 'forward';
+  const bothStrands = summary?.reverse_complementary ?? (entry.strandMode !== 'forward');
   const missingBrowserFiles = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai', ...(bothStrands ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((artifact) => artifact.filename === name));
   const hasReference = missingBrowserFiles.length === 0;
-  const downloads = artifacts;
   const progress = normalizePredictionProgress({
     state: job?.status === 'unknown' ? 'running' : job?.status || 'queued',
     stage: job?.status === 'succeeded' ? 'complete' : job?.progress?.stage || job?.status || 'queued',
     percent: job?.progress?.percent ?? null,
-    message: job?.error?.message || (job?.status === 'succeeded' ? 'Result ready.' : job?.status === 'queued' ? 'Waiting for an available worker.' : 'Loading prediction status…'),
+    message: progressMessage(job),
     contig: job?.progress?.contig,
     strand: job?.progress?.strand === '+' || job?.progress?.strand === '-' ? job.progress.strand : undefined,
-    windows: job?.progress?.windows,
+    windows: job?.progress?.windows ?? summary?.window_count,
+    totalWindows: job?.progress?.total_windows ?? summary?.window_count,
+    scanPercent: job?.progress?.scan_percent,
   });
 
   return <main className={styles.page}>
@@ -205,7 +204,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
         <div className={styles.introCopy}>
           <p className="portal-kicker">{mode === 'predict' ? (focused ? '100 bp scoring' : 'Short-sequence prediction') : PORTAL_TERMS.sequenceScan}</p>
           <h1>Prediction result</h1>
-          <p>{mode === 'predict' ? (focused ? 'Compare the model score for each evaluated strand.' : 'Review probabilities from overlapping 100 bp windows across the submitted sequence.') : 'Explore model-score and promoter-prediction tracks in the genome browser.'}</p>
+          <p>{mode === 'predict' ? (focused ? 'Compare the model score for each evaluated strand.' : 'Review model scores from overlapping windows across the submitted sequence.') : 'Explore model-score tracks and download predicted window positions.'}</p>
         </div>
         <div className={styles.runMeta}><span>Live task</span><code>{entry.jobId}</code><small>{formatDate(job?.submitted_at || entry.submittedAt)}</small></div>
       </header>
@@ -214,37 +213,21 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} />
 
       {job?.status === 'succeeded' && summary ? <>
-        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} /> : <>
+        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} coordinateSystem={windowCoordinateSystem(summary)} /> : <>
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>
-            <div><span>Promoter predictions</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>Above export cutoff</small></div>
+            {summary.peak_count != null ? <div><span>Called peaks</span><strong>{summary.peak_count.toLocaleString()}</strong><small>Predicted peak anchors</small></div> : <div><span>Exported windows</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>{summary.score_cutoff === null ? 'No export filtering' : summary.score_cutoff === undefined ? 'Export cutoff not recorded' : 'Above export cutoff'}</small></div>}
           </section>
           {!hasReference ? <p role="alert">Required browser artifacts are missing: {missingBrowserFiles.join(', ')}.</p> : null}
           {hasReference && refName ? <section className={styles.panel} aria-labelledby="genome-browser-heading">
             <div className={styles.panelHeader}><h2 id="genome-browser-heading">Genome browser</h2><p>Reference sequence and model-score tracks from this completed scan.</p></div>
-            <PredictionBrowser jobId={entry.jobId} refName={refName} artifacts={artifacts} />
+            <PredictionBrowser jobId={entry.jobId} refName={refName} artifacts={artifacts} summary={summary} />
           </section> : null}
         </>}
 
-        {downloads.length ? <section className={styles.panel} aria-labelledby="download-heading">
-          <div className={styles.panelHeader}><h2 id="download-heading">Download result</h2><p>Temporary result files are available until {formatDate(job.artifacts_expires_at)}.</p></div>
-          <div className={styles.downloads}>{downloads.map((artifact) => <a className={styles.downloadButton} key={artifact.filename} href={`/api/predictions/jobs/${entry.jobId}/artifacts/${artifact.filename}`} download>
-            <DownloadRoundedIcon aria-hidden="true" /><span>{artifact.format.toUpperCase()}<small>{artifact.filename}</small></span>
-          </a>)}</div>
-        </section> : null}
-
-        <section className={styles.panel} aria-labelledby="run-context-heading">
-          <div className={styles.panelHeader}><h2 id="run-context-heading">Run context</h2><p>This live result is available through its private temporary access link.</p></div>
-          <dl className={styles.factGrid}>
-            <div><dt>Input</dt><dd>{entry.label} · {formatBases(mode === 'predict' ? summary.sequence_bases : summary.total_bases)}</dd></div>
-            <div><dt>Genome context</dt><dd>{formatBases(summary.genome_context_bases || summary.total_bases)}</dd></div>
-            <div><dt>Analysis</dt><dd>{bothStrands ? 'Both strands requested' : 'Forward strand only'} · {entry.cutoff === undefined ? 'No export filtering' : `configured threshold ${entry.cutoff.toFixed(2)}`} · stride {summary.stride || entry.strideBases || 1} bp</dd></div>
-            <div><dt>Model</dt><dd>{summary.model?.model_version || job.model_version || 'Model version unavailable'}</dd></div>
-            <div><dt>Model status</dt><dd>{summary.model?.model_asset_status === 'candidate_not_production' ? 'Candidate model' : summary.model?.model_asset_status || 'Not reported'}</dd></div>
-            <div><dt>Checkpoint SHA-256</dt><dd>{summary.model?.checkpoint_sha256 || 'Not reported'}</dd></div>
-          </dl>
-        </section>
+        {artifacts.length > 0 && <ResultDownloads jobId={entry.jobId} artifacts={artifacts} mode={mode} expiresAt={formatDate(job.artifacts_expires_at)} />}
+        <ResultInformation summary={{ ...summary, mode }} inputName={entry.label} refName={mode === 'genome_scan' ? refName : ''} />
 
         <aside className={styles.interpret} aria-labelledby="interpret-heading">
           <h2 id="interpret-heading">How to interpret this result</h2>

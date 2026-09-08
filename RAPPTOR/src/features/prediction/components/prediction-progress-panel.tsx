@@ -24,10 +24,17 @@ export default function PredictionProgressPanel({
   const steps = predictionProgressSteps(mode);
   const currentStep = predictionProgressStepIndex(progress);
   const failed = progress.state === 'failed';
+  const showScan = mode === 'scan' && progress.state !== 'succeeded' && currentStep >= 2
+    && (progress.stage === 'scanning' || progress.windows !== undefined || progress.totalWindows !== undefined);
+  const scanPercent = progress.scanPercent;
+  const scanDetails = [
+    progress.contig ? `Sequence: ${progress.contig}` : null,
+    progress.strand ? (progress.strand === '+' ? 'Forward strand (+)' : 'Reverse strand (−)') : null,
+  ].filter(Boolean);
   const details = [
-    progress.contig ? `Contig ${progress.contig}` : null,
-    progress.strand ? `${progress.strand} strand` : null,
-    typeof progress.windows === 'number' ? `${progress.windows.toLocaleString()} windows processed` : null,
+    !showScan && progress.contig ? `Contig ${progress.contig}` : null,
+    !showScan && progress.strand ? `${progress.strand} strand` : null,
+    !showScan && typeof progress.windows === 'number' ? `${progress.windows.toLocaleString()} windows processed` : null,
   ].filter(Boolean);
 
   return (
@@ -37,7 +44,7 @@ export default function PredictionProgressPanel({
           <span>{progress.simulated ? 'Simulated queue preview' : 'Prediction task'}</span>
           <strong>{failed ? 'Prediction failed' : steps[currentStep].label}</strong>
         </div>
-        <span className={styles.percent}>{progress.percent === null ? 'In progress' : `${Math.round(progress.percent)}%`}</span>
+        <span className={styles.percent}>{failed ? 'Stopped' : progress.percent === null ? 'In progress' : `${Math.round(progress.percent)}%`}{showScan && !failed && progress.percent !== null ? <small>overall</small> : null}</span>
       </div>
 
       <ol className={styles.steps} aria-label="Prediction stages">
@@ -56,6 +63,21 @@ export default function PredictionProgressPanel({
       {progress.percent === null
         ? <progress aria-label="Prediction task progress" max={100} />
         : <progress aria-label="Prediction task progress" max={100} value={progress.percent} />}
+      {showScan ? <section className={styles.scan} aria-label="Genome scan progress">
+        <div className={styles.scanHeading}>
+          <strong>{failed ? 'Scan stopped' : progress.totalWindows === 0 ? 'No windows to scan' : currentStep > 2 ? 'Scan complete' : 'Scan progress'}</strong>
+          <span>{progress.totalWindows === 0 ? '—' : scanPercent == null ? (failed ? 'Stopped' : 'In progress') : `${Math.floor(scanPercent * 10) / 10}%`}</span>
+        </div>
+        {progress.totalWindows === 0 ? null : scanPercent == null
+          ? <progress aria-label="Scanned windows" max={100} />
+          : <progress aria-label="Scanned windows" max={100} value={scanPercent} />}
+        <div className={styles.scanCounts} aria-live="polite">
+          <strong>{progress.windows?.toLocaleString() ?? '—'}{progress.totalWindows !== undefined ? ` / ${progress.totalWindows.toLocaleString()}` : ''}</strong>
+          <span>windows scanned</span>
+        </div>
+        {scanDetails.length && currentStep === 2 ? <p>{scanDetails.join(' · ')}</p> : null}
+        {progress.totalWindows === undefined ? <p>Total window count is not available from this service.</p> : null}
+      </section> : null}
       <div className={styles.status} role="status" aria-live="polite">
         {failed ? <ErrorOutlineRoundedIcon aria-hidden="true" /> : null}
         <div><strong>{progress.message}</strong>{details.length ? <span>{details.join(' · ')}</span> : null}</div>

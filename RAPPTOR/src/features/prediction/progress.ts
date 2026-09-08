@@ -11,6 +11,8 @@ export interface PredictionProgressSnapshot {
   contig?: string;
   strand?: '+' | '-';
   windows?: number;
+  totalWindows?: number;
+  scanPercent?: number | null;
   simulated?: boolean;
 }
 
@@ -49,10 +51,18 @@ export function clampPredictionProgress(value: unknown): number | null {
 
 export function normalizePredictionProgress(snapshot: PredictionProgressSnapshot): PredictionProgressSnapshot {
   const percent = snapshot.state === 'succeeded' ? 100 : clampPredictionProgress(snapshot.percent);
+  const windows = Number.isSafeInteger(snapshot.windows) && snapshot.windows! >= 0 ? snapshot.windows : undefined;
+  const totalWindows = Number.isSafeInteger(snapshot.totalWindows) && snapshot.totalWindows! >= 0 ? snapshot.totalWindows : undefined;
+  const scanPercent = windows !== undefined && totalWindows !== undefined && totalWindows > 0 && windows <= totalWindows
+    ? 100 * windows / totalWindows
+    : clampPredictionProgress(snapshot.scanPercent);
   return {
     ...snapshot,
     stage: snapshot.stage.trim().toLowerCase().replaceAll('-', '_') || (snapshot.state === 'queued' ? 'queued' : 'unknown'),
     percent,
+    windows,
+    totalWindows,
+    scanPercent,
   };
 }
 
@@ -99,6 +109,7 @@ function scanDetails(run: Extract<PrototypePredictionRun, { mode: 'genome-scan' 
     contig: unit?.contig.sequenceId,
     strand: unit?.strand,
     windows: Math.min(totalWindows, Math.round(totalWindows * fraction)),
+    totalWindows,
   };
 }
 

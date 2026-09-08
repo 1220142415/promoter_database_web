@@ -248,6 +248,7 @@
 .viewSwitch .activeView { background: white; color: var(--teal-dark); box-shadow: 0 1px 4px rgb(22 52 48 / 12%); }
 .browserUnavailable { margin: 16px 0 0; border-left: 3px solid var(--gold); background: var(--gold-soft); padding: 10px 12px; color: #70430d; font-size: 10px; }
 .predictionBrowser { min-height: 440px; margin-top: 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; }
+.peakStatus { margin: 0; padding: 10px 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
 .browserTools { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); background: #f7f9f8; padding: 11px 13px; }
 .browserTools > div:first-child { min-width: 0; display: grid; gap: 3px; }
 .browserTools strong { color: var(--ink); font-size: 11px; }

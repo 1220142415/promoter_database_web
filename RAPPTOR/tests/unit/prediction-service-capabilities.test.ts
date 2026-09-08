@@ -3,6 +3,17 @@ import { queuedPredictionCapabilities, queuedPredictionLocalTest } from '@/featu
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('queued service capability detection', () => {
+  it.each([1, 2])('validates the declared peak parameters (sigma %i)', async (sigma) => {
+    vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
+    vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : {
+      model_version: 'candidate-github-93cf', genome_scan: { gff3_postprocessing: {
+        required_stride: 1, smoothing: { method: 'gaussian', sigma, mode: 'reflect' },
+        peaks: { distance: 10, cutoff: .9, operator: '>', filename: 'peaks.gff3' },
+      } },
+    })));
+    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, gff3RequiresStride1: true, supportsPeakCalling: sigma === 1 });
+  });
   it('requires ticket and Turnstile configuration but no email settings in IP mode', async () => {
     const settings = {
       RAPPTOR_PREDICTION_ACCESS_MODE: 'ip',

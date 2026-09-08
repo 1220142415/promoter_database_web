@@ -4,6 +4,7 @@ import type { ComponentType, ReactNode } from 'react';
 import Plugin from '@jbrowse/core/Plugin';
 import type PluginManager from '@jbrowse/core/PluginManager';
 import { getConf, readConfObject } from '@jbrowse/core/configuration';
+import { getSession } from '@jbrowse/core/util';
 import { PORTAL_TERMS } from '@/components/portal-terminology';
 
 type JsonRecord = Record<string, unknown>;
@@ -171,8 +172,26 @@ function AboutLinkActions({ links }: { links: Array<{ href: string; label: strin
 }
 
 function assemblyFacts(configSnapshot: JsonRecord, metadata: JsonRecord): Array<[string, ReactNode]> {
+  const display = record(metadata.rapptorAssembly);
+  const name = text(display?.name);
+  if (name) return [[display?.label === 'Contig' ? 'Contig' : 'Assembly', name]];
   const assembly = assemblyName(configSnapshot, metadata);
   return assembly ? [['Assembly', <code key="assembly">{assembly}</code>]] : [];
+}
+
+function currentContigs(config: unknown): string | null {
+  try {
+    const session = getSession(config as never) as unknown as {
+      view?: { displayedRegions?: Array<{ refName?: string }> };
+    };
+    const view = session.view;
+    const names = [...new Set((view?.displayedRegions || [])
+      .map((region) => text(region.refName)).filter((name): name is string => Boolean(name)))];
+    return names.length ? names.join(', ') : null;
+  } catch {
+    // Plain configurations and unloaded views use the supplied reference name.
+    return null;
+  }
 }
 
 function processingFacts(metadata: JsonRecord): Array<[string, ReactNode]> {
@@ -245,7 +264,11 @@ function experimentalAbout(configSnapshot: JsonRecord, metadata: JsonRecord) {
 
 export function RapptorAbout({ config }: RapptorAboutProps) {
   const configSnapshot = snapshot(config);
-  const metadata = metadataFrom(config, configSnapshot);
+  const metadata = { ...metadataFrom(config, configSnapshot) };
+  const assemblyDisplay = record(metadata.rapptorAssembly);
+  if (assemblyDisplay?.label === 'Contig') {
+    metadata.rapptorAssembly = { ...assemblyDisplay, name: currentContigs(config) || assemblyDisplay.name };
+  }
   const kind = trackKind(configSnapshot, metadata);
   const assemblyFactsValue = assemblyFacts(configSnapshot, metadata);
 
@@ -297,7 +320,7 @@ export function RapptorAbout({ config }: RapptorAboutProps) {
       : null;
     return (
       <div className="rapptor-about-content" data-testid="rapptor-about-scores">
-        <AboutFacts facts={[...assemblyFactsValue, ['Evidence', evidence], ['Strand', strand], ['Format', 'BigWig']]} />
+        <AboutFacts facts={[...assemblyFactsValue, ['Evidence', evidence], ['Strand', strand], ['Smoothing', text(metadata.rapptorScoreSmoothing)], ['Format', 'BigWig']]} />
       </div>
     );
   }

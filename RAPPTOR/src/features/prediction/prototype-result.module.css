@@ -793,6 +793,86 @@
   cursor: not-allowed;
 }
 
+.primaryDownloads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resultDownload {
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 16px;
+  background: white;
+  color: var(--teal-dark);
+}
+
+.resultDownload {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.resultDownload:hover {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.resultDownload svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.resultDownload > span {
+  display: grid;
+  gap: 8px;
+}
+
+.resultDownload strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.resultDownload strong small {
+  border-radius: 4px;
+  padding: 3px 6px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.resultDownload > span > span,
+.downloadNote {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.resultDownload > span > span { margin: 0; }
+
+.resultDownload:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 4px;
+}
+
+
+
+.resultFacts dd small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .factGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -819,6 +899,17 @@
   font-size: 11px;
   font-weight: 700;
 }
+
+.factGrid.simpleResultFacts {
+  grid-template-columns: 1.3fr 1fr 1fr;
+}
+
+.factGrid.simpleResultFacts > div {
+  border-top: 0;
+  border-right: 1px solid var(--line);
+}
+
+.factGrid.simpleResultFacts > div:last-child { border-right: 0; }
 
 .interpret {
   display: grid;
@@ -925,6 +1016,10 @@
 }
 
 @media (max-width: 720px) {
+  .primaryDownloads { grid-template-columns: 1fr; }
+  .factGrid.simpleResultFacts { grid-template-columns: 1fr; }
+  .factGrid.simpleResultFacts > div { border-right: 0; border-top: 1px solid var(--line); }
+  .factGrid.simpleResultFacts > div:first-child { border-top: 0; }
   .page {
     padding-bottom: 58px;
   }

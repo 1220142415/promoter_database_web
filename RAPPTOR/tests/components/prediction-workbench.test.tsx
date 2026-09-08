@@ -6,11 +6,11 @@ import PredictionWorkbench from '@/features/prediction/components/prediction-wor
 import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/prediction/history';
 
 vi.mock('next/dynamic', () => ({
-  default: () => ({ refName }: { refName: string }) => <div data-testid="live-prediction-browser" data-reference={refName}>Live genome browser</div>,
-}));
-
-vi.mock('@/features/prediction/components/prediction-browser', () => ({
-  default: ({ accessToken }: { accessToken: string }) => <div data-testid="live-prediction-browser" data-access-token={accessToken}>Live genome browser</div>,
+  default: () => ({ refName, accessToken }: { refName: string; accessToken: string }) => (
+    <div data-testid="live-prediction-browser" data-reference={refName} data-access-token={accessToken}>
+      Live genome browser
+    </div>
+  ),
 }));
 
 const saved: PredictionHistoryEntry = {

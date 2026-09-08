@@ -179,7 +179,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
     ) => ({
       rapptorDownload: {
         kind,
-        accession: prediction!.assemblyName,
+        accession: prediction?.assemblyName || experimental!.accession,
         label,
         regionExportBase: prediction?.regionExportBase || '',
         wholeAssetUrl,
@@ -188,22 +188,34 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       },
     });
 
-    const scoreAdapterType = prediction?.smoothScoreTrack ? SMOOTHED_SCORE_ADAPTER : 'BigWigAdapter';
-    if (prediction?.assets.promoterScoresPlus && prediction.assets.promoterScoresMinus) {
+    const collectionScores = Boolean(experimental?.assets.promoterScoresPlus && experimental.assets.promoterScoresMinus);
+    const scoreAssets = collectionScores ? experimental!.assets : prediction?.assets;
+    const scoreAssetBase = collectionScores ? experimental!.assetBase : prediction?.assetBase || '';
+    const smoothScores = !collectionScores && prediction?.smoothScoreTrack;
+    const scoreSmoothing = collectionScores ? 'Gaussian σ = 1 (precomputed)' : smoothScores ? 'Gaussian σ = 1' : undefined;
+    const scoreAdapterType = smoothScores ? SMOOTHED_SCORE_ADAPTER : 'BigWigAdapter';
+    const scoreDownload = (strand: 'plus' | 'minus', label: string, url: string) => ({
+      ...predictionDownload(`scores-${strand}`, label, url, false).rapptorDownload,
+      ...(collectionScores ? {
+        accession: experimental!.accession,
+        defaultFilename: `${experimental!.accession}.promoter_scores.sigma1.${strand}.bw`,
+      } : {}),
+    });
+    if (scoreAssets?.promoterScoresPlus && scoreAssets.promoterScoresMinus) {
       const trackId = `${assemblyName}-promoter-scores`;
-      const plusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresPlus);
-      const minusUrl = resolveAsset(prediction.assetBase, prediction.assets.promoterScoresMinus);
-      const scoreTrackLabel = prediction.trackLabels?.scores || 'RAPPTOR model scores (+ / − strands)';
+      const plusUrl = resolveAsset(scoreAssetBase, scoreAssets.promoterScoresPlus);
+      const minusUrl = resolveAsset(scoreAssetBase, scoreAssets.promoterScoresMinus);
+      const scoreTrackLabel = (!collectionScores && prediction?.trackLabels?.scores) || 'RAPPTOR model scores (+ / − strands)';
       staticRegistry.scores = trackId;
       tracks.push({
         trackId,
         name: scoreTrackLabel,
         metadata: {
           rapptorMirroredScore: true,
-          rapptorScoreSmoothing: prediction.smoothScoreTrack ? 'Gaussian σ = 1' : undefined,
+          rapptorScoreSmoothing: scoreSmoothing,
           rapptorDownloads: [
-            predictionDownload('scores-plus', `${scoreTrackLabel} (+ strand)`, plusUrl, false).rapptorDownload,
-            predictionDownload('scores-minus', `${scoreTrackLabel} (- strand)`, minusUrl, false).rapptorDownload,
+            scoreDownload('plus', `${scoreTrackLabel} (+ strand)`, plusUrl),
+            scoreDownload('minus', `${scoreTrackLabel} (- strand)`, minusUrl),
           ],
         },
         assemblyNames: [assemblyName],
@@ -678,9 +690,19 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
         const warnings = [...initialWarnings];
         const view = viewState.session.view;
         const sharedState = parsedShare.kind === 'valid' ? parsedShare.state : null;
+        let initialDefaultLocus = defaultLocus;
+        if (experimental && !experimental.primarySequence && defaultLocus === `${experimental.accession}:1-10000`) {
+          // Collection metadata may omit a contig name. Read it from the actual
+          // reference rather than navigating to the assembly accession as a contig.
+          try {
+            const assembly = await viewState.session.assemblyManager.waitForAssembly(assemblyName);
+            const region = assembly?.regions?.[0];
+            if (region) initialDefaultLocus = `${region.refName}:${region.start + 1}-${Math.min(region.end, region.start + 10000)}`;
+          } catch { /* The normal navigation path reports reference errors below. */ }
+        }
         const initialLocation = sharedState
           ? `${sharedState.refName}:${sharedState.center}${sharedState.reversed ? '[rev]' : ''}`
-          : defaultLocus;
+          : initialDefaultLocus;
         try {
           await view.navToLocString(initialLocation, assemblyName);
           if (sharedState) {
@@ -698,13 +720,13 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
               && (center.reversed === true) === sharedState.reversed;
             if (!centerMatches) {
               warnings.push('Shared center or orientation unavailable; showing the default view.');
-              await view.navToLocString(defaultLocus, assemblyName);
+              await view.navToLocString(initialDefaultLocus, assemblyName);
             }
           }
         } catch {
           if (sharedState) warnings.push('Shared location unavailable; showing the default view.');
           try {
-            await view.navToLocString(defaultLocus, assemblyName);
+            await view.navToLocString(initialDefaultLocus, assemblyName);
           } catch {
             warnings.push('Default genome location could not be opened.');
           }
@@ -723,7 +745,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
       setShareUnavailableReason(extracted.kind === 'invalid' ? extracted.warnings.join(' ') : '');
     });
     return () => { active = false; };
-  }, [allowShareView, assemblyName, defaultLocus, initialWarnings, parsedShare, shareUnavailableByDefault, trackRegistry, viewState]);
+  }, [allowShareView, assemblyName, defaultLocus, experimental, initialWarnings, parsedShare, shareUnavailableByDefault, trackRegistry, viewState]);
 
   useEffect(() => {
     const sequenceTrackId = `${assemblyName}-reference-sequence`;

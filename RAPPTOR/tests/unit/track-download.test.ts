@@ -21,6 +21,12 @@ const metadata: TrackDownloadMetadata = {
 };
 
 describe('track download helpers', () => {
+  it('keeps the published sigma-1 filename for already-smoothed score downloads', () => {
+    expect(defaultTrackDownloadFilename({
+      ...metadata, kind: 'scores-plus', defaultFilename: 'GCF_000005845.1.promoter_scores.sigma1.plus.bw',
+    }, 'whole', null)).toBe('GCF_000005845.1.promoter_scores.sigma1.plus.bw');
+  });
+
   it('builds stable visible-region and whole-track filenames', () => {
     const region = { refName: 'CP003597.1', start: 10, end: 20 };
     expect(defaultTrackDownloadFilename(metadata, 'visible', region)).toBe(

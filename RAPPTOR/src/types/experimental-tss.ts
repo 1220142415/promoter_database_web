@@ -70,13 +70,16 @@ export interface ExperimentalTssGenome {
     fastaGzi: string | null;
     predictedPromoters?: string | null;
     predictedPromotersIndex?: string | null;
+    /** Published sigma-1 BigWigs; use directly without additional smoothing. */
+    promoterScoresPlus?: string | null;
+    promoterScoresMinus?: string | null;
     ncbiAnnotations: string | null;
     ncbiAnnotationsIndex: string | null;
   };
   studies: ExperimentalTssStudy[];
 }
 
-export type ExperimentalAssetKind = 'reference' | 'predicted-promoters' | 'annotation' | 'experimental-tss' | 'raw-bed';
+export type ExperimentalAssetKind = 'reference' | 'predicted-promoters' | 'model-scores' | 'annotation' | 'experimental-tss' | 'raw-bed';
 
 export type ExperimentalAssetTransform =
   | { kind: 'gunzip'; refName: string | null }

@@ -120,6 +120,38 @@ function stateTree() {
 }
 
 describe('unified JBrowse viewer', () => {
+  it('opens the actual reference contig when collection metadata only supplies an assembly accession', async () => {
+    const genome = { ...experimental(), primarySequence: null, defaultLocus: `${accession}:1-10000` };
+    const tree = stateTree();
+    const waitForAssembly = vi.fn().mockResolvedValue({ regions: [{ refName: 'NC_016810.1', start: 0, end: 5000 }] });
+    vi.mocked(createViewState).mockReturnValue({ ...tree, session: { ...tree.session, assemblyManager: { waitForAssembly } } } as never);
+    render(<UnifiedJBrowseViewer experimental={genome} />);
+    await waitFor(() => expect(tree.session.view.navToLocString).toHaveBeenCalledWith('NC_016810.1:1-5000', accession));
+    expect(screen.queryByText('Default genome location could not be opened.')).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])('shows precomputed experimental scores with an overlapping prediction assembly: %s', (overlap) => {
+    const genome = experimental();
+    genome.assets.promoterScoresPlus = 'https://huggingface.co/published/sigma1.plus.bw';
+    genome.assets.promoterScoresMinus = 'https://huggingface.co/published/sigma1.minus.bw';
+    render(<UnifiedJBrowseViewer experimental={genome} prediction={overlap ? { ...prediction(), smoothScoreTrack: true } : undefined} />);
+    const config = vi.mocked(createViewState).mock.calls[0][0] as unknown as {
+      tracks: Array<{ trackId: string; adapter: { type: string; subadapters: unknown[] }; metadata: Record<string, unknown> }>;
+      defaultSession: { view: { tracks: Array<{ configuration: string }> } };
+    };
+    const track = config.tracks.find(row => row.trackId === `${accession}-promoter-scores`)!;
+    expect(track.adapter.subadapters).toEqual([
+      expect.objectContaining({ type: 'BigWigAdapter', source: 'plus', bigWigLocation: { uri: genome.assets.promoterScoresPlus } }),
+      expect.objectContaining({ type: 'BigWigAdapter', source: 'minus', bigWigLocation: { uri: genome.assets.promoterScoresMinus } }),
+    ]);
+    expect(track.metadata.rapptorScoreSmoothing).toBe('Gaussian σ = 1 (precomputed)');
+    expect(track.metadata.rapptorDownloads).toEqual([
+      expect.objectContaining({ kind: 'scores-plus', wholeAssetUrl: genome.assets.promoterScoresPlus, visibleRegionDownload: false, defaultFilename: `${accession}.promoter_scores.sigma1.plus.bw` }),
+      expect.objectContaining({ kind: 'scores-minus', wholeAssetUrl: genome.assets.promoterScoresMinus, visibleRegionDownload: false, defaultFilename: `${accession}.promoter_scores.sigma1.minus.bw` }),
+    ]);
+    expect(config.defaultSession.view.tracks).toContainEqual(expect.objectContaining({ configuration: track.trackId }));
+  });
+
   it.each([true, false])('installs smoothing for an opted-in %s dual-strand score track', (bothStrands) => {
     vi.mocked(createViewState).mockImplementation(() => stateTree() as never);
     const scan = prediction();

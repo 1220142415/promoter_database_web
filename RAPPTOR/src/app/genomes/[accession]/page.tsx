@@ -165,8 +165,8 @@ function experimentalAssembly(genome: ExperimentalTssGenome): JBrowseReleaseAsse
       fastaGzi: genome.assets.fastaGzi || '',
       predictedPromoters: genome.assets.predictedPromoters || '',
       predictedPromotersIndex: genome.assets.predictedPromotersIndex || '',
-      promoterScoresPlus: null,
-      promoterScoresMinus: null,
+      promoterScoresPlus: genome.assets.promoterScoresPlus || null,
+      promoterScoresMinus: genome.assets.promoterScoresMinus || null,
       ncbiAnnotations: genome.assets.ncbiAnnotations,
       ncbiAnnotationsIndex: genome.assets.ncbiAnnotationsIndex,
     },
@@ -262,7 +262,7 @@ export default async function GenomeDetailPage({
   const genomeSizeBp = genome?.genomeSizeBp ?? experimental?.genomeSizeBp ?? null;
   const browserPrediction = predictionAssembly(prediction) || (experimental ? experimentalAssembly(experimental) : null);
   const browserExperimental = experimental
-    && (prediction || experimental.primarySequence)
+    && (browserPrediction || experimental.primarySequence)
     && (!prediction || match.overlayAllowed === true)
     ? experimental
     : null;
@@ -314,6 +314,7 @@ export default async function GenomeDetailPage({
                     reference: 'available',
                     promoters: browserPrediction?.assets.predictedPromoters ? 'available' : prediction ? 'preparing' : 'unavailable',
                     experimentalTss: experimental?.studies.length ? 'available' : undefined,
+                    scores: (browserExperimental?.assets.promoterScoresPlus || browserPrediction?.assets.promoterScoresPlus) ? 'available' : undefined,
                     annotation: browserPrediction?.assets.ncbiAnnotations ? 'available' : 'unavailable',
                   }} />
                   <UnifiedBrowserPanel prediction={browserPrediction} experimental={browserExperimental} />

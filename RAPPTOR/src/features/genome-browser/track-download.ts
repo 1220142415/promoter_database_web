@@ -18,6 +18,7 @@ export interface TrackDownloadMetadata {
   wholeAssetUrl: string;
   downloadMode?: 'remote' | 'browser';
   visibleRegionDownload?: boolean;
+  defaultFilename?: string;
 }
 
 export type LinearViewLike = {
@@ -95,6 +96,7 @@ export function isTrackDownloadMetadata(value: unknown): value is TrackDownloadM
     && typeof metadata.wholeAssetUrl === 'string'
     && (metadata.downloadMode === undefined || metadata.downloadMode === 'remote' || metadata.downloadMode === 'browser')
     && (metadata.visibleRegionDownload === undefined || typeof metadata.visibleRegionDownload === 'boolean')
+    && (metadata.defaultFilename === undefined || typeof metadata.defaultFilename === 'string')
   );
 }
 
@@ -114,6 +116,9 @@ export function defaultTrackDownloadFilename(
   region: TrackDownloadRegion | null,
 ) {
   const settings = KIND_SETTINGS[metadata.kind];
+  if (scope === 'whole' && metadata.defaultFilename) {
+    return normalizeDownloadFilename(metadata.defaultFilename, settings.wholeExtension, `${settings.prefix}_${metadata.accession}${settings.wholeExtension}`);
+  }
   if (metadata.kind === 'raw-bed' && metadata.wholeAssetUrl) {
     return decodeURIComponent(metadata.wholeAssetUrl.split(/[?#]/u)[0].split('/').at(-1)!);
   }

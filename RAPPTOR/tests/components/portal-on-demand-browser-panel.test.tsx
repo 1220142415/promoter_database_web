@@ -193,6 +193,22 @@ describe('on-demand genome browser', () => {
     expect(screen.getByLabelText('Genome files')).toHaveTextContent('Model scoresAvailable');
   });
 
+  it('streams the experimental collection scores without downloading unrelated prediction scores', async () => {
+    const experimental = {
+      accession: 'GCF_000007325.1', assetBase: '/api/experimental-data/GCF_000007325.1',
+      assets: {
+        promoterScoresPlus: 'https://huggingface.co/published/sigma1.plus.bw',
+        promoterScoresMinus: 'https://huggingface.co/published/sigma1.minus.bw',
+      },
+    } as ExperimentalTssGenome;
+    render(<PortalOnDemandBrowserPanel accession="GCA_000007325.1" releaseId="prediction-1" plannedAssets={plannedAssets} experimental={experimental} />);
+    expect(await screen.findByTestId('prepared-unified-browser')).toHaveAttribute('data-score-plus', experimental.assets.promoterScoresPlus);
+    expect(screen.getByTestId('prepared-unified-browser')).toHaveAttribute('data-score-minus', experimental.assets.promoterScoresMinus);
+    expect(screen.getByLabelText('Genome files')).toHaveTextContent('Model scoresAvailable');
+    expect(shouldDownloadWholeAsset).not.toHaveBeenCalled();
+    expect(loadCachedGenomeAsset).toHaveBeenCalledTimes(3);
+  });
+
   it('combines staged predictions and annotation with experimental TSS', async () => {
     render(
       <PortalOnDemandBrowserPanel

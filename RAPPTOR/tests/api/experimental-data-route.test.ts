@@ -24,6 +24,25 @@ afterEach(() => {
 });
 
 describe('experimental data asset proxy', () => {
+  it.each(['plus', 'minus'])('streams the published %s BigWig unchanged and preserves download headers', async (strand) => {
+    const filename = `${accession}.promoter-scores.${strand}.bw`;
+    resolveAsset.mockResolvedValue({
+      upstreamUrl: `https://example.test/pinned-scores/${filename}`, filename,
+      contentType: 'application/x-bigwig', sha256: null, kind: 'model-scores', transform: null,
+    });
+    const bytes = new Uint8Array([0x26, 0xfc, 0x8f, 0x88]);
+    global.fetch = vi.fn(async (_url, init) => {
+      expect(new Headers(init?.headers).get('range')).toBe('bytes=0-3');
+      return new Response(bytes, { status: 206, headers: { 'Content-Length': '4', 'Content-Range': 'bytes 0-3/24897277' } });
+    });
+    const response = await GET(new Request('http://localhost/test?download=1', { headers: { Range: 'bytes=0-3' } }), context([`promoter-scores.${strand}.bw`]));
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-type')).toBe('application/x-bigwig');
+    expect(response.headers.get('content-range')).toBe('bytes 0-3/24897277');
+    expect(response.headers.get('content-disposition')).toBe(`attachment; filename="${filename}"`);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
   it('returns 404 without resolving assets when public access is off', async () => {
     process.env.RAPPTOR_EXPERIMENTAL_TSS_PUBLIC_PAGE = 'off';
     const response = await GET(new Request('http://localhost/test'), context(['reference.fa.gz']));

@@ -68,7 +68,8 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
   const [assembly, setAssembly] = useState<JBrowseReleaseAssembly | null>(null);
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
   const [error, setError] = useState('');
-  const hasScores = Boolean(plannedAssets.promoterScoresPlus && plannedAssets.promoterScoresMinus);
+  const hasCollectionScores = Boolean(experimental?.assets?.promoterScoresPlus && experimental.assets.promoterScoresMinus);
+  const hasScores = hasCollectionScores || Boolean(plannedAssets.promoterScoresPlus && plannedAssets.promoterScoresMinus);
   const [fileStates, setFileStates] = useState<FileStates>(() => initialFileStates(Boolean(plannedAssets.ncbiAnnotations), hasScores));
   const [fileProgress, setFileProgress] = useState<FileProgress>({});
   const objectUrls = useRef<string[]>([]);
@@ -121,6 +122,14 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
         }
       };
       const loadScores = async () => {
+        if (hasCollectionScores) {
+          setFileStates((current) => ({ ...current, scores: 'available' }));
+          setFileProgress((current) => ({ ...current, scores: { label: 'Available', value: 100 } }));
+          return [
+            resolveAsset(experimental!.assetBase, experimental!.assets.promoterScoresPlus!),
+            resolveAsset(experimental!.assetBase, experimental!.assets.promoterScoresMinus!),
+          ] as const;
+        }
         if (!plannedAssets.promoterScoresPlus || !plannedAssets.promoterScoresMinus) return [null, null] as const;
         const scoreUrls = [plannedAssets.promoterScoresPlus, plannedAssets.promoterScoresMinus] as const;
         const scoreKeys = [
@@ -215,7 +224,7 @@ export default function PortalOnDemandBrowserPanel({ accession, releaseId, plann
       setError(cause instanceof Error ? cause.message : 'Genome files could not be prepared.');
       setStatus('error');
     }
-  }, [accession, experimental, hasScores, plannedAssets, releaseId]);
+  }, [accession, experimental, hasCollectionScores, hasScores, plannedAssets, releaseId]);
 
   useEffect(() => {
     void prepare();

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { experimentalScoreAssets } from '@/features/genome-browser/experimental-score-assets';
 import type {
   ExperimentalAnnotationStatus,
   ExperimentalPublication,
@@ -314,6 +315,7 @@ function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): Experim
   const predictedPromoters = objectValue(genome.predictedPromoters ?? genome.predicted_promoters);
   const reference = objectValue(genome.referenceStorage ?? genome.reference_storage);
   const referenceFiles = objectValue(reference.files);
+  const scores = experimentalScoreAssets(genome.accession, referenceFiles.fasta, configuredAssetBase(catalog.assetBase));
   const referenceChecksums = checksumMap(reference.checksums);
   const annotationStatus = normalizeAnnotationStatus(annotation.status ?? genome.annotationStatus ?? genome.annotation_status);
   const studyById = new Map(catalog.studies.map((study) => [study.studyId, study]));
@@ -337,6 +339,8 @@ function buildGenome(catalog: NormalizedCatalog, genome: CatalogGenome): Experim
     referenceSha256: referenceChecksums.fasta || null,
     assetBase: `/api/experimental-data/${genome.accession}`,
     assets: {
+      promoterScoresPlus: scores.promoterScoresPlus ? 'promoter-scores.plus.bw' : null,
+      promoterScoresMinus: scores.promoterScoresMinus ? 'promoter-scores.minus.bw' : null,
       fasta: referenceFiles.fai && referenceFiles.gzi ? 'reference.fa.gz' : 'reference.fa',
       fastaFai: referenceFiles.fai ? 'reference.fa.gz.fai' : null,
       fastaGzi: referenceFiles.gzi ? 'reference.fa.gz.gzi' : null,
@@ -374,6 +378,14 @@ function findCatalogAsset(catalog: NormalizedCatalog, accession: string, logical
   if (!genome) return null;
   const reference = objectValue(genome.referenceStorage ?? genome.reference_storage);
   const files = objectValue(reference.files);
+  if (logicalAsset === 'promoter-scores.plus.bw' || logicalAsset === 'promoter-scores.minus.bw') {
+    const scores = experimentalScoreAssets(accession, files.fasta, configuredAssetBase(catalog.assetBase));
+    const url = logicalAsset === 'promoter-scores.plus.bw' ? scores.promoterScoresPlus : scores.promoterScoresMinus;
+    return url ? {
+      path: logicalAsset, upstreamUrl: url, kind: 'model-scores' as const, sha256: undefined, transform: null,
+      contentType: 'application/x-bigwig', filename: `${accession}.${logicalAsset}`,
+    } : null;
+  }
   const referenceChecksums = checksumMap(reference.checksums);
   const predictedPromoters = objectValue(genome.predictedPromoters ?? genome.predicted_promoters);
   const predictedPromoterChecksums = checksumMap(predictedPromoters.checksums);
@@ -460,7 +472,7 @@ export class JsonExperimentalTssRepository implements ExperimentalTssRepository 
     const match = findCatalogAsset(this.catalog, accession, logicalAsset);
     if (!match) return null;
     return {
-      upstreamUrl: upstreamUrl(configuredAssetBase(this.catalog.assetBase), match.path),
+      upstreamUrl: ('upstreamUrl' in match && match.upstreamUrl) || upstreamUrl(configuredAssetBase(this.catalog.assetBase), match.path),
       filename: match.filename,
       contentType: match.contentType,
       sha256: match.sha256 && /^[0-9a-f]{64}$/.test(match.sha256) ? match.sha256 : null,

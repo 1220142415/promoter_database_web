@@ -231,13 +231,44 @@ describe('live prediction result layout', () => {
   it('passes actual queue information from the job endpoint into the waiting UI', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
       job_id: saved.jobId, status: 'queued', mode: 'genome_scan',
-      queue: { ahead: 3, waiting: 4, running: 1, worker_ready: true },
+      queue: { ahead: 3, waiting: 4, running: 1, worker_ready: true, estimated_wait_seconds: 125 },
     })));
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
     const queue = await screen.findByRole('region', { name: 'Queue status' });
     await waitFor(() => expect(queue).toHaveTextContent('Busy'));
     expect(within(queue).getByText('Queued ahead').parentElement).toHaveTextContent('3');
+    expect(within(queue).getByText('Est. wait').parentElement).toHaveTextContent('~3 min');
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores the watchdog last-valid scan progress and explains the failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      job_id: saved.jobId, status: 'failed',
+      progress: { stage: 'failed', percent: 24, last_valid_progress: {
+        stage: 'scanning', percent: 24, windows: 120, total_windows: 1000, contig: 'chr1', strand: '-',
+      } },
+      error: { code: 'JOB_PROGRESS_STALLED', message: 'Prediction made no progress for 3600 seconds.' },
+    })));
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    const scan = await screen.findByRole('region', { name: 'Genome scan progress' });
+    expect(scan).toHaveTextContent('Scan stopped');
+    expect(scan).toHaveTextContent('120 / 1,000');
+    expect(screen.getByRole('progressbar', { name: 'Prediction task progress' })).toHaveAttribute('value', '24');
+    expect(screen.getByRole('status')).toHaveTextContent('processing was no longer advancing');
+    expect(screen.getByText('Scoring sequence windows', { selector: 'li span' }).closest('li')).toHaveAttribute('aria-current', 'step');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ code: 'JOB_PROCESS_HEARTBEAT_LOST' }, 'The prediction process stopped responding.'],
+    [null, 'Prediction stopped before completion.'],
+  ])('shows a stopped message even without an error message', async (error, message) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      job_id: saved.jobId, status: 'failed', progress: { stage: 'scanning', percent: 24 }, error,
+    })));
+    render(<PredictionWorkbench initialJobId={saved.jobId} />);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(message));
+    expect(screen.queryByText('Scanning sequence windows.')).not.toBeInTheDocument();
   });
 
   it('offers only GFF3 and a track ZIP, with three basic information fields', async () => {

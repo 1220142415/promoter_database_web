@@ -83,7 +83,7 @@ export default function PredictionProgressPanel({
           <div><dt>Queued ahead</dt><dd>{ahead ?? '—'}</dd></div>
           <div><dt title="Estimated wait until your task starts">Est. wait</dt><dd>{waitLabel}</dd></div>
         </dl>
-      </section> : progress.percent === null
+      </section> : failed && progress.percent === null ? null : progress.percent === null
         ? <progress aria-label="Prediction task progress" max={100} />
         : <progress aria-label="Prediction task progress" max={100} value={progress.percent} />}
       {showScan ? <section className={styles.scan} aria-label="Genome scan progress">

@@ -59,7 +59,9 @@ export function clampPredictionProgress(value: unknown): number | null {
 }
 
 export function normalizePredictionProgress(snapshot: PredictionProgressSnapshot): PredictionProgressSnapshot {
-  const percent = snapshot.state === 'succeeded' ? 100 : clampPredictionProgress(snapshot.percent);
+  let percent = snapshot.state === 'succeeded' ? 100 : clampPredictionProgress(snapshot.percent);
+  // Older workers marked failures as 100%; that is not a valid completion record.
+  if (snapshot.state === 'failed' && percent === 100) percent = null;
   const windows = Number.isSafeInteger(snapshot.windows) && snapshot.windows! >= 0 ? snapshot.windows : undefined;
   const totalWindows = Number.isSafeInteger(snapshot.totalWindows) && snapshot.totalWindows! >= 0 ? snapshot.totalWindows : undefined;
   const scanPercent = windows !== undefined && totalWindows !== undefined && totalWindows > 0 && windows <= totalWindows
@@ -87,7 +89,8 @@ export function predictionProgressSteps(mode: PredictionProgressMode) {
 
 export function predictionProgressStepIndex(snapshot: PredictionProgressSnapshot) {
   const normalized = normalizePredictionProgress(snapshot);
-  if (normalized.state === 'succeeded' || normalized.stage === 'complete') return 4;
+  if (normalized.state === 'succeeded' || (normalized.stage === 'complete' && normalized.state !== 'failed')) return 4;
+  if (normalized.state === 'failed' && normalized.stage === 'complete') return 3;
   if (normalized.stage === 'writing_outputs' || normalized.stage === 'preparing_result' || normalized.stage === 'preparing_tracks') return 3;
   if (normalized.stage === 'preparing_cgr') return 1;
   if (normalized.stage === 'queued' || normalized.stage === 'starting' || normalized.state === 'queued') return 0;

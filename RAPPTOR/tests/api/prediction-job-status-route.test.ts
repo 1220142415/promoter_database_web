@@ -11,14 +11,14 @@ describe('job status queue enrichment', () => {
   it('returns same-mode load through the existing authenticated status poll', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(Response.json({ status: 'queued', mode: 'genome_scan', queue: { ahead: 0, waiting: 1 } }))
+      .mockResolvedValueOnce(Response.json({ status: 'queued', mode: 'genome_scan', queue: { ahead: 0, waiting: 1, estimated_wait_seconds: 125 } }))
       .mockResolvedValueOnce(Response.json({ workers: { predict: true, genome_scan: true }, workload: {
         running: { predict: { jobs: 8 }, genome_scan: { jobs: 1 } },
       }, private_field: 'not-for-browser' }));
     vi.stubGlobal('fetch', fetchMock);
     const response = await GET(request(), context);
     expect(await response.json()).toEqual({ status: 'queued', mode: 'genome_scan', queue: {
-      ahead: 0, waiting: 1, running: 1, worker_ready: true,
+      ahead: 0, waiting: 1, estimated_wait_seconds: 125, running: 1, worker_ready: true,
     } });
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(fetchMock.mock.calls[1][1].headers).toBeUndefined();
@@ -26,7 +26,7 @@ describe('job status queue enrichment', () => {
 
   it('keeps the job accessible when optional service load cannot be fetched', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
-    const job = { status: 'queued', mode: 'genome_scan', queue: { ahead: 2 } };
+    const job = { status: 'queued', mode: 'genome_scan', queue: { ahead: 2, estimated_wait_seconds: null } };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json(job)).mockRejectedValueOnce(new Error('timeout')));
     expect(await (await GET(request(), context)).json()).toEqual(job);
   });

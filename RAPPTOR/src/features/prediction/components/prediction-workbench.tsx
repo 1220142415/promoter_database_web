@@ -21,16 +21,27 @@ import styles from '../prototype-result.module.css';
 
 const PredictionBrowser = dynamic(() => import('./prediction-browser'), { ssr: false });
 
+type JobProgress = {
+  stage?: string;
+  percent?: number;
+  contig?: string;
+  strand?: string;
+  windows?: number;
+  total_windows?: number;
+  scan_percent?: number;
+  last_valid_progress?: JobProgress | null;
+};
+
 type JobState = {
   job_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'unknown';
   model_version?: string;
-  progress?: { stage?: string; percent?: number; contig?: string; strand?: string; windows?: number; total_windows?: number; scan_percent?: number };
+  progress?: JobProgress;
   submitted_at?: string;
   queue?: PredictionQueueStatus;
   artifacts_expires_at?: string | null;
   result?: { artifacts?: JobArtifact[] };
-  error?: { type?: string; message?: string };
+  error?: { code?: string; type?: string; message?: string };
 };
 
 function formatDate(value?: string | null) {
@@ -41,6 +52,11 @@ function formatDate(value?: string | null) {
 
 function progressMessage(job: JobState | null) {
   if (!job) return 'Loading prediction status…';
+  if (job.status === 'failed') {
+    if (job.error?.code === 'JOB_PROGRESS_STALLED') return 'Prediction stopped because processing was no longer advancing.';
+    if (job.error?.code === 'JOB_PROCESS_HEARTBEAT_LOST') return 'The prediction process stopped responding.';
+    return job.error?.message || 'Prediction stopped before completion.';
+  }
   if (job.error?.message) return job.error.message;
   if (job.status === 'succeeded') return 'Result ready.';
   if (job.status === 'queued') return 'Waiting for an available worker.';
@@ -187,16 +203,19 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
   const bothStrands = summary?.reverse_complementary ?? (entry.strandMode !== 'forward');
   const missingBrowserFiles = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai', ...(bothStrands ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((artifact) => artifact.filename === name));
   const hasReference = missingBrowserFiles.length === 0;
+  const reportedProgress = job?.status === 'failed'
+    ? job.progress?.last_valid_progress || job.progress
+    : job?.progress;
   const progress = normalizePredictionProgress({
     state: job?.status === 'unknown' ? 'running' : job?.status || 'queued',
-    stage: job?.status === 'succeeded' ? 'complete' : job?.progress?.stage || job?.status || 'queued',
-    percent: job?.progress?.percent ?? null,
+    stage: job?.status === 'succeeded' ? 'complete' : reportedProgress?.stage || job?.status || 'queued',
+    percent: reportedProgress?.percent ?? job?.progress?.percent ?? null,
     message: progressMessage(job),
-    contig: job?.progress?.contig,
-    strand: job?.progress?.strand === '+' || job?.progress?.strand === '-' ? job.progress.strand : undefined,
-    windows: job?.progress?.windows ?? summary?.window_count,
-    totalWindows: job?.progress?.total_windows ?? summary?.window_count,
-    scanPercent: job?.progress?.scan_percent,
+    contig: reportedProgress?.contig,
+    strand: reportedProgress?.strand === '+' || reportedProgress?.strand === '-' ? reportedProgress.strand : undefined,
+    windows: reportedProgress?.windows ?? summary?.window_count,
+    totalWindows: reportedProgress?.total_windows ?? summary?.window_count,
+    scanPercent: reportedProgress?.scan_percent,
     queue: job?.queue,
   });
 

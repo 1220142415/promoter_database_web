@@ -92,14 +92,21 @@ describe('prediction progress panel', () => {
     expect(screen.getByRole('progressbar', { name: 'Scanned windows' })).toHaveAttribute('value', '40');
   });
 
-  it('uses an indeterminate progressbar for missing percentages and handles failures', async () => {
+  it('omits unknown failed progress and retains the retry action', async () => {
     const retry = vi.fn();
     render(<PredictionProgressPanel mode="focused" snapshot={{ state: 'failed', stage: 'failed', percent: null, message: 'Worker stopped.' }} onRetry={retry} />);
-    expect(screen.getByRole('progressbar', { name: 'Prediction task progress' })).not.toHaveAttribute('value');
+    expect(screen.queryByRole('progressbar', { name: 'Prediction task progress' })).not.toBeInTheDocument();
     expect(screen.getByText('Prediction failed')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Return to prediction input' })).toHaveAttribute('href', '/predict');
     await userEvent.click(screen.getByRole('button', { name: 'Check status again' }));
     expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('does not present legacy failed 100% as a completed task', () => {
+    render(<PredictionProgressPanel mode="scan" snapshot={{ state: 'failed', stage: 'complete', percent: 100, message: 'Task stopped.' }} />);
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.getByText('Result ready').closest('li')).not.toHaveAttribute('aria-current');
+    expect(screen.getByText('Preparing browser tracks').closest('li')).toHaveAttribute('aria-current', 'step');
   });
 
   it('identifies simulated progress as a queue preview rather than a model result', () => {

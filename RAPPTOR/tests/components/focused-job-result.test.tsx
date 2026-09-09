@@ -57,9 +57,18 @@ describe('protected 100 bp result', () => {
       { strand: '+', score: .91, window_start_0based: 0, anchor_position_0based: 80 },
       { strand: '-', score: .9, window_start_0based: 0, anchor_position_0based: 19 },
     ])));
-    render(<FocusedJobResult jobId="threshold-job" bothStrands hasScores threshold={.9} />);
-    expect(await screen.findByText('Above threshold (> 0.9)')).toBeInTheDocument();
-    expect(screen.getByText('Below threshold (≤ 0.9)')).toBeInTheDocument();
+    const { rerender } = render(<FocusedJobResult jobId="threshold-job" bothStrands hasScores threshold={.9} />);
+    expect(await screen.findByRole('status', { name: 'Model classification' })).toHaveTextContent('Promoter');
+    expect(screen.getByText('Promoter · threshold > 0.9')).toBeInTheDocument();
+    expect(screen.getByText('Non-promoter · threshold ≤ 0.9')).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: 'Forward strand model score' })).toHaveAttribute('value', '0.91');
+    expect(screen.getByRole('meter', { name: 'Reverse strand model score' })).toHaveAttribute('value', '0.9');
+
+    rerender(<FocusedJobResult jobId="threshold-job" bothStrands hasScores threshold={.95} />);
+    expect(screen.getByRole('status', { name: 'Model classification' })).toHaveTextContent('Non-promoter');
+    expect(screen.getAllByText('Non-promoter · threshold ≤ 0.95')).toHaveLength(2);
+    expect(screen.getByRole('meter', { name: 'Forward strand model score' })).toHaveAttribute('value', '0.91');
+    expect(screen.getByRole('meter', { name: 'Reverse strand model score' })).toHaveAttribute('value', '0.9');
   });
 
   it('maps reverse windows onto the original input sequence in the ranked table', async () => {

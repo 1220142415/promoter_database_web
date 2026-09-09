@@ -247,6 +247,12 @@
 .focusedDownload a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
 .focusedDownload svg { width: 16px; height: 16px; }
 .focusedDownload small { color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.focusedCall { display: grid; gap: 5px; margin-bottom: 10px; border: 1px solid var(--line-strong); border-left: 5px solid #77817d; border-radius: 8px; background: #f7f9f8; padding: 16px 19px; }
+.focusedCall span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.focusedCall strong { color: var(--ink); font: 800 20px/1.2 Inter, sans-serif; }
+.focusedCall small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.focusedCallPositive { border-left-color: var(--teal); background: var(--teal-soft); }
+.focusedCallPositive strong { color: var(--teal-dark); }
 .resultViewTools { max-width: 540px; display: grid; justify-items: end; gap: 11px; }
 .resultViewTools > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; text-align: right; }
 .runContext span { color: var(--teal-dark); font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }

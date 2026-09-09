@@ -29,6 +29,9 @@ export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequen
   }, [jobId, bothStrands, hasScores, revision, sequenceBases]);
   const focused = sequenceBases === 100;
   const topScores = scores ? [...scores].sort((left, right) => right.score - left.score).slice(0, 20) : [];
+  const passingStrands = focused && scores && threshold !== undefined
+    ? scores.filter((row) => row.score > threshold).map((row) => row.strand)
+    : null;
   return <section className={styles.jobSection} aria-label={focused ? '100 bp result' : 'Short-sequence result'}>
     <div className={`${styles.panelHeading} ${focused ? styles.focusedHeading : ''}`}>
       <div><p className="portal-kicker">{focused ? '100 bp scoring' : `${sequenceBases.toLocaleString()} bp sliding-window scoring`}</p><h2>{focused ? '100 bp result' : 'Short-sequence result'}</h2></div>
@@ -42,11 +45,24 @@ export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequen
     {error ? <div role="alert"><p>{error}</p><button type="button" onClick={() => setRevision((value) => value + 1)}>Retry score download</button></div>
       : scores ? <>
         {bothStrands && !scores.some((row) => row.strand === '-') ? <p role="alert">The service returned only forward-strand scores. The reverse-strand result is missing; two-strand verification did not pass.</p> : null}
-        {focused ? <div className={styles.resultSummary}>{scores.map((row) => <div key={row.strand}>
-          <span>{row.strand === '+' ? 'Forward strand (+)' : 'Reverse strand (−)'}</span>
-          <strong>{row.score.toFixed(6)}</strong><small>{threshold === undefined ? 'Model score' : row.score > threshold ? `Above threshold (> ${threshold})` : `Below threshold (≤ ${threshold})`}</small>
-          <meter aria-label={`${row.strand === '+' ? 'Forward' : 'Reverse'} strand model score`} min={0} max={1} value={row.score} />
-        </div>)}</div> : <>
+        {focused ? <>
+          {passingStrands ? <div className={`${styles.focusedCall} ${passingStrands.length > 0 ? styles.focusedCallPositive : ''}`} role="status" aria-label="Model classification">
+            <span>Model classification</span>
+            <strong>{passingStrands.length > 0 ? 'Promoter' : 'Non-promoter'}</strong>
+            <small>{passingStrands.length > 0
+              ? `${passingStrands.map((strand) => strand === '+' ? 'Forward' : 'Reverse').join(' and ')} strand${passingStrands.length > 1 ? 's are' : ' is'} above the model threshold (> ${threshold}).`
+              : `No evaluated strand is above the model threshold (> ${threshold}).`}</small>
+          </div> : null}
+          <div className={styles.resultSummary}>{scores.map((row) => {
+            const passes = threshold !== undefined && row.score > threshold;
+            return <div key={row.strand}>
+              <span>{row.strand === '+' ? 'Forward strand (+)' : 'Reverse strand (−)'}</span>
+              <strong>{row.score.toFixed(6)}</strong>
+              <small>{threshold === undefined ? 'Model score' : `${passes ? 'Promoter' : 'Non-promoter'} · threshold ${passes ? '>' : '≤'} ${threshold}`}</small>
+              <meter aria-label={`${row.strand === '+' ? 'Forward' : 'Reverse'} strand model score`} min={0} max={1} value={row.score} />
+            </div>;
+          })}</div>
+        </> : <>
           <p>{scores.length.toLocaleString()} overlapping 100 bp windows were scored. The table shows the 20 highest model scores. Coordinates refer to the original input sequence.</p>
           <div className={styles.tableWrap}><table className={styles.windowTable}><thead><tr><th>Rank</th><th>Model score</th><th>Strand</th><th>Window (1-based)</th><th>Prediction anchor</th></tr></thead><tbody>{topScores.map((row, index) => {
             const window = referenceWindow(row.window_start_0based, row.strand, 100, sequenceBases, coordinateSystem)!;

@@ -13,10 +13,17 @@ import uuid
 
 def cgr_tensor_operation():
     """This operation deadlocks after fork when model preload started CPU threads."""
+    import os
     import torch
+    from prediction_service.runtime import get_runtime
 
     value = torch.log1p(torch.ones((1, 128, 128)))
-    return {"shape": list(value.shape), "finite": bool(torch.isfinite(value).all())}
+    return {
+        "shape": list(value.shape),
+        "finite": bool(torch.isfinite(value).all()),
+        "pid": os.getpid(),
+        "runtime_id": id(get_runtime()),
+    }
 
 
 @unittest.skipUnless(os.getenv("RAPPTOR_TEST_REDIS_URL") and importlib.util.find_spec("torch"), "Requires PyTorch, model assets, and an isolated RAPPTOR_TEST_REDIS_URL")
@@ -35,7 +42,7 @@ class WorkerProcessTests(unittest.TestCase):
                 "RAPPTOR_REDIS_URL": os.environ["RAPPTOR_TEST_REDIS_URL"],
                 "RAPPTOR_QUEUE": queue_name,
                 "RAPPTOR_PREDICT_QUEUE": queue_name,
-                "RAPPTOR_SCAN_QUEUE": queue_name,
+                "RAPPTOR_SCAN_QUEUE": queue_name + "-scan",
                 "RAPPTOR_DEVICE": "cpu",
                 "RAPPTOR_DATA_ROOT": directory,
                 "RAPPTOR_FILE_RETENTION_SECONDS": "0",
@@ -48,7 +55,7 @@ class WorkerProcessTests(unittest.TestCase):
             }
             with (Path(directory) / "worker.log").open("w+") as log:
                 process = subprocess.Popen([sys.executable, "-m", "prediction_service.worker"], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-                job = None
+                jobs = []
                 try:
                     deadline = time.monotonic() + 30
                     while time.monotonic() < deadline:
@@ -58,24 +65,29 @@ class WorkerProcessTests(unittest.TestCase):
                         time.sleep(0.1)
                     else:
                         self.fail("Worker did not become ready after loading its model")
-                    job = queue.enqueue(cgr_tensor_operation, job_timeout=15, result_ttl=60)
-                    deadline = time.monotonic() + 20
-                    while time.monotonic() < deadline:
-                        status = str(job.get_status(refresh=True)).lower()
-                        if status.endswith(("finished", "failed", "stopped")):
-                            break
-                        time.sleep(0.1)
-                    self.assertTrue(str(job.get_status(refresh=True)).lower().endswith("finished"), "CPU tensor job did not finish; check fork/thread-pool deadlock")
-                    self.assertEqual(job.return_value(), {"shape": [1, 128, 128], "finite": True})
+                    for _ in range(2):
+                        job = queue.enqueue(cgr_tensor_operation, job_timeout=15, result_ttl=60)
+                        jobs.append(job)
+                        deadline = time.monotonic() + 20
+                        while time.monotonic() < deadline:
+                            status = str(job.get_status(refresh=True)).lower()
+                            if status.endswith(("finished", "failed", "stopped")):
+                                break
+                            time.sleep(0.1)
+                        self.assertTrue(str(job.get_status(refresh=True)).lower().endswith("finished"), "CPU tensor job did not finish; check fork/thread-pool deadlock")
+                    results = [job.return_value() for job in jobs]
+                    self.assertTrue(all(result["shape"] == [1, 128, 128] and result["finite"] for result in results))
+                    self.assertEqual(results[0]["pid"], results[1]["pid"])
+                    self.assertEqual(results[0]["runtime_id"], results[1]["runtime_id"])
                 finally:
-                    # The bounded job timeout lets the worker finish its warm shutdown.
+                    # Terminate only the isolated worker after its job finishes.
                     process.terminate()
                     try:
                         process.wait(timeout=30)
                     except subprocess.TimeoutExpired:
                         os.killpg(process.pid, signal.SIGKILL)
                         process.wait(timeout=5)
-                    if job is not None:
+                    for job in jobs:
                         job.delete()
                     queue.delete()
 

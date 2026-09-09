@@ -12,11 +12,14 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
   const missing = artifacts ? ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].filter((name) => !artifacts.some((item) => item.filename === name)) : [];
   const hasMinus = !artifacts || artifacts.some((item) => item.filename === 'scores.minus.bw');
   const hasPeaks = artifacts?.some((item) => item.filename === 'peaks.gff3');
-  const smoothScores = summary?.stride === 1;
-  const peakStatus = !artifacts ? null : hasPeaks
-    ? summary?.peak_count === 0 ? 'No peaks passed the calling cutoff for this task.' : null
-    : summary?.stride && summary.stride > 1
-      ? `Peak calling requires a 1 bp stride. This task used ${summary.stride} bp; a new 1 bp scan is needed for peak results.`
+  const precomputedScoreSigma = summary?.bigwig_smoothing?.method === 'gaussian'
+    && summary.bigwig_smoothing.mode === 'reflect' ? summary.bigwig_smoothing.sigma : undefined;
+  const smoothLegacyScores = precomputedScoreSigma === undefined && summary?.stride === 1;
+  const smoothedScoreTrack = precomputedScoreSigma !== undefined || smoothLegacyScores;
+  const peakStatus = !artifacts || (summary?.stride !== undefined && summary.stride > 1)
+    ? null
+    : hasPeaks
+      ? summary?.peak_count === 0 ? 'No peaks passed the calling cutoff for this task.' : null
       : 'Peak results were not generated for this task.';
 
   useEffect(() => () => {
@@ -32,7 +35,8 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
       assetBase: '',
       adapterMode: 'indexed',
       annotationTrackKind: 'annotation',
-      smoothScoreTrack: smoothScores,
+      smoothScoreTrack: smoothLegacyScores,
+      precomputedScoreSigma,
       predictionProcessing: hasPeaks && summary?.peak_calling && summary.smoothing ? {
         sigma: summary.smoothing.sigma, distance: summary.peak_calling.distance,
         cutoff: summary.peak_calling.cutoff, positionBase: 1,
@@ -50,15 +54,14 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
       },
       trackLabels: {
         promoters: 'RAPPtor predicted peaks',
-        scores: `${smoothScores ? 'RAPPtor smoothed model scores' : 'RAPPTOR model scores'} (${hasMinus ? '+ / − strands' : '+ strand'})`,
+        scores: `${smoothedScoreTrack ? 'RAPPtor smoothed model scores' : 'RAPPTOR model scores'} (${hasMinus ? '+ / − strands' : '+ strand'})`,
         annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
     };
-  }, [annotation, base, jobId, refName, hasMinus, hasPeaks, summary, smoothScores]);
+  }, [annotation, base, jobId, refName, hasMinus, hasPeaks, summary, smoothLegacyScores, precomputedScoreSigma, smoothedScoreTrack]);
 
   if (missing.length) return <p role="alert">Required browser artifacts are missing: {missing.join(', ')}.</p>;
   return <>
-    {smoothScores && <p className={styles.peakStatus}>Model scores are Gaussian-smoothed (σ = 1). BigWig downloads retain the raw scores.</p>}
     {peakStatus && <p className={styles.peakStatus} role="status">{peakStatus}</p>}
     <div className={styles.browserTools}>
       <div><strong>Genome context</strong><span>Reference sequence is shown automatically. Optional GFF3 stays in this browser; sequence IDs must match the FASTA headers.</span></div>

@@ -18,7 +18,7 @@ from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegist
 
 from .config import SETTINGS
 from .callbacks import persist_job_event
-from .cgr_cache import ReferenceCgrNotFound, load_reference_cgr, normalize_reference_source
+from .cgr_cache import ReferenceCgrNotFound, normalize_reference_source, validate_reference_cgr
 from .jobs import process_job
 from .metrics import cpu_history, latest_cpu_sample, sample_cpu_loop, stop_sampler
 from .queueing import get_queue, get_redis_connection
@@ -277,8 +277,6 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
     from .formats import scan_output_formats
     request["output_formats"] = list(scan_output_formats(payload.output_formats, stride))
-    if "gff3" in request["output_formats"] and stride != 1:
-        raise InputValidationError("Smoothed GFF3 and peak output requires stride=1.")
     return request, validated.total_bases + (len(genome_context) if genome_context else 0)
 
 
@@ -313,10 +311,24 @@ def current_model():
                 "unfiltered_formats": ["bigwig", "parquet"],
             },
             "gff3_postprocessing": {
-                "required_stride": 1,
+                "required_stride": None,
+                "supported_stride": {"minimum": SETTINGS.min_scan_stride, "maximum": SETTINGS.max_scan_stride},
                 "automatic": True,
                 "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
-                "peaks": {"distance": 10, "default_cutoff": 0.9, "configurable_cutoff": True, "operator": ">", "filename": "peaks.gff3"},
+                "peaks": {
+                    "distance": 10,
+                    "distance_unit": "bp",
+                    "sample_distance_rule": "ceil(distance_bp/stride)",
+                    "coordinate_resolution": "stride",
+                    "default_cutoff": 0.9,
+                    "configurable_cutoff": True,
+                    "operator": ">",
+                    "filename": "peaks.gff3",
+                },
+            },
+            "bigwig_processing": {
+                "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                "retains_all_scores": True,
             },
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
             "default_output_formats": ["bigwig", "parquet"],
@@ -435,7 +447,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
 
     if payload.reference_accession is not None:
         try:
-            load_reference_cgr(payload.reference_accession)
+            validate_reference_cgr(payload.reference_accession)
         except ReferenceCgrNotFound:
             try:
                 request_payload["reference_source"] = normalize_reference_source(

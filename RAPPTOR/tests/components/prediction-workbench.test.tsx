@@ -160,7 +160,8 @@ describe('live prediction result layout', () => {
     const info = screen.getByRole('region', { name: 'Prediction information' });
     expect(info).toHaveTextContent('Both strands');
     expect(info).toHaveTextContent('Cutoff: > 0.9');
-    expect(within(result).getAllByText('Below threshold (≤ 0.9)')).toHaveLength(2);
+    expect(within(result).getByRole('status', { name: 'Model classification' })).toHaveTextContent('Non-promoter');
+    expect(within(result).getAllByText('Non-promoter · threshold ≤ 0.9')).toHaveLength(2);
     expect(info).not.toHaveTextContent(/Peak cutoff|Min\. distance|σ|Export cutoff/);
   });
 

@@ -44,15 +44,19 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     if (!metadata.ok || !readiness.ok) throw new Error();
     const model = await metadata.json() as { model_version?: string; genome_scan?: {
       score_cutoff?: { operator?: string };
-      gff3_postprocessing?: { required_stride?: number; smoothing?: { method?: string; sigma?: number; mode?: string }; peaks?: { distance?: number; cutoff?: number; default_cutoff?: number; configurable_cutoff?: boolean; operator?: string; filename?: string } };
+      gff3_postprocessing?: { required_stride?: number | null; smoothing?: { method?: string; sigma?: number; mode?: string }; peaks?: { distance?: number; distance_unit?: string; sample_distance_rule?: string; coordinate_resolution?: string; cutoff?: number; default_cutoff?: number; configurable_cutoff?: boolean; operator?: string; filename?: string } };
     } };
     const ready = await readiness.json() as { status?: string };
     if (model.model_version !== modelVersion) return { ...initial, reason: 'The active model does not match this deployment.' };
     if (ready.status !== 'ready') throw new Error();
     const processing = model.genome_scan?.gff3_postprocessing;
+    const strideAwarePeaks = processing?.required_stride === null
+      && processing.peaks?.distance_unit === 'bp'
+      && processing.peaks.sample_distance_rule === 'ceil(distance_bp/stride)'
+      && processing.peaks.coordinate_resolution === 'stride';
     return { ...initial, available: true, supportsScoreCutoff: model.genome_scan?.score_cutoff?.operator === '>',
       gff3RequiresStride1: processing?.required_stride === 1,
-      supportsPeakCalling: processing?.required_stride === 1 && processing.smoothing?.method === 'gaussian'
+      supportsPeakCalling: (processing?.required_stride === 1 || strideAwarePeaks) && processing.smoothing?.method === 'gaussian'
         && processing.smoothing.sigma === 1 && processing.smoothing.mode === 'reflect'
         && processing.peaks?.distance === 10
         && (processing.peaks.configurable_cutoff === true || processing.peaks.cutoff === 0.9)

@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
 from rq import get_current_job
+from rq.job import JobStatus
 
 from .callbacks import persist_job_event, report_job_event
-from .cgr_cache import ensure_reference_cgr
+from .cgr_cache import get_reference_cgr_tensor
 from .config import SETTINGS
-from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, scan_output_formats
+from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, peak_distance_samples, scan_output_formats
 from .queue_eta import process_heartbeat_key, record_progress, save_completed_profile
 from .runtime import get_runtime, sha256_file
 from .scan_progress import ScanProgress, count_scan_windows
@@ -55,7 +57,8 @@ def _failed_progress(last_progress: dict | None) -> dict:
 
 def mark_job_failed_externally(job, code: str, message: str) -> None:
     """Record a watchdog failure before RQ stops an unresponsive child."""
-    ended_at = utc_now()
+    ended = datetime.now(timezone.utc)
+    ended_at = ended.isoformat()
     safe_error = {"code": code, "type": "JobStalledError", "message": message}
     last_progress = job.meta.get("progress")
     job.meta.update({
@@ -63,7 +66,24 @@ def mark_job_failed_externally(job, code: str, message: str) -> None:
         "error": safe_error,
         "progress": _failed_progress(last_progress),
     })
-    job.save_meta()
+    job.ended_at = ended
+    executions = job.get_executions()
+    execution = executions[0] if executions else None
+    exc_string = f"{code}: {message}"
+    with job.connection.pipeline() as pipeline:
+        job.set_status(JobStatus.FAILED, pipeline=pipeline)
+        job.save(pipeline=pipeline, include_result=False)
+        for current in executions:
+            current.delete(job=job, pipeline=pipeline)
+        job._handle_failure(
+            exc_string,
+            pipeline=pipeline,
+            worker_name=execution.worker_name if execution else "",
+            execution_id=execution.id if execution else None,
+            execution_started_at=execution.created_at if execution else None,
+            execution_ended_at=ended,
+        )
+        pipeline.execute()
     try:
         submission = JobStorage(SETTINGS.data_root).read_json(job.id, "submission.json")
         persist_job_event(_permanent_event(
@@ -144,8 +164,11 @@ def _permanent_event(submission: dict, status: str, **values) -> dict:
     }
 
 
-def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
+def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | None = None) -> dict:
+    timings = timings if timings is not None else {}
+    started = time.monotonic()
     runtime = get_runtime()
+    timings["model_load_ms"] = round((time.monotonic() - started) * 1000, 1)
     job_dir = storage.job_dir(job_id)
     sequence = validate_sequence(
         request["sequence"],
@@ -156,9 +179,12 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
     )
     _progress("preparing_cgr", 15.0)
     reference_accession = request.get("reference_accession")
+    cgr_started = time.monotonic()
     if reference_accession is not None:
         context_bases = None
-        cgr = ensure_reference_cgr(reference_accession, request.get("reference_source")).to(runtime.device)
+        cgr, cgr_cache = get_reference_cgr_tensor(
+            reference_accession, request.get("reference_source"), device=runtime.device,
+        )
     elif request.get("fasta") is not None:
         validated = validate_fasta(
             request["fasta"],
@@ -168,6 +194,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         context_bases = validated.total_bases
         context_fasta = storage.write_text(job_id, "genome_context.fasta", validated.to_fasta())
         cgr = runtime.make_cgr(context_fasta, job_dir)
+        cgr_cache = "miss"
     else:
         genome_context = validate_sequence(
             request["genome_context"],
@@ -179,6 +206,9 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         context_bases = len(genome_context)
         context_fasta = storage.write_text(job_id, "genome_context.fasta", f">genome_context\n{genome_context}\n")
         cgr = runtime.make_cgr(context_fasta, job_dir)
+        cgr_cache = "miss"
+    timings["cgr_load_ms"] = round((time.monotonic() - cgr_started) * 1000, 1)
+    timings["cgr_cache"] = cgr_cache
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
     reverse = bool(request.get("reverse_complementary", True))
     total_windows = count_scan_windows((len(sequence),), runtime.seq_length, 1, reverse)
@@ -190,6 +220,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
     if reverse:
         reverse_sequence = runtime.reverse_complement(sequence)
         strand_sequences.append(("-", reverse_sequence))
+    inference_started = time.monotonic()
     for strand, strand_sequence in strand_sequences:
         inference_progress.start_sequence("target_sequence", strand)
         scores = runtime.score_sequence(
@@ -198,8 +229,10 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
         )
         scores_by_strand.append((strand, scores))
         inference_progress.report(force=True, scores_written=sum(len(item) for _, item in scores_by_strand))
+    timings["inference_ms"] = round((time.monotonic() - inference_started) * 1000, 1)
     if not any(len(scores) for _, scores in scores_by_strand):
         raise ValueError("sequence produced no model windows")
+    output_started = time.monotonic()
     score_writer = ScanArtifactWriter(
         job_dir,
         ("json", "gff3"),
@@ -247,6 +280,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage) -> dict:
     summary_path = _write_summary(storage, job_id, payload)
     result = _result_metadata(artifacts, summary_path, runtime)
     _progress("complete", 100.0)
+    timings["output_ms"] = round((time.monotonic() - output_started) * 1000, 1)
     return result
 
 
@@ -346,17 +380,29 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "peak_count": artifact_writer.peak_count if "gff3" in output_formats else None,
         "output_formats": list(output_formats),
         "output_semantics": (
-            "BigWig/Parquet/JSON contain raw scores; scores.gff3 contains Gaussian-smoothed scores; "
-            "peaks.gff3 contains fixed-threshold called peaks"
+            "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
+            "scores.gff3 contains Gaussian-smoothed scores; "
+            "peaks.gff3 contains cutoff-filtered sampled peaks"
             if "gff3" in output_formats
-            else "all raw scores"
+            else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
+        ),
+        "bigwig_smoothing": (
+            {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
+            if "bigwig" in output_formats else None
         ),
         "smoothing": (
             {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
-            if "gff3" in output_formats else None
+            if {"bigwig", "gff3"}.intersection(output_formats) else None
         ),
         "peak_calling": (
-            {"distance": PEAK_DISTANCE, "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF, "operator": ">"}
+            {
+                "distance": PEAK_DISTANCE,
+                "distance_unit": "bp",
+                "sample_distance": peak_distance_samples(stride),
+                "resolution_bp": stride,
+                "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF,
+                "operator": ">",
+            }
             if "gff3" in output_formats else None
         ),
         "completed_at": utc_now(),
@@ -368,6 +414,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
 
 
 def process_job(job_id: str) -> dict:
+    execution_started = time.monotonic()
     storage = JobStorage(SETTINGS.data_root)
     request = storage.read_json(job_id, "request.json")
     submission = storage.read_json(job_id, "submission.json")
@@ -384,9 +431,17 @@ def process_job(job_id: str) -> dict:
         )
         heartbeat_thread.start()
     report_job_event(_permanent_event(submission, "running", startedAt=started_at))
+    timings = {}
+    try:
+        submitted_at = datetime.fromisoformat(submission["submitted_at"].replace("Z", "+00:00"))
+        timings["queue_wait_ms"] = round(max(0.0, (datetime.now(timezone.utc) - submitted_at).total_seconds() * 1000), 1)
+    except (KeyError, TypeError, ValueError):
+        timings["queue_wait_ms"] = None
     try:
         if request["mode"] == "predict":
-            result = _predict(job_id, request, storage)
+            prediction_started = time.monotonic()
+            result = _predict(job_id, request, storage, timings)
+            timings["total_ms"] = round((time.monotonic() - prediction_started) * 1000, 1)
         elif request["mode"] == "genome_scan":
             result = _scan(job_id, request, storage)
         else:
@@ -432,3 +487,9 @@ def process_job(job_id: str) -> dict:
         heartbeat_stop.set()
         if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=2)
+        if request.get("mode") == "predict":
+            timings.update({
+                "event": "prediction_timing",
+            })
+            timings.setdefault("total_ms", round((time.monotonic() - execution_started) * 1000, 1))
+            print(json.dumps(timings, sort_keys=True, separators=(",", ":")), flush=True)

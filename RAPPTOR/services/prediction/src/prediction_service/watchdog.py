@@ -38,7 +38,7 @@ def remove_legacy_timeouts(queue: Queue) -> int:
     return changed
 
 
-def watch_jobs(connection, queue_name: str, stop) -> None:
+def watch_jobs(connection, queue_name: str, stop, *, exit_on_failure=False, exit_func=None) -> None:
     interval = min(10, SETTINGS.worker_heartbeat_interval)
     while not stop.is_set():
         now = time.time()
@@ -69,7 +69,10 @@ def watch_jobs(connection, queue_name: str, stop) -> None:
                 job.meta["queue_eta"] = eta
                 from .jobs import mark_job_failed_externally
                 mark_job_failed_externally(job, code, message)
-                send_stop_job_command(connection, job.id)
+                if exit_on_failure:
+                    exit_func(70)
+                else:
+                    send_stop_job_command(connection, job.id)
             except Exception:
                 continue
         stop.wait(interval)

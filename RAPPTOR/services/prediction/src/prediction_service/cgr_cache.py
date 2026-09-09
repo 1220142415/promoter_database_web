@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import uuid
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -94,7 +95,7 @@ def write_cache_entry(
     *,
     root: Path,
     version: str,
-) -> torch.Tensor:
+) -> dict:
     target_dir = cache_dir(accession, root=root, version=version)
     target_dir.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{version}.tmp-", dir=target_dir.parent))
@@ -128,7 +129,7 @@ def write_cache_entry(
         )
         _publish(temp_dir, target_dir)
         temp_dir = None
-        return load_reference_cgr(
+        return validate_reference_cgr(
             accession,
             root=root,
             version=version,
@@ -171,9 +172,9 @@ def _decompress_if_needed(path: Path) -> Path:
     return output
 
 
-def ensure_reference_cgr(accession: str, source: dict | None = None) -> torch.Tensor:
+def _ensure_reference_cgr_entry(accession: str, source: dict | None = None) -> tuple[dict, bool]:
     try:
-        return load_reference_cgr(accession)
+        return validate_reference_cgr(accession), False
     except ReferenceCgrNotFound:
         source = normalize_reference_source(accession, source)
 
@@ -187,7 +188,7 @@ def ensure_reference_cgr(accession: str, source: dict | None = None) -> torch.Te
         with (lock_dir / f"{accession}-{SETTINGS.cgr_version}.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                return load_reference_cgr(accession)
+                return validate_reference_cgr(accession), False
             except ReferenceCgrNotFound:
                 pass
             with tempfile.TemporaryDirectory(prefix=f".{accession}.download-", dir=root) as temp:
@@ -206,20 +207,49 @@ def ensure_reference_cgr(accession: str, source: dict | None = None) -> torch.Te
                     source["sha256"],
                     root=root,
                     version=SETTINGS.cgr_version,
-                )
+                ), True
     except ReferenceCgrNotFound:
         raise
     except Exception as exc:
         raise ReferenceCgrNotFound("Reference CGR is unavailable.") from exc
 
 
-def load_reference_cgr(
+@lru_cache(maxsize=128)
+def _cached_reference_tensor(
+    accession: str, version: str, png_sha256: str, png_path: str, device: str,
+) -> torch.Tensor:
+    del accession, version, png_sha256
+    return load_cgr_tensor(Path(png_path), expected_size=128).to(device)
+
+
+def get_reference_cgr_tensor(
+    accession: str, source: dict | None = None, *, device="cpu",
+) -> tuple[torch.Tensor, str]:
+    """Return a bounded process-local tensor and its non-sensitive cache status."""
+    entry, generated = _ensure_reference_cgr_entry(accession, source)
+    before = _cached_reference_tensor.cache_info().hits
+    tensor = _cached_reference_tensor(
+        accession,
+        entry["version"],
+        entry["png_sha256"],
+        str(entry["png_path"]),
+        str(device),
+    )
+    memory_hit = _cached_reference_tensor.cache_info().hits > before
+    return tensor, "miss" if generated else ("memory_hit" if memory_hit else "disk_hit")
+
+
+def ensure_reference_cgr(accession: str, source: dict | None = None) -> torch.Tensor:
+    return get_reference_cgr_tensor(accession, source)[0]
+
+
+def validate_reference_cgr(
     accession: str,
     *,
     root: Path | None = None,
     version: str | None = None,
     expected_fasta_sha256: str | None = None,
-) -> torch.Tensor:
+) -> dict:
     try:
         root = SETTINGS.cgr_cache_root if root is None else root
         version = SETTINGS.cgr_version if version is None else version
@@ -240,6 +270,27 @@ def load_reference_cgr(
             or sha256_file(png_path) != png_sha256
         ):
             raise ValueError("invalid cache metadata")
-        return load_cgr_tensor(png_path, expected_size=128)
+        return {
+            "version": version,
+            "png_sha256": png_sha256,
+            "png_path": png_path,
+            "fasta_sha256": fasta_sha256,
+        }
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         raise ReferenceCgrNotFound("Reference CGR is unavailable.") from None
+
+
+def load_reference_cgr(
+    accession: str,
+    *,
+    root: Path | None = None,
+    version: str | None = None,
+    expected_fasta_sha256: str | None = None,
+) -> torch.Tensor:
+    entry = validate_reference_cgr(
+        accession,
+        root=root,
+        version=version,
+        expected_fasta_sha256=expected_fasta_sha256,
+    )
+    return load_cgr_tensor(entry["png_path"], expected_size=128)

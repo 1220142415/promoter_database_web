@@ -10,7 +10,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 
-from prediction_service.formats import ScanArtifactWriter, scan_output_formats, ArtifactFormatError
+from prediction_service.formats import ScanArtifactWriter, scan_output_formats, peak_distance_samples
 
 
 def rows(path):
@@ -77,23 +77,29 @@ class PeakCallingTests(unittest.TestCase):
             self.assertEqual(writer.peak_count, 0)
             self.assertEqual(rows(path/'peaks.gff3'), [])
 
-    def test_full_score_tracks_are_not_smoothed_or_filtered(self):
+    def test_bigwig_is_smoothed_while_parquet_retains_raw_scores(self):
         import pyBigWig
         import pyarrow.parquet as pq
         with TemporaryDirectory() as folder:
             path = Path(folder)
-            writer = self.writer(path, [('a', 140)], formats=('gff3', 'bigwig', 'parquet'), score_cutoff=.9)
+            writer = ScanArtifactWriter(
+                path, ('bigwig', 'parquet'), [('a', 900)],
+                model_version='test', checkpoint_sha256='test', stride=20,
+            )
             scores = np.linspace(0, 1, 41, dtype=np.float32)
             for strand in ('+', '-'):
-                writer.add_scores('a', 140, strand, scores, upstream_len=80, window_length=100)
+                writer.add_scores('a', 900, strand, scores, upstream_len=80, window_length=100)
             writer.close(success=True)
             for strand, suffix in (('+', 'plus'), ('-', 'minus')):
                 with pyBigWig.open(str(path/f'scores.{suffix}.bw')) as bw:
                     actual = [r[2] for r in bw.intervals('a')]
-                    np.testing.assert_array_equal(actual, scores if strand == '+' else scores[::-1])
+                    ordered = scores if strand == '+' else scores[::-1]
+                    expected = gaussian_filter1d(ordered.astype(float), 1, mode='reflect')
+                    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
             table = pq.read_table(path/'scores.parquet')
             self.assertEqual(table.num_rows, 82)
             self.assertEqual(table.schema.metadata[b'rapptor_window_start_coordinate_system'], b'reference_0based')
+            np.testing.assert_array_equal(table.column('score').to_numpy()[:41], scores)
 
     def test_dense_scan_automatically_calls_peaks_even_with_default_formats(self):
         from prediction_service import jobs
@@ -117,14 +123,40 @@ class PeakCallingTests(unittest.TestCase):
                 self.assertEqual(summary['peak_count'], 0 if stride == 1 else None)
                 self.assertEqual(summary['window_count'], 82 if stride == 1 else 6)
                 self.assertEqual(summary['window_start_coordinate_system'], 'reference_0based')
+                self.assertEqual(summary['bigwig_smoothing'], {'method': 'gaussian', 'sigma': 1.0, 'mode': 'reflect'})
 
-    def test_non_dense_gff_is_rejected_before_writing_results(self):
+    def test_stride_aware_peaks_use_bp_distance_and_sampled_anchor_coordinates(self):
+        with TemporaryDirectory() as folder:
+            path = Path(folder)
+            stride = 3
+            scores = np.zeros(21, dtype=np.float32)
+            scores[10] = 1
+            writer = ScanArtifactWriter(
+                path, ['gff3'], [('a', 160)], model_version='test', checkpoint_sha256='test',
+                stride=stride, score_cutoff=.2,
+            )
+            writer.add_scores('a', 160, '+', scores, upstream_len=80, window_length=100)
+            writer.close(success=True)
+            peak_text = (path/'peaks.gff3').read_text()
+            peak_rows = rows(path/'peaks.gff3')
+            self.assertEqual(peak_distance_samples(stride), 4)
+            self.assertIn('##RAPPtor-peak-distance 10', peak_text)
+            self.assertIn('##RAPPtor-peak-distance-unit bp', peak_text)
+            self.assertIn('##RAPPtor-peak-distance-samples 4', peak_text)
+            self.assertIn('##RAPPtor-peak-coordinate-resolution-bp 3', peak_text)
+            self.assertEqual(len(peak_rows), 1)
+            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (111, 111))
+            self.assertIn('anchor_position_0based=110', peak_rows[0][8])
+            self.assertIn('sampled_anchor=true', peak_rows[0][8])
+            self.assertIn('resolution_bp=3', peak_rows[0][8])
+
+    def test_non_dense_gff_is_supported_without_changing_default_formats(self):
         self.assertIn('gff3', scan_output_formats(['bigwig'], 1))
         self.assertEqual(scan_output_formats(['bigwig'], 20), ('bigwig',))
         with TemporaryDirectory() as folder:
-            with self.assertRaises(ArtifactFormatError):
-                ScanArtifactWriter(Path(folder), ['gff3'], [('a', 140)], model_version='test', checkpoint_sha256='test', stride=20)
-            self.assertEqual(list(Path(folder).iterdir()), [])
+            writer = ScanArtifactWriter(Path(folder), ['gff3'], [('a', 140)], model_version='test', checkpoint_sha256='test', stride=20)
+            writer.close(success=True)
+            self.assertTrue((Path(folder)/'peaks.gff3').exists())
 
 
 if __name__ == '__main__':

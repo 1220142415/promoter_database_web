@@ -247,7 +247,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
           </section> : null}
         </>}
 
-        {!focused && artifacts.length > 0 && <ResultDownloads jobId={entry.jobId} artifacts={artifacts} mode={mode} expiresAt={formatDate(job.artifacts_expires_at)} />}
+        {!focused && artifacts.length > 0 && <ResultDownloads jobId={entry.jobId} artifacts={artifacts} mode={mode} expiresAt={formatDate(job.artifacts_expires_at)} bigwigSmoothing={summary.bigwig_smoothing} />}
         <ResultInformation summary={{ ...summary, mode, ...(mode === 'predict' && entry.cutoff !== undefined ? { score_cutoff: entry.cutoff, score_cutoff_operator: '>' } : {}) }} inputName={entry.label} refName={mode === 'genome_scan' ? refName : ''} />
 
         <aside className={styles.interpret} aria-labelledby="interpret-heading">

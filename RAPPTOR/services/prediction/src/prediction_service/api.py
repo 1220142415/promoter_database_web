@@ -47,6 +47,7 @@ ARTIFACT_CONTENT_TYPES = {
     ".parquet": "application/vnd.apache.parquet",
     ".gff3": "text/plain; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    ".zip": "application/zip",
 }
 
 
@@ -106,25 +107,52 @@ def _queue_counts(connection) -> dict[str, int]:
 
 
 def _queue_status(connection, job: Job, status: str) -> dict:
-    queues = _queues(connection)
-    unique_queues = {queue.name: queue for queue in queues.values()}
-    queued_ids = {name: queue.get_job_ids() for name, queue in unique_queues.items()}
-    own_ids = queued_ids.get(job.origin)
-    if own_ids is None:
-        own_ids = Queue(job.origin, connection=connection).get_job_ids()
+    response = {
+        "ahead": None,
+        "estimated_wait_seconds": None,
+        "waiting": None,
+        "running": None,
+        "worker_ready": None,
+        "total_waiting": None,
+        "waiting_by_mode": None,
+    }
+    try:
+        queues = _queues(connection)
+        unique_queues = {queue.name: queue for queue in queues.values()}
+        queued_ids = {name: queue.get_job_ids() for name, queue in unique_queues.items()}
+        own_ids = queued_ids.get(job.origin)
+        if own_ids is None:
+            own_ids = Queue(job.origin, connection=connection).get_job_ids()
+        response.update({
+            "waiting": len(own_ids),
+            "total_waiting": sum(len(ids) for ids in queued_ids.values()),
+            "waiting_by_mode": {mode: len(queued_ids[queue.name]) for mode, queue in queues.items()},
+        })
+    except Exception:
+        return response
     ahead = None
     if status == "queued":
         try:
             ahead = own_ids.index(job.id)
         except ValueError:
             pass
-    return {
-        "ahead": ahead,
-        "estimated_wait_seconds": estimate_wait_seconds(connection, job, status, own_ids),
-        "waiting": len(own_ids),
-        "total_waiting": sum(len(ids) for ids in queued_ids.values()),
-        "waiting_by_mode": {mode: len(queued_ids[queue.name]) for mode, queue in queues.items()},
-    }
+    response["ahead"] = ahead
+    try:
+        response["estimated_wait_seconds"] = estimate_wait_seconds(connection, job, status, own_ids)
+    except Exception:
+        pass
+    try:
+        response["running"] = len(
+            StartedJobRegistry(name=job.origin, connection=connection).get_job_ids()
+        )
+    except Exception:
+        pass
+    try:
+        mode = job.meta.get("mode")
+        response["worker_ready"] = _workers_status(connection).get(mode)
+    except Exception:
+        pass
+    return response
 
 
 @lru_cache(maxsize=1)
@@ -221,7 +249,7 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
             payload.sequence or "",
             label="sequence",
             min_bases=100,
-            max_bases=SETTINGS.max_predict_bases,
+            max_bases=100,
             max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
         )
         request["sequence"] = sequence
@@ -238,7 +266,7 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
             )
             request["fasta"] = validated.to_fasta()
             request["cgr_source"] = "uploaded_complete_genome_fasta"
-            return request, len(sequence) + validated.total_bases
+            return request, len(sequence)
         genome_context = validate_sequence(
             payload.genome_context or "",
             label="genome_context",
@@ -248,9 +276,11 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
         )
         request["genome_context"] = genome_context
         request["cgr_source"] = "complete_genome_sequence"
-        return request, len(sequence) + len(genome_context)
+        return request, len(sequence)
 
     request.pop("reference_accession", None)
+    request.pop("sequence", None)
+    request.pop("genome_context", None)
     validated = validate_fasta(
         payload.fasta or "",
         max_bases=SETTINGS.max_genome_bases,
@@ -262,22 +292,12 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     if stride > SETTINGS.max_scan_stride:
         raise InputValidationError(f"Stride must be at most {SETTINGS.max_scan_stride} bp.")
     request["fasta"] = validated.to_fasta()
-    genome_context = None
-    if payload.genome_context is not None:
-        genome_context = validate_sequence(
-            payload.genome_context,
-            label="genome_context",
-            min_bases=100,
-            max_bases=SETTINGS.max_genome_bases,
-            max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
-        )
-    request["genome_context"] = genome_context
-    request["cgr_source"] = "separate_complete_genome_sequence" if genome_context else "complete_genome_assembly_fasta"
+    request["cgr_source"] = "complete_genome_assembly_fasta"
     request["stride"] = stride
     request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
     from .formats import scan_output_formats
     request["output_formats"] = list(scan_output_formats(payload.output_formats, stride))
-    return request, validated.total_bases + (len(genome_context) if genome_context else 0)
+    return request, validated.total_bases
 
 
 @app.exception_handler(HTTPException)
@@ -402,7 +422,7 @@ def service_status(history: str | None = None, bucket: str = "30m"):
             },
             "limits": {
                 "max_queued_jobs": SETTINGS.max_queue_length,
-                "max_predict_bases": SETTINGS.max_predict_bases,
+                "max_predict_bases": 100,
                 "max_genome_bases": SETTINGS.max_genome_bases,
                 "max_request_bytes": SETTINGS.max_request_bytes,
             },
@@ -436,6 +456,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
             ticket,
             model_version=SETTINGS.model_version,
             bases=billed_bases,
+            mode=payload.mode,
             reference_accession=payload.reference_accession,
         )
     except ReferenceSourceUnavailable:

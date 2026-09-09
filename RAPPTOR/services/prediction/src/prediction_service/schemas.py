@@ -64,8 +64,14 @@ class JobSubmission(BaseModel):
         else:
             if self.fasta is None:
                 raise ValueError("For mode=genome_scan, fasta is required.")
-            if self.sequence is not None or self.reference_accession is not None:
-                raise ValueError("For mode=genome_scan, use fasta and omit sequence/reference_accession.")
+            if (
+                self.sequence is not None
+                or self.genome_context is not None
+                or self.reference_accession is not None
+            ):
+                raise ValueError(
+                    "For mode=genome_scan, use fasta and omit sequence/genome_context/reference_accession."
+                )
             if self.output_formats is not None:
                 if not self.output_formats:
                     raise ValueError("output_formats must contain at least one format.")
@@ -77,9 +83,11 @@ class JobSubmission(BaseModel):
 class JobQueueStatus(BaseModel):
     ahead: int | None = None
     estimated_wait_seconds: int | None = Field(default=None, ge=0)
-    waiting: int
-    total_waiting: int
-    waiting_by_mode: dict[str, int]
+    waiting: int | None = None
+    running: int | None = None
+    worker_ready: bool | None = None
+    total_waiting: int | None = None
+    waiting_by_mode: dict[str, int] | None = None
 
 
 class JobCreated(BaseModel):

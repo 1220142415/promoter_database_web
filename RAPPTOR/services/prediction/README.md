@@ -23,7 +23,7 @@ context.
 
 - `genome_scan`: upload the complete assembly FASTA; all contigs belong to the
   same genome and jointly form its CGR.
-- `predict`: send `sequence` plus exactly one CGR source: a catalog-backed
+- `predict`: send exactly one 100 bp `sequence` plus exactly one CGR source: a catalog-backed
   `reference_accession`, the complete sequence in `genome_context`, or an
   uploaded complete assembly in `fasta`.
 
@@ -88,6 +88,11 @@ reference URLs.
 `scores.gff3` exports Gaussian-smoothed scores strictly above it. BigWig retains
 every Gaussian-smoothed score; Parquet retains every raw scanned score. `top_k`
 remains unsupported.
+
+When a scan produces BigWig tracks, the worker also atomically writes
+`model-score-tracks.zip` with `ZIP_STORED`. It contains the existing tracks
+under `model-score-tracks/` and is included in the artifact manifest; a
+single-strand task includes only its plus track.
 
 At **stride 1**, the API and worker automatically include GFF3 postprocessing,
 even when a client requests only BigWig/Parquet. Clients can also request GFF3
@@ -165,10 +170,11 @@ statistics without exposing job IDs, sequences, tickets, or user data. A
 token-protected `GET /v1/jobs/{job_id}` response also includes that job's
 `mode` and `input_bases`.
 
-The same token-protected job response includes
-`queue.estimated_wait_seconds`, an estimate of time until that job starts (not
-time until it completes). It remains `null` when workers are offline or recent
-measurements are insufficient or stalled, and becomes `0` once the job starts.
+The same token-protected job response includes `queue.ahead`, `queue.waiting`,
+`queue.running`, `queue.worker_ready`, and `queue.estimated_wait_seconds`.
+The estimate is time until that job starts, not time until it completes. It
+remains `null` when workers are offline or recent measurements are insufficient
+or stalled, and becomes `0` once the job starts.
 The estimator keeps at most 120 seconds of bounded window-progress samples in
 RQ metadata. Per queue, Redis retains a small set of recent completed timing
 profiles containing measured windows/second plus preparation and output-writing
@@ -211,8 +217,11 @@ in its child process. Never point this test at production Redis.
 Production must enable Cloudflare ticket validation and use the same service
 secret as the web application's internal ticket-consumption route.
 
-The internal consume request includes optional `referenceAccession`. For an
-allowed catalog reference, the Worker resolves D1 metadata and returns:
+The internal consume request includes `mode` and optional `referenceAccession`.
+Older Workers may ignore `mode`; current Docker remains compatible. Predict
+ticket usage is the normalized 100 bp target length, while uploaded
+`genome_scan` usage is the parsed total FASTA bases. For an allowed catalog
+reference, the Worker resolves D1 metadata and returns:
 
 ```json
 {

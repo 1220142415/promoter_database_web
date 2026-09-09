@@ -27,13 +27,14 @@ async def consume_ticket(
     *,
     model_version: str,
     bases: int,
+    mode: str | None = None,
     reference_accession: str | None = None,
 ) -> dict | None:
-    mode = SETTINGS.ticket_validation_mode
-    if mode == "disabled":
+    validation_mode = SETTINGS.ticket_validation_mode
+    if validation_mode == "disabled":
         return None
-    if mode != "cloudflare":
-        raise RuntimeError(f"unsupported ticket validation mode: {mode}")
+    if validation_mode != "cloudflare":
+        raise RuntimeError(f"unsupported ticket validation mode: {validation_mode}")
     if not ticket:
         raise TicketRejected("missing one-time prediction ticket")
     if not SETTINGS.ticket_consume_url or not SETTINGS.ticket_service_secret:
@@ -45,6 +46,8 @@ async def consume_ticket(
         "bases": bases,
         "referenceAccession": reference_accession,
     }
+    if mode is not None:
+        payload["mode"] = mode
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(SETTINGS.ticket_consume_url, json=payload, headers=headers)

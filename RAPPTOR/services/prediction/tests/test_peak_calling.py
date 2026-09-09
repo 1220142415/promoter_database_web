@@ -1,5 +1,6 @@
 """Parity with call_peaks.py, coordinate conventions, and dense-scan integration."""
 import json
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -119,6 +120,13 @@ class PeakCallingTests(unittest.TestCase):
                 result = jobs._scan(jobid, {'fasta': '>a\n' + 'ACGT'*35 + '\n>b\n'+'ACGT'*10, 'stride': stride}, storage)
                 summary = storage.read_json(jobid, 'summary.json')
                 files = [a['filename'] for a in result['artifacts']]
+                self.assertIn('model-score-tracks.zip', files)
+                with zipfile.ZipFile(storage.job_dir(jobid) / 'model-score-tracks.zip') as archive:
+                    self.assertEqual(archive.testzip(), None)
+                    self.assertEqual(archive.namelist(), [
+                        'model-score-tracks/scores.plus.bw',
+                        'model-score-tracks/scores.minus.bw',
+                    ])
                 self.assertEqual('peaks.gff3' in files, stride == 1)
                 self.assertEqual(summary['peak_count'], 0 if stride == 1 else None)
                 self.assertEqual(summary['window_count'], 82 if stride == 1 else 6)

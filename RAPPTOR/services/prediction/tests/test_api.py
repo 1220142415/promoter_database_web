@@ -96,9 +96,9 @@ def test_service_status_reports_queue_counts_and_input_sizes(tmp_path, monkeypat
     assert status["workload"]["queued"]["predict"] == {
         "jobs": 1,
         "input_bases_known_jobs": 1,
-        "input_bases_total": 500,
-        "input_bases_min": 500,
-        "input_bases_max": 500,
+        "input_bases_total": 100,
+        "input_bases_min": 100,
+        "input_bases_max": 100,
     }
     assert status["workload"]["queued"]["genome_scan"]["input_bases_total"] == 400
     assert status["workload"]["running"]["predict"]["jobs"] == 0
@@ -190,7 +190,7 @@ def test_predict_accepts_reference_and_original_context(tmp_path, monkeypatch):
     assert reference_bases == 100
     assert context_request["cgr_source"] == "complete_genome_sequence"
     assert "reference_accession" not in context_request
-    assert context_bases == 500
+    assert context_bases == 100
 
 
 def test_predict_accepts_uploaded_fasta(tmp_path, monkeypatch):
@@ -203,7 +203,21 @@ def test_predict_accepts_uploaded_fasta(tmp_path, monkeypatch):
     ))
     assert request["cgr_source"] == "uploaded_complete_genome_fasta"
     assert request["fasta"].startswith(">contig-1\n")
-    assert bases == 500
+    assert bases == 100
+
+
+@pytest.mark.parametrize("length", [99, 101])
+def test_predict_rejects_non_100bp_sequence(tmp_path, monkeypatch, length):
+    api, _ = load_api(tmp_path, monkeypatch)
+    with pytest.raises(HTTPException) as invalid:
+        asyncio.run(api.submit_job(api.JobSubmission(
+            mode="predict",
+            complete_genome=True,
+            sequence="A" * length,
+            genome_context="ACGT" * 100,
+        ), authorization=None))
+    assert invalid.value.status_code == 400
+    assert invalid.value.detail["code"] == "INVALID_INPUT"
 
 
 def test_predict_reverse_complementary_survives_validation_and_enqueue(tmp_path, monkeypatch):
@@ -211,7 +225,7 @@ def test_predict_reverse_complementary_survives_validation_and_enqueue(tmp_path,
     payload = api.JobSubmission(
         mode="predict",
         complete_genome=True,
-        sequence="A" * 300,
+        sequence="A" * 100,
         genome_context="ACGT" * 100,
         reverse_complementary=False,
     )
@@ -271,20 +285,20 @@ def test_sampled_scan_accepts_smoothed_gff3_and_peaks(tmp_path, monkeypatch):
     assert request["output_formats"] == ["gff3"]
 
 
-def test_genome_scan_accepts_a_separate_complete_genome_for_cgr(tmp_path, monkeypatch):
-    api, connection = load_api(tmp_path, monkeypatch)
-    payload = api.JobSubmission(
-        mode="genome_scan",
-        complete_genome=True,
-        fasta=">target\n" + "ACGT" * 30,
-        genome_context="TGCA" * 40,
-        stride=10,
-    )
-    request, billed_bases = api._validate_submission(payload)
-    assert request["genome_context"] == "TGCA" * 40
-    assert request["cgr_source"] == "separate_complete_genome_sequence"
-    assert request["stride"] == 10
-    assert billed_bases == 280
+@pytest.mark.parametrize("extra", [
+    {"genome_context": "TGCA" * 40},
+    {"reference_accession": "GCF_000005845.1"},
+])
+def test_genome_scan_accepts_only_uploaded_fasta(tmp_path, monkeypatch, extra):
+    api, _ = load_api(tmp_path, monkeypatch)
+    with pytest.raises(ValidationError, match="omit sequence/genome_context/reference_accession"):
+        api.JobSubmission(
+            mode="genome_scan",
+            complete_genome=True,
+            fasta=">target\n" + "ACGT" * 30,
+            stride=10,
+            **extra,
+        )
 
 
 def test_docker_rejects_notification_email(tmp_path, monkeypatch):
@@ -324,6 +338,8 @@ def test_submit_and_token_protected_status(tmp_path, monkeypatch):
         "ahead": 0,
         "estimated_wait_seconds": None,
         "waiting": 1,
+        "running": 0,
+        "worker_ready": False,
         "total_waiting": 1,
         "waiting_by_mode": {"predict": 0, "genome_scan": 1},
     }
@@ -342,17 +358,50 @@ def test_submit_and_token_protected_status(tmp_path, monkeypatch):
 def test_job_status_exposes_estimated_wait_without_changing_token_auth(tmp_path, monkeypatch):
     api, connection = load_api(tmp_path, monkeypatch)
     monkeypatch.setattr(api, "estimate_wait_seconds", lambda *args, **kwargs: 123)
+    monkeypatch.setattr(
+        api,
+        "StartedJobRegistry",
+        lambda **kwargs: type("Registry", (), {"get_job_ids": lambda self: ["running-job"]})(),
+    )
+    connection.set("rapptor:worker:prediction:predict:host:1:ready", "ready")
     created = asyncio.run(api.submit_job(api.JobSubmission(
         mode="predict",
         complete_genome=True,
-        sequence="A" * 300,
+        sequence="A" * 100,
         genome_context="ACGT" * 100,
     ), authorization=None))
     assert created.queue.estimated_wait_seconds == 123
     with pytest.raises(HTTPException) as hidden:
         api.get_job(created.job_id, "wrong-token")
     assert hidden.value.status_code == 404
-    assert api.get_job(created.job_id, created.access_token).queue.estimated_wait_seconds == 123
+    queue = api.get_job(created.job_id, created.access_token).queue
+    assert queue.estimated_wait_seconds == 123
+    assert queue.running == 1
+    assert queue.worker_ready is True
+
+
+def test_job_status_survives_queue_metric_failure(tmp_path, monkeypatch):
+    api, _ = load_api(tmp_path, monkeypatch)
+    created = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 100,
+        genome_context="ACGT" * 100,
+    ), authorization=None))
+    monkeypatch.setattr(api, "_queues", lambda connection: (_ for _ in ()).throw(RuntimeError("redis")))
+
+    status = api.get_job(created.job_id, created.access_token)
+
+    assert status.status == "queued"
+    assert status.queue.model_dump() == {
+        "ahead": None,
+        "estimated_wait_seconds": None,
+        "waiting": None,
+        "running": None,
+        "worker_ready": None,
+        "total_waiting": None,
+        "waiting_by_mode": None,
+    }
 
 
 def test_submission_records_stride_and_strand_aware_window_workload(tmp_path, monkeypatch):
@@ -364,7 +413,7 @@ def test_submission_records_stride_and_strand_aware_window_workload(tmp_path, mo
     prediction = asyncio.run(api.submit_job(api.JobSubmission(
         mode="predict",
         complete_genome=True,
-        sequence="A" * 300,
+        sequence="A" * 100,
         genome_context="ACGT" * 100,
         reverse_complementary=True,
     ), authorization=None))
@@ -376,7 +425,7 @@ def test_submission_records_stride_and_strand_aware_window_workload(tmp_path, mo
         reverse_complementary=False,
     ), authorization=None))
 
-    assert api.Job.fetch(prediction.job_id, connection=connection).meta["eta_total_windows"] == 402
+    assert api.Job.fetch(prediction.job_id, connection=connection).meta["eta_total_windows"] == 2
     assert api.Job.fetch(scan.job_id, connection=connection).meta["eta_total_windows"] == 13
 
 

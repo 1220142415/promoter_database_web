@@ -1,10 +1,11 @@
 import json
+import zipfile
 
 import numpy as np
 import pytest
 
 from prediction_service.formats import ScanArtifactWriter
-from prediction_service.jobs import _write_fasta_index
+from prediction_service.jobs import _write_bigwig_zip, _write_fasta_index
 from prediction_service.storage import JobStorage
 from prediction_service.validation import FastaRecord
 
@@ -96,3 +97,51 @@ def test_all_scan_formats_are_readable(tmp_path):
     assert len(json.loads((tmp_path / "scores.json").read_text(encoding="utf-8"))) == 6
     assert (tmp_path / "scores.gff3").read_text(encoding="utf-8").count("\tRAPPtor\t") == 6
     assert {artifact["format"] for artifact in artifacts} == {"bigwig", "parquet", "gff3", "json"}
+
+
+def test_single_strand_creates_and_archives_only_plus_bigwig(tmp_path):
+    pytest.importorskip("pyBigWig")
+    writer = ScanArtifactWriter(
+        tmp_path,
+        ["bigwig"],
+        [("contig", 100)],
+        model_version="test",
+        checkpoint_sha256="sha",
+        stride=1,
+    )
+    writer.add_scores(
+        "contig", 100, "+", np.array([0.5], dtype=np.float32), upstream_len=50, window_length=100,
+    )
+    artifacts = writer.close(success=True)
+
+    assert [item["filename"] for item in artifacts] == ["scores.plus.bw"]
+    metadata = _write_bigwig_zip(tmp_path, artifacts)
+    with zipfile.ZipFile(tmp_path / metadata["filename"]) as archive:
+        assert archive.namelist() == ["model-score-tracks/scores.plus.bw"]
+        assert archive.testzip() is None
+
+
+@pytest.mark.parametrize("strands", [("plus",), ("plus", "minus")])
+def test_bigwig_zip_is_stored_and_passes_crc(tmp_path, strands):
+    artifacts = []
+    for strand in strands:
+        path = tmp_path / f"scores.{strand}.bw"
+        path.write_bytes(f"bigwig-{strand}".encode())
+        artifacts.append({"filename": path.name, "format": "bigwig"})
+
+    metadata = _write_bigwig_zip(tmp_path, artifacts)
+
+    assert metadata["filename"] == "model-score-tracks.zip"
+    assert metadata["format"] == "zip"
+    assert metadata["content_type"] == "application/zip"
+    assert metadata["size_bytes"] == (tmp_path / metadata["filename"]).stat().st_size
+    with zipfile.ZipFile(tmp_path / metadata["filename"]) as archive:
+        assert archive.namelist() == [
+            f"model-score-tracks/scores.{strand}.bw" for strand in strands
+        ]
+        assert all(item.compress_type == zipfile.ZIP_STORED for item in archive.infolist())
+        assert archive.testzip() is None
+
+
+def test_bigwig_zip_is_omitted_without_bigwig(tmp_path):
+    assert _write_bigwig_zip(tmp_path, [{"filename": "scores.json", "format": "json"}]) is None

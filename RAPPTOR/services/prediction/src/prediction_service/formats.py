@@ -90,8 +90,7 @@ class ScanArtifactWriter:
         try:
             for fmt in self.formats:
                 if fmt == "bigwig":
-                    self._open_bigwig("+", model_version, checkpoint_sha256)
-                    self._open_bigwig("-", model_version, checkpoint_sha256)
+                    continue
                 elif fmt == "parquet":
                     self._open_parquet(model_version, checkpoint_sha256)
                 elif fmt == "gff3":
@@ -163,7 +162,7 @@ class ScanArtifactWriter:
         self._parquet_schema = schema
         self._parquet_writer = pq.ParquetWriter(temporary, schema, compression="zstd")
 
-    def _open_bigwig(self, strand: str, model_version: str, checkpoint_sha256: str) -> None:
+    def _open_bigwig(self, strand: str) -> None:
         try:
             import pyBigWig
         except ImportError as exc:
@@ -173,7 +172,6 @@ class ScanArtifactWriter:
         bigwig = pyBigWig.open(str(temporary), "w")
         bigwig.addHeader(list(self.records))
         self._bigwigs[strand] = bigwig
-        del model_version, checkpoint_sha256
 
     @staticmethod
     def _chunks(
@@ -224,6 +222,8 @@ class ScanArtifactWriter:
         if window_length <= 0 or window_length > sequence_length:
             raise ValueError("window_length must be within the input sequence")
         raw_scores = np.asarray(scores, dtype=np.float32)
+        if "bigwig" in self.formats and len(raw_scores) and strand not in self._bigwigs:
+            self._open_bigwig(strand)
         smoothed_scores = None
         peak_indices: set[int] = set()
         if ({"bigwig", "gff3"}.intersection(self.formats)) and len(raw_scores):

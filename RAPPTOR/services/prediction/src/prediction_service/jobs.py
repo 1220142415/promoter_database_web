@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 import time
 import traceback
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -116,6 +119,43 @@ def _file_metadata(path: Path, fmt: str) -> dict:
     }
 
 
+def _write_bigwig_zip(job_dir: Path, artifacts: list[dict]) -> dict | None:
+    filenames = {
+        item.get("filename")
+        for item in artifacts
+        if item.get("format") == "bigwig"
+    }
+    tracks = [
+        job_dir / filename
+        for filename in ("scores.plus.bw", "scores.minus.bw")
+        if filename in filenames and (job_dir / filename).is_file()
+    ]
+    if not tracks:
+        return None
+    destination = job_dir / "model-score-tracks.zip"
+    handle = tempfile.NamedTemporaryFile(
+        prefix=".model-score-tracks-", suffix=".tmp", dir=job_dir, delete=False,
+    )
+    temporary = Path(handle.name)
+    handle.close()
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_STORED) as archive:
+            for track in tracks:
+                archive.write(
+                    track,
+                    arcname=f"model-score-tracks/{track.name}",
+                    compress_type=zipfile.ZIP_STORED,
+                )
+        os.replace(temporary, destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return {
+        **_file_metadata(destination, "zip"),
+        "content_type": "application/zip",
+    }
+
+
 def _write_fasta_index(storage: JobStorage, job_id: str, records) -> Path:
     offset = 0
     rows = []
@@ -173,8 +213,8 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
     sequence = validate_sequence(
         request["sequence"],
         label="sequence",
-        min_bases=runtime.seq_length,
-        max_bases=SETTINGS.max_predict_bases,
+        min_bases=100,
+        max_bases=100,
         max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
     )
     _progress("preparing_cgr", 15.0)
@@ -352,6 +392,9 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                 )
         _progress("writing_outputs", 92.0, **scan_progress.snapshot(), scores_written=total_windows)
         artifacts = artifact_writer.close(success=True)
+        bigwig_zip = _write_bigwig_zip(job_dir, artifacts)
+        if bigwig_zip is not None:
+            artifacts.append(bigwig_zip)
         artifacts.extend([
             {**_file_metadata(fasta_path, "fasta"), "content_type": "text/plain; charset=utf-8"},
             {**_file_metadata(fasta_index_path, "fai"), "content_type": "text/plain; charset=utf-8"},

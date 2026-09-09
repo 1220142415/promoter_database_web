@@ -85,10 +85,12 @@ def test_ticket_consume_returns_worker_resolved_reference_source(monkeypatch):
         "ticket",
         model_version="candidate",
         bases=100,
+        mode="predict",
         reference_accession="GCF_000005845.1",
     ))
     assert source == {"url": "https://example.test/reference.fna", "sha256": "a" * 64}
     assert captured["json"]["referenceAccession"] == "GCF_000005845.1"
+    assert captured["json"]["mode"] == "predict"
 
 
 def test_ticket_consume_preserves_reference_not_found(monkeypatch):

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from dataclasses import replace
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 
@@ -170,38 +171,22 @@ def test_predict_100bp_writes_one_window_per_strand(tmp_path, monkeypatch):
     assert runtime.scored_sequences == [sequence, runtime.reverse_complement(sequence)]
 
 
-def test_predict_300bp_writes_complete_unique_coordinates_for_both_strands(tmp_path, monkeypatch):
-    sequence = "A" * 299 + "C"
-    runtime, rows, summary = _predict_with_context(
-        tmp_path, monkeypatch, sequence, reverse_complementary=True
-    )
-    plus = [row for row in rows if row["strand"] == "+"]
-    minus = [row for row in rows if row["strand"] == "-"]
-    expected_starts = set(range(201))
-    assert len(rows) == 402
-    assert len(plus) == len(minus) == 201
-    assert {row["window_start_0based"] for row in plus} == expected_starts
-    assert {row["window_start_0based"] for row in minus} == expected_starts
-    assert len({(row["strand"], row["window_start_0based"]) for row in rows}) == 402
-    assert all(0 <= row["anchor_position_0based"] < len(sequence) for row in rows)
-    assert all(row["anchor_position_0based"] == row["window_start_0based"] + 50 for row in plus)
-    assert all(row["anchor_position_0based"] == row["window_start_0based"] + 49 for row in minus)
-    assert minus[0]["score"] == 1200.0
-    assert minus[-1]["score"] == 1000.0
-    assert summary["window_count"] == 402
-    assert summary["reverse_complementary"] is True
-    assert runtime.scored_sequences == [sequence, runtime.reverse_complement(sequence)]
+def test_predict_rejects_non_100bp_sequence_in_worker(tmp_path, monkeypatch):
+    with pytest.raises(ValueError, match="at most 100"):
+        _predict_with_context(
+            tmp_path, monkeypatch, "A" * 101, reverse_complementary=True
+        )
 
 
-def test_predict_300bp_can_disable_reverse_complement(tmp_path, monkeypatch):
-    sequence = "A" * 299 + "C"
+def test_predict_100bp_can_disable_reverse_complement(tmp_path, monkeypatch):
+    sequence = "A" * 99 + "C"
     runtime, rows, summary = _predict_with_context(
         tmp_path, monkeypatch, sequence, reverse_complementary=False
     )
-    assert len(rows) == 201
+    assert len(rows) == 1
     assert {row["strand"] for row in rows} == {"+"}
-    assert {row["window_start_0based"] for row in rows} == set(range(201))
-    assert summary["window_count"] == 201
+    assert {row["window_start_0based"] for row in rows} == {0}
+    assert summary["window_count"] == 1
     assert summary["reverse_complementary"] is False
     assert runtime.scored_sequences == [sequence]
 
@@ -289,7 +274,7 @@ def test_predict_emits_only_non_sensitive_stage_timings(tmp_path, monkeypatch, c
         "job_id": job_id,
         "mode": "predict",
         "model_version": "test",
-        "billed_bases": 500,
+        "billed_bases": 100,
         "input_sha256": "a" * 64,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "artifacts_expires_at": None,

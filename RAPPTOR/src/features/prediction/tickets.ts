@@ -260,14 +260,15 @@ export async function releaseGenomeScanQuota(database: D1Database, userId: strin
 
 export async function consumePredictionTicket(
   database: D1Database,
-  input: { ticket: string; modelVersion: string; bases: number },
+  input: { ticket: string; modelVersion: string; bases: number; mode: PredictionTaskMode },
   now = new Date(),
 ) {
-  if (!input.ticket || !input.modelVersion || !Number.isSafeInteger(input.bases) || input.bases <= 0) return false;
+  if (!input.ticket || !input.modelVersion || (input.mode !== 'predict' && input.mode !== 'genome_scan')
+    || !Number.isSafeInteger(input.bases) || input.bases <= 0) return false;
   const result = await database.prepare(`UPDATE prediction_tickets SET used_at = ?
-    WHERE ticket_hash = ? AND scope = 'prediction' AND model_version = ?
+    WHERE ticket_hash = ? AND scope = 'prediction' AND model_version = ? AND task_kind = ?
       AND used_at IS NULL AND expires_at > ? AND max_bases >= ?`)
-    .bind(now.toISOString(), await sha256(input.ticket), input.modelVersion, now.toISOString(), input.bases)
+    .bind(now.toISOString(), await sha256(input.ticket), input.modelVersion, input.mode, now.toISOString(), input.bases)
     .run();
   return changedRows(result) === 1;
 }

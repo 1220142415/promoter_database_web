@@ -136,15 +136,37 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
     if (!entry) return;
     let cancelled = false;
     let timer: number | undefined;
+    let finished = false;
+    let loading = false;
+    let resumeAfterLoad = false;
     const pollingStartedAt = Date.now();
+    const schedule = (mode: PredictionHistoryEntry['mode'], failed = false) => {
+      if (!cancelled && !finished && !document.hidden) {
+        timer = window.setTimeout(load, predictionPollDelay(mode, Date.now() - pollingStartedAt, failed));
+      }
+    };
     const load = async () => {
+      timer = undefined;
+      if (cancelled || finished || loading || document.hidden) return;
+      loading = true;
       try {
         const response = await fetch(`/api/predictions/jobs/${entry.jobId}`, { headers: { 'X-Job-Token': entry.token }, cache: 'no-store' });
-        if (!response.ok) throw new Error('This prediction is unavailable or its temporary files have expired.');
+        if (!response.ok) {
+          if (!cancelled) {
+            setMessage('This prediction is unavailable or its temporary files have expired.');
+            if (response.status === 502 || response.status === 503) schedule(entry.mode, true);
+            else finished = true;
+          }
+          return;
+        }
         const next = await response.json() as JobState;
         if (next.status === 'succeeded') {
           const session = await fetch(`/api/predictions/jobs/${entry.jobId}/session`, { method: 'POST', headers: { 'X-Job-Token': entry.token } });
-          if (!session.ok) throw new Error('Task access is invalid or has expired. Reopen a valid protected task link.');
+          if (!session.ok) {
+            finished = true;
+            if (!cancelled) setMessage('Task access is invalid or has expired. Reopen a valid protected task link.');
+            return;
+          }
         }
         if (cancelled) return;
         setJob(next);
@@ -153,17 +175,37 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
         localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), updated)));
         sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(updated));
         if (next.status === 'queued' || next.status === 'running' || next.status === 'unknown') {
-          timer = window.setTimeout(load, predictionPollDelay(updated.mode, Date.now() - pollingStartedAt));
-        }
+          schedule(updated.mode);
+        } else finished = true;
       } catch (cause) {
         if (!cancelled) {
           setMessage(cause instanceof Error ? cause.message : 'Prediction status could not be loaded.');
-          timer = window.setTimeout(load, predictionPollDelay(entry.mode, Date.now() - pollingStartedAt, true));
+          schedule(entry.mode, true);
+        }
+      } finally {
+        loading = false;
+        if (resumeAfterLoad && !cancelled && !finished && !document.hidden) {
+          resumeAfterLoad = false;
+          void load();
         }
       }
     };
+    const visibilityChanged = () => {
+      if (document.hidden) {
+        if (timer !== undefined) window.clearTimeout(timer);
+        timer = undefined;
+      } else if (!finished) {
+        if (loading) resumeAfterLoad = true;
+        else void load();
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityChanged);
     void load();
-    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', visibilityChanged);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [entry]);
 
   const artifacts = useMemo(() => job?.result?.artifacts || [], [job?.result?.artifacts]);

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     if (Number.isFinite(contentLength) && contentLength > MAX_CONSUME_REQUEST_BYTES) {
       return Response.json({ allowed: false }, { status: 413 });
     }
-    let body: { ticket?: unknown; modelVersion?: unknown; bases?: unknown; referenceAccession?: unknown };
+    let body: { ticket?: unknown; modelVersion?: unknown; bases?: unknown; mode?: unknown; referenceAccession?: unknown };
     try {
       const raw = await request.text();
       if (new TextEncoder().encode(raw).byteLength > MAX_CONSUME_REQUEST_BYTES) {
@@ -34,7 +34,8 @@ export async function POST(request: Request) {
     } catch {
       return Response.json({ allowed: false }, { status: 400 });
     }
-    if (typeof body.ticket !== 'string' || typeof body.modelVersion !== 'string' || typeof body.bases !== 'number') {
+    if (typeof body.ticket !== 'string' || typeof body.modelVersion !== 'string' || typeof body.bases !== 'number'
+      || (body.mode !== 'predict' && body.mode !== 'genome_scan')) {
       return Response.json({ allowed: false }, { status: 400 });
     }
     if (body.referenceAccession !== null && body.referenceAccession !== undefined
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
       ticket: body.ticket,
       modelVersion: body.modelVersion,
       bases: body.bases,
+      mode: body.mode,
     });
     return Response.json({ allowed, ...(allowed && referenceSource ? { referenceSource } : {}) }, {
       headers: { 'Cache-Control': 'no-store' },

@@ -70,20 +70,15 @@ describe('prototype prediction workbench', () => {
     expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled();
   });
 
-  it('retains the real short input after reference failure and retries without submitting a task', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 502 }))
-      .mockResolvedValueOnce(new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`));
+  it('does not download the complete reference for the 100 bp example', async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('reference could not be loaded');
-    const original = (screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value;
-    expect(original).toContain('NC_000913.3:100001-100100');
-    await user.click(screen.getByRole('button', { name: 'Retry reference download' }));
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-    expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue(original);
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(Array(2).fill('/api/prediction-reference/GCF_000005845.2'));
+    expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('NC_000913.3:100001-100100');
+    expect(screen.getByText('Only the accession is submitted; the prediction service reuses its cached CGR.')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -265,7 +260,7 @@ describe('prototype prediction workbench', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it.each(['cached catalog', 'verified example', 'uploaded genome'] as const)('submits short input with a %s context', async (source) => {
+  it.each(['cached catalog', 'example accession', 'uploaded genome'] as const)('submits short input with a %s context', async (source) => {
     let jobRequest: Record<string, unknown> | null = null;
     let ticketRequest: Record<string, unknown> | null = null;
     const fasta = `>chromosome\n${'ACGT'.repeat(40)}\n`;
@@ -273,9 +268,6 @@ describe('prototype prediction workbench', () => {
       const url = String(input);
       if (url.startsWith('/api/genomes?')) {
         return Response.json({ items: [{ accession: 'GCF_000005845.1', organismName: 'E. coli', genomeSizeBp: 4_639_675, contigCount: 1 }] });
-      }
-      if (source === 'verified example' && url === `/api/prediction-reference/${REAL_PREDICTION_REFERENCE.accession}`) {
-        return new Response(fasta);
       }
       if (url === '/api/prediction-tickets') {
         ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -292,7 +284,7 @@ describe('prototype prediction workbench', () => {
     const user = userEvent.setup();
     const { container } = render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
 
-    if (source === 'verified example') {
+    if (source === 'example accession') {
       await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
     } else {
       await user.type(screen.getByLabelText('Raw DNA or FASTA'), 'ACGT'.repeat(25));
@@ -318,18 +310,18 @@ describe('prototype prediction workbench', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'a'.repeat(32)}`));
     expect(jobRequest).toMatchObject({
       mode: 'predict',
-      sequence: source === 'verified example' ? REAL_PREDICTION_REFERENCE.sample.sequence : 'ACGT'.repeat(25),
+      sequence: source === 'example accession' ? REAL_PREDICTION_REFERENCE.sample.sequence : 'ACGT'.repeat(25),
     });
     expect(jobRequest).not.toHaveProperty('genome_context');
-    if (source === 'cached catalog') {
-      expect(jobRequest).toHaveProperty('reference_accession', 'GCF_000005845.1');
+    if (source !== 'uploaded genome') {
+      expect(jobRequest).toHaveProperty('reference_accession', source === 'example accession' ? REAL_PREDICTION_REFERENCE.accession : 'GCF_000005845.1');
       expect(jobRequest).not.toHaveProperty('fasta');
       expect(fetchMock.mock.calls.every(([input]) => /^\/api\/(genomes\?|prediction-tickets$|predictions\/jobs$)/.test(String(input)))).toBe(true);
     } else {
       expect(jobRequest).toHaveProperty('fasta', fasta.trimEnd());
       expect(jobRequest).not.toHaveProperty('reference_accession');
     }
-    expect(ticketRequest).toMatchObject({ bases: source === 'cached catalog' ? 100 : 260, mode: 'predict' });
+    expect(ticketRequest).toMatchObject({ bases: source === 'uploaded genome' ? 260 : 100, mode: 'predict' });
     expect(jobRequest).not.toHaveProperty('score_cutoff');
     expect(jobRequest).not.toHaveProperty('stride');
     expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).toMatchObject({ cutoff: .72, strideBases: 37 });

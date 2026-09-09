@@ -19,7 +19,7 @@ vi.mock('@/features/prediction/reference-source', () => ({
 
 import { POST } from '@/app/api/internal/prediction-tickets/consume/route';
 
-function request(referenceAccession: string) {
+function request(referenceAccession: string, mode: 'predict' | 'genome_scan' = 'predict') {
   return new Request('https://rapptor.example.test/api/internal/prediction-tickets/consume', {
     method: 'POST',
     headers: { Authorization: 'Bearer shared-secret', 'Content-Type': 'application/json' },
@@ -27,6 +27,7 @@ function request(referenceAccession: string) {
       ticket: 'one-time-ticket',
       modelVersion: 'candidate-github-93cf',
       bases: 100,
+      mode,
       referenceAccession,
     }),
   });
@@ -54,6 +55,7 @@ describe('prediction ticket consumption', () => {
       ticket: 'one-time-ticket',
       modelVersion: 'candidate-github-93cf',
       bases: 100,
+      mode: 'predict',
     });
   });
 

@@ -276,7 +276,8 @@ export default function PrototypePredictionWorkbench({
   const usesExampleReference = (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession)
     || (contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = inferredMode === 'candidate' && contextKind === 'catalog'
-    && contextCatalog?.kind === 'catalog' && contextCatalog.accession !== REAL_PREDICTION_REFERENCE.accession;
+    && contextCatalog?.kind === 'catalog';
+  const needsExampleReference = usesExampleReference && !usesCachedCgr;
   const automaticPeaks = !preview && inferredMode !== 'candidate' && service.supportsPeakCalling
     && (strideBases === 1 || service.gff3RequiresStride1 === false);
   const cutoffUnavailable = !preview && inferredMode !== 'candidate' && !service.supportsScoreCutoff;
@@ -295,7 +296,7 @@ export default function PrototypePredictionWorkbench({
       ? Boolean(parsedInput && !inputError && !uploadedInput.loading)
       : Boolean(parsedInput && !inputError);
   const verificationVisible = !preview && !localTest && Boolean(service.siteKey) && inputReady && contextReady && parametersReady
-    && (!usesExampleReference || (!exampleLoading && !exampleError));
+    && (!needsExampleReference || (!exampleLoading && !exampleError));
   function clearGenomeContext() {
     setContextKind('catalog');
     setContextCatalog(null);
@@ -325,7 +326,7 @@ export default function PrototypePredictionWorkbench({
     setPrimaryKind('inline');
     setInlineInput(PROTOTYPE_CANDIDATE_EXAMPLE);
     clearGenomeContext();
-    if (!preview) { setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE); void prepareExampleReference(); }
+    if (!preview) setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
     setFormError(null);
   }
 
@@ -451,7 +452,7 @@ export default function PrototypePredictionWorkbench({
     }
     if (submissionBlock) { setFormError(submissionBlock); return; }
     if (!preview && !localTest && !turnstileToken) { setFormError('Complete human verification before submitting.'); return; }
-    if (!preview && usesExampleReference && (exampleLoading || exampleError)) { setFormError('Load and verify the example reference before submitting.'); return; }
+    if (!preview && needsExampleReference && (exampleLoading || exampleError)) { setFormError('Load and verify the example reference before submitting.'); return; }
     setSubmitting(true);
     setFormError(null);
     try {
@@ -593,7 +594,7 @@ export default function PrototypePredictionWorkbench({
     : null;
   const submitGuidance = submissionBlock
     ? { title: 'Prediction unavailable', detail: 'Your input is kept. Prediction can start once the site configuration is complete.' }
-    : usesExampleReference && exampleLoading
+    : needsExampleReference && exampleLoading
       ? { title: 'Verifying reference', detail: 'Wait for the reference download and checksum verification.' }
     : !inputReady
     ? { title: 'Prediction input required', detail: 'Add input in Step 1.' }
@@ -641,9 +642,9 @@ export default function PrototypePredictionWorkbench({
                 <div><button type="button" onClick={loadFocusedExample} disabled={exampleLoading}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample} disabled={exampleLoading}>Use E. coli K-12 genome example</button></div>
               </div>
               <p className={styles.localNote}>E. coli K-12 MG1655 · {REAL_PREDICTION_REFERENCE.accession} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp. The 100 bp example is {REAL_PREDICTION_REFERENCE.sequenceId}:100001–100100 (+), a reference-genome fragment.</p>
-              {usesExampleReference && exampleLoading ? <p role="status">Loading and verifying the complete reference genome…</p> : null}
-              {usesExampleReference && !exampleLoading && !exampleError && verifiedExample.current ? <p className={styles.localNote} role="status">Verified reference: {REAL_PREDICTION_REFERENCE.sequenceId} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp · SHA-256 {REAL_PREDICTION_REFERENCE.fastaSha256.slice(0, 12)}… · <a href={REAL_PREDICTION_REFERENCE.sourceUrl}>NCBI FASTA source</a></p> : null}
-              {usesExampleReference && exampleError ? <div role="alert"><p>{exampleError}</p><button type="button" onClick={() => void prepareExampleReference()}>Retry reference download</button></div> : null}
+              {needsExampleReference && exampleLoading ? <p role="status">Loading and verifying the complete reference genome…</p> : null}
+              {needsExampleReference && !exampleLoading && !exampleError && verifiedExample.current ? <p className={styles.localNote} role="status">Verified reference: {REAL_PREDICTION_REFERENCE.sequenceId} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp · SHA-256 {REAL_PREDICTION_REFERENCE.fastaSha256.slice(0, 12)}… · <a href={REAL_PREDICTION_REFERENCE.sourceUrl}>NCBI FASTA source</a></p> : null}
+              {needsExampleReference && exampleError ? <div role="alert"><p>{exampleError}</p><button type="button" onClick={() => void prepareExampleReference()}>Retry reference download</button></div> : null}
               <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
                 <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />{uploadedInput.file ? 'Replace FASTA' : 'Upload FASTA'}</button>
                 {uploadedInput.file ? <button type="button" aria-label="Remove uploaded FASTA" onClick={removePrimaryFile}>Remove</button> : null}
@@ -707,7 +708,7 @@ export default function PrototypePredictionWorkbench({
           </div> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
-            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (usesExampleReference && exampleLoading) || Boolean(submissionBlock) || (!preview && !localTest && !turnstileToken)}>{submitLabel}</button>
+            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (needsExampleReference && exampleLoading) || Boolean(submissionBlock) || (!preview && !localTest && !turnstileToken)}>{submitLabel}</button>
           </div>
         </form>
       </section>

@@ -183,9 +183,15 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
   useEffect(() => {
     let cancelled = false;
     let timeout: number | null = null;
+    let finished = false;
+    let loading = false;
+    let resumeAfterLoad = false;
     setError(null);
 
     const poll = async () => {
+      timeout = null;
+      if (cancelled || finished || loading || document.hidden) return;
+      loading = true;
       try {
         const nextJob = await predictionApi<PredictionJob>(`/api/predictions/${encodeURIComponent(jobId)}`);
         if (cancelled) return;
@@ -193,20 +199,40 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
         if (nextJob.state === 'succeeded') {
           const nextResult = await predictionApi<PredictionResult>(`/api/predictions/${encodeURIComponent(jobId)}/result`);
           if (!cancelled) setResult(nextResult);
+          finished = true;
           return;
         }
         if (nextJob.state === 'failed') {
           setError({ message: nextJob.error?.message || 'Prediction failed.', retryable: Boolean(nextJob.error?.retryable) });
+          finished = true;
           return;
         }
-        timeout = window.setTimeout(poll, 650);
+        if (!document.hidden) timeout = window.setTimeout(poll, 30_000);
       } catch (cause) {
+        finished = true;
         if (!cancelled) setError({ message: cause instanceof PredictionClientError ? cause.message : 'Prediction status could not be loaded.', retryable: cause instanceof PredictionClientError ? cause.retryable : true });
+      } finally {
+        loading = false;
+        if (resumeAfterLoad && !cancelled && !finished && !document.hidden) {
+          resumeAfterLoad = false;
+          void poll();
+        }
       }
     };
+    const visibilityChanged = () => {
+      if (document.hidden) {
+        if (timeout !== null) window.clearTimeout(timeout);
+        timeout = null;
+      } else if (!finished) {
+        if (loading) resumeAfterLoad = true;
+        else void poll();
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityChanged);
     void poll();
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', visibilityChanged);
       if (timeout !== null) window.clearTimeout(timeout);
     };
   }, [jobId, retryKey]);

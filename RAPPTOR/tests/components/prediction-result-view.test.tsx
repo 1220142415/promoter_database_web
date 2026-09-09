@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PredictionResultView, { predictionBrowserAssembly, resultTsv } from '@/features/prediction/components/prediction-result-view';
@@ -58,6 +58,7 @@ const result: PredictionResult = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   mocks.predictionApi.mockReset();
 });
 
@@ -87,6 +88,26 @@ describe('prediction result view', () => {
     expect(resultTsv(result)).toContain('prediction_anchor_1based\tpromoter_start_1based\tpromoter_end_1based');
     expect(resultTsv(result)).toContain('\t+\t88\t9\t108');
     expect(resultTsv(result).toLowerCase()).not.toContain('tss');
+  });
+
+  it('polls queued legacy tasks every 30 seconds and pauses in hidden tabs', async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
+    mocks.predictionApi.mockResolvedValue({ ...job, state: 'queued', progress: 0 });
+
+    await act(async () => { render(<PredictionResultView jobId={job.jobId} />); });
+    expect(mocks.predictionApi).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+    expect(mocks.predictionApi).toHaveBeenCalledTimes(1);
+    hidden = true;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.predictionApi).toHaveBeenCalledTimes(1);
+    hidden = false;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(mocks.predictionApi).toHaveBeenCalledTimes(2);
+    hiddenSpy.mockRestore();
   });
 
   it('offers the genome browser only for complete, unexpired live assets', async () => {

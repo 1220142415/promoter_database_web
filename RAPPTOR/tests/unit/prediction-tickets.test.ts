@@ -101,10 +101,11 @@ class FakeStatement {
         changes = 1;
       }
     } else if (this.sql.startsWith('UPDATE prediction_tickets')) {
-      const [usedAt, ticketHash, modelVersion, now, bases] = this.bindings;
+      const [usedAt, ticketHash, modelVersion, mode, now, bases] = this.bindings;
       const row = this.database.rows.find((candidate) => (
         candidate.ticketHash === ticketHash
         && candidate.modelVersion === modelVersion
+        && candidate.mode === mode
         && candidate.usedAt === null
         && candidate.expiresAt > String(now)
         && candidate.maxBases >= Number(bases)
@@ -239,28 +240,33 @@ describe('one-time prediction tickets', () => {
       ticket: issued.ticket,
       modelVersion: settings.modelVersion,
       bases: 500,
+      mode: 'predict',
     }, now)).resolves.toBe(true);
     await expect(consumePredictionTicket(database as unknown as D1Database, {
       ticket: issued.ticket,
       modelVersion: settings.modelVersion,
       bases: 500,
+      mode: 'predict',
     }, now)).resolves.toBe(false);
   });
 
-  it('rejects expired, oversized, and wrong-model consumption', async () => {
+  it('rejects expired, oversized, wrong-model, and wrong-mode consumption', async () => {
     const database = new FakeD1();
     const now = new Date('2026-08-27T08:00:00.000Z');
     const issued = await issuePredictionTicket(database as unknown as D1Database, settings, {
       address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 500, mode: 'predict',
     }, now);
     await expect(consumePredictionTicket(database as unknown as D1Database, {
-      ticket: issued.ticket, modelVersion: 'wrong', bases: 500,
+      ticket: issued.ticket, modelVersion: 'wrong', bases: 500, mode: 'predict',
     }, now)).resolves.toBe(false);
     await expect(consumePredictionTicket(database as unknown as D1Database, {
-      ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 501,
+      ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 501, mode: 'predict',
     }, now)).resolves.toBe(false);
     await expect(consumePredictionTicket(database as unknown as D1Database, {
-      ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 500,
+      ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 500, mode: 'genome_scan',
+    }, now)).resolves.toBe(false);
+    await expect(consumePredictionTicket(database as unknown as D1Database, {
+      ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 500, mode: 'predict',
     }, new Date('2026-08-27T08:02:00.000Z'))).resolves.toBe(false);
   });
 

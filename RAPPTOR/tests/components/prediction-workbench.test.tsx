@@ -256,6 +256,38 @@ describe('live prediction result layout', () => {
     expect(polls).toBe(2);
   });
 
+  it.each([401, 403, 404, 410, 500])('stops polling after a non-retryable %i response', async (status) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => { render(<PredictionWorkbench initialJobId={saved.jobId} />); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses polling in a hidden tab and refreshes immediately when visible', async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      job_id: saved.jobId, status: 'running', mode: 'predict', progress: { stage: 'inference', percent: 45 },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => { render(<PredictionWorkbench initialJobId={saved.jobId} />); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    hidden = true;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    hidden = false;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    hiddenSpy.mockRestore();
+  });
+
   it('passes actual queue information from the job endpoint into the waiting UI', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
       job_id: saved.jobId, status: 'queued', mode: 'genome_scan',

@@ -54,10 +54,34 @@ These fields require an updated prediction worker image. Updating only the web
 app cannot add batch updates to an older worker; the web app displays any
 reported window count without inventing a scan percentage when totals are absent.
 
-The worker uses RQ `SpawnWorker` so each task starts in a fresh Python process.
+The genome-scan worker uses RQ `SpawnWorker` so each scan starts in a fresh Python process.
 Forking a worker after model preload can deadlock PyTorch CPU thread pools
-during the CGR transform. Model readiness is checked in the parent; each task
-loads its own model runtime. This adds model startup time per task.
+during the CGR transform. Model readiness is checked in the parent; each scan
+loads its own model runtime. This adds model startup time per scan.
+
+The dedicated `prediction:predict` worker is the exception: it uses RQ
+`SimpleWorker`, loads `ModelRuntime` once at container startup, and runs every
+short-sequence task in that same long-lived process. CUDA/PyTorch initialization
+therefore cannot be followed by a fork. `prediction:genome_scan` continues to
+use `SpawnWorker` and keeps its per-task process isolation. If the persistent
+predict process stops advancing, its watchdog first stages the normal safe
+failure metadata and then exits the container with a failure status; Docker's
+existing `restart: unless-stopped` policy starts a clean worker and reloads the
+model.
+
+Catalog CGRs retain their existing locked, SHA-256-verified disk cache. The API
+validates only the manifest and PNG checksum before enqueueing; it never creates
+a tensor. The persistent predict worker keeps at most 128 tensors in a process
+LRU keyed by accession, CGR version, PNG SHA-256, path, and device. A changed
+manifest or PNG hash therefore misses automatically, while repeated work for
+the same immutable entry avoids disk decoding and host/device transfer.
+
+Each short prediction writes one JSON timing line to worker stdout with
+`queue_wait_ms`, `model_load_ms`, `cgr_load_ms`, `inference_ms`, `output_ms`,
+`total_ms`, and `cgr_cache` (`memory_hit`, `disk_hit`, or `miss`). The worker
+readiness line separately reports the one-time startup `model_load_ms`. Neither
+line contains sequence data, tickets, access tokens, download credentials, or
+reference URLs.
 
 `genome_scan` accepts a configured-range `stride` and an optional
 `score_cutoff` in `[0, 1]`. JSON exports raw scores strictly above this cutoff;

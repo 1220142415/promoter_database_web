@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime, timezone
 from dataclasses import replace
 
 import numpy as np
@@ -60,6 +61,42 @@ def test_missing_cache_uses_only_trusted_worker_source(tmp_path, monkeypatch):
     tensor = cgr_cache.ensure_reference_cgr(ACCESSION, source)
     assert tensor.shape == (1, 128, 128)
     assert cgr_cache.ensure_reference_cgr(ACCESSION).shape == (1, 128, 128)
+
+
+def test_reference_tensor_is_reused_and_invalidated_by_png_hash(tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    directory = cache / ACCESSION / VERSION
+    directory.mkdir(parents=True)
+
+    def write_entry(color):
+        png = directory / "cgr.png"
+        Image.new("L", (128, 128), color=color).save(png)
+        (directory / "manifest.json").write_text(json.dumps({
+            "accession": ACCESSION,
+            "fastaSha256": "a" * 64,
+            "cgrPngSha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+            "resolution": 128,
+            "cgrVersion": VERSION,
+            "generatedAt": "2026-09-09T00:00:00Z",
+        }))
+
+    monkeypatch.setattr(cgr_cache, "SETTINGS", replace(
+        SETTINGS, cgr_cache_root=cache, cgr_version=VERSION,
+    ))
+    cgr_cache._cached_reference_tensor.cache_clear()
+    write_entry(32)
+    first, first_status = cgr_cache.get_reference_cgr_tensor(ACCESSION)
+    second, second_status = cgr_cache.get_reference_cgr_tensor(ACCESSION)
+    write_entry(224)
+    changed, changed_status = cgr_cache.get_reference_cgr_tensor(ACCESSION)
+
+    assert first_status == "disk_hit"
+    assert second_status == "memory_hit"
+    assert second is first
+    assert changed_status == "disk_hit"
+    assert changed is not first
+    assert not torch.equal(changed, first)
+    assert cgr_cache._cached_reference_tensor.cache_info().maxsize == 128
 
 
 def test_worker_source_rejects_non_https_url():
@@ -186,8 +223,10 @@ def test_reference_accession_completes_predict_without_fasta(tmp_path, monkeypat
     monkeypatch.setattr(jobs, "get_runtime", lambda: FakeRuntime())
     monkeypatch.setattr(
         jobs,
-        "ensure_reference_cgr",
-        lambda accession, source=None: load_reference_cgr(accession, root=cache, version=VERSION),
+        "get_reference_cgr_tensor",
+        lambda accession, source=None, device="cpu": (
+            load_reference_cgr(accession, root=cache, version=VERSION).to(device), "disk_hit",
+        ),
     )
     storage = JobStorage(tmp_path / "data")
     job_id = "1" * 32
@@ -227,3 +266,45 @@ def test_reference_accession_completes_predict_without_fasta(tmp_path, monkeypat
     fasta_summary = storage.read_json(fasta_job_id, "summary.json")
     assert fasta_summary["cgr_source"] == "uploaded_complete_genome_fasta"
     assert fasta_summary["genome_context_bases"] == 400
+
+
+def test_predict_emits_only_non_sensitive_stage_timings(tmp_path, monkeypatch, capsys):
+    data_root = tmp_path / "data"
+    monkeypatch.setattr(jobs, "SETTINGS", replace(
+        SETTINGS, data_root=data_root, job_callback_url=None, job_callback_secret=None,
+    ))
+    monkeypatch.setattr(jobs, "get_runtime", lambda: FakeRuntime())
+    storage = JobStorage(data_root)
+    job_id = "5" * 32
+    storage.create(job_id)
+    storage.write_json(job_id, "request.json", {
+        "mode": "predict",
+        "sequence": "A" * 100,
+        "genome_context": "ACGT" * 100,
+        "cgr_source": "complete_genome_sequence",
+        "batch_size": 1,
+        "reverse_complementary": True,
+    })
+    storage.write_json(job_id, "submission.json", {
+        "job_id": job_id,
+        "mode": "predict",
+        "model_version": "test",
+        "billed_bases": 500,
+        "input_sha256": "a" * 64,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "artifacts_expires_at": None,
+    })
+
+    jobs.process_job(job_id)
+
+    timing = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert set(timing) == {
+        "event", "queue_wait_ms", "model_load_ms", "cgr_load_ms",
+        "inference_ms", "output_ms", "total_ms", "cgr_cache",
+    }
+    assert timing["event"] == "prediction_timing"
+    assert timing["cgr_cache"] == "miss"
+    assert all(timing[field] >= 0 for field in (
+        "queue_wait_ms", "model_load_ms", "cgr_load_ms", "inference_ms", "output_ms", "total_ms",
+    ))
+    assert "sequence" not in timing and "ticket" not in timing and "token" not in timing

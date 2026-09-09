@@ -18,7 +18,7 @@ from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegist
 
 from .config import SETTINGS
 from .callbacks import persist_job_event
-from .cgr_cache import ReferenceCgrNotFound, load_reference_cgr, normalize_reference_source
+from .cgr_cache import ReferenceCgrNotFound, normalize_reference_source, validate_reference_cgr
 from .jobs import process_job
 from .metrics import cpu_history, latest_cpu_sample, sample_cpu_loop, stop_sampler
 from .queueing import get_queue, get_redis_connection
@@ -447,7 +447,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
 
     if payload.reference_accession is not None:
         try:
-            load_reference_cgr(payload.reference_accession)
+            validate_reference_cgr(payload.reference_accession)
         except ReferenceCgrNotFound:
             try:
                 request_payload["reference_source"] = normalize_reference_source(

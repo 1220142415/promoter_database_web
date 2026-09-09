@@ -3,6 +3,7 @@ from rq import Queue
 
 from prediction_service.jobs import _failed_progress
 from prediction_service.watchdog import health_failure, remove_legacy_timeouts
+from prediction_service import jobs, watchdog
 
 
 def test_live_process_with_recent_progress_is_healthy():
@@ -46,3 +47,23 @@ def test_failure_keeps_last_valid_progress_below_completion():
         "stage": "scanning", "percent": 42.5, "windows": 100,
     }
     assert _failed_progress({"stage": "complete", "percent": 100.0})["percent"] == 99.9
+
+
+def test_persistent_worker_watchdog_records_failure_then_exits_container(monkeypatch):
+    job = type("Job", (), {"id": "a" * 32, "meta": {}})()
+    stopped = type("Stop", (), {"is_set": lambda self: False, "wait": lambda self, _: setattr(self, "is_set", lambda: True)})()
+    exits = []
+    failures = []
+    monkeypatch.setattr(watchdog, "StartedJobRegistry", lambda **kwargs: type("Registry", (), {"get_job_ids": lambda self: [job.id]})())
+    monkeypatch.setattr(watchdog.Job, "fetch_many", lambda ids, connection: [job])
+    monkeypatch.setattr(watchdog, "health_failure", lambda *args, **kwargs: ("JOB_PROGRESS_STALLED", "stalled"))
+    monkeypatch.setattr(jobs, "mark_job_failed_externally", lambda current, code, message: failures.append((current.id, code, message)))
+    connection = type("Connection", (), {"exists": lambda self, key: True})()
+
+    watchdog.watch_jobs(
+        connection, "prediction:predict", stopped,
+        exit_on_failure=True, exit_func=exits.append,
+    )
+
+    assert failures == [(job.id, "JOB_PROGRESS_STALLED", "stalled")]
+    assert exits == [70]

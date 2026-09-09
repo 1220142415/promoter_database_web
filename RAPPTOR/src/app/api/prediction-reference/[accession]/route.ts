@@ -1,4 +1,4 @@
-import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
+import { predictionReferenceExample } from '@/features/prediction/reference-example';
 import { loadPredictionReference } from '@/features/prediction/reference-source';
 
 export const runtime = 'nodejs';
@@ -7,17 +7,18 @@ type RouteContext = { params: Promise<{ accession: string }> };
 
 async function serve(context: RouteContext, headOnly: boolean) {
   const { accession } = await context.params;
-  if (accession !== REAL_PREDICTION_REFERENCE.accession) return Response.json({ error: 'Unknown prediction reference.' }, { status: 404 });
+  const reference = predictionReferenceExample(accession);
+  if (!reference) return Response.json({ error: 'Unknown prediction reference.' }, { status: 404 });
   try {
-    const fasta = await loadPredictionReference();
+    const fasta = await loadPredictionReference(accession);
     return new Response(headOnly ? null : fasta, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Content-Length': String(new TextEncoder().encode(fasta).byteLength),
-        'Content-Disposition': `inline; filename="${REAL_PREDICTION_REFERENCE.fileName}"`,
+        'Content-Disposition': `inline; filename="${reference.fileName}"`,
         'Cache-Control': 'public, max-age=86400, immutable',
-        'ETag': `"${REAL_PREDICTION_REFERENCE.fastaSha256}"`,
-        'X-Reference-SHA256': REAL_PREDICTION_REFERENCE.fastaSha256,
+        'ETag': `"${reference.fastaSha256}"`,
+        'X-Reference-SHA256': reference.fastaSha256,
         'X-Content-Type-Options': 'nosniff',
       },
     });

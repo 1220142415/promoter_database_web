@@ -1,11 +1,12 @@
 import 'server-only';
+import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { experimentalTssRepository } from '@/features/genome-browser/experimental-tss-repository';
 import { genomeCatalogRepository } from '@/features/genomes/repository';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
-import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from './reference-example';
+import { REAL_PREDICTION_REFERENCE, predictionReferenceExample, validateReferenceExample } from './reference-example';
 
 const ACCESSION = /^GCF_\d{9}\.\d+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -62,22 +63,22 @@ export async function resolvePredictionReferenceSource(accession: string) {
 }
 
 const MAX_FASTA_BYTES = 8 * 1024 * 1024;
-let pending: Promise<string> | undefined;
+const pending = new Map<string, Promise<string>>();
 
-async function loadReference(): Promise<string> {
+async function loadReference(reference: NonNullable<ReturnType<typeof predictionReferenceExample>>): Promise<string> {
   const localCache = process.env.NODE_ENV === 'development';
   const cacheDir = join(process.cwd(), '.data', 'prediction-examples');
-  const cacheFile = join(cacheDir, REAL_PREDICTION_REFERENCE.fileName);
+  const cacheFile = join(cacheDir, reference.fileName);
   if (localCache) {
     try {
       const text = await readFile(cacheFile, 'utf8');
-      await validateReferenceExample(text);
+      await validateReferenceExample(text, reference);
       return text;
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
     }
   }
-  const response = await fetch(REAL_PREDICTION_REFERENCE.sourceUrl, { cache: 'no-store', signal: AbortSignal.timeout(120_000) });
+  const response = await fetch(reference.sourceUrl, { cache: 'no-store', signal: AbortSignal.timeout(120_000) });
   if (!response.ok || !response.body) throw new Error('Prediction reference is unavailable.');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -90,9 +91,10 @@ async function loadReference(): Promise<string> {
     chunks.push(value);
   }
   const packed = Buffer.concat(chunks);
-  if (createHash('sha256').update(packed).digest('hex') !== REAL_PREDICTION_REFERENCE.sourceSha256) throw new Error('Reference source checksum mismatch.');
-  const text = packed.toString('utf8');
-  await validateReferenceExample(text);
+  if (createHash('sha256').update(packed).digest('hex') !== reference.sourceSha256) throw new Error('Reference source checksum mismatch.');
+  const text = ('compression' in reference && reference.compression === 'gzip'
+    ? gunzipSync(packed, { maxOutputLength: MAX_FASTA_BYTES }) : packed).toString('utf8');
+  await validateReferenceExample(text, reference);
   if (localCache) {
     await mkdir(cacheDir, { recursive: true });
     await writeFile(cacheFile, text, 'utf8');
@@ -100,7 +102,13 @@ async function loadReference(): Promise<string> {
   return text;
 }
 
-export function loadPredictionReference() {
-  pending ??= loadReference().finally(() => { pending = undefined; });
-  return pending;
+export function loadPredictionReference(accession = REAL_PREDICTION_REFERENCE.accession) {
+  const reference = predictionReferenceExample(accession);
+  if (!reference) return Promise.reject(new Error('Unknown prediction reference.'));
+  let download = pending.get(accession);
+  if (!download) {
+    download = loadReference(reference).finally(() => { pending.delete(accession); });
+    pending.set(accession, download);
+  }
+  return download;
 }

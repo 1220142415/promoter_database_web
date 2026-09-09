@@ -1,6 +1,12 @@
 import reference from './examples/ecoli-k12.json' with { type: 'json' };
+import uploadReference from './examples/ecoli-k12-upload.json' with { type: 'json' };
 
 export const REAL_PREDICTION_REFERENCE = reference;
+export const UPLOAD_PREDICTION_REFERENCE = uploadReference;
+
+export function predictionReferenceExample(accession: string) {
+  return [reference, uploadReference].find((example) => example.accession === accession);
+}
 export const REAL_CANDIDATE_FASTA = `>${reference.sequenceId}:${reference.sample.start}-${reference.sample.end}:+\n${reference.sample.sequence}`;
 export const REAL_GENOME_CONTEXT = {
   kind: 'catalog' as const,

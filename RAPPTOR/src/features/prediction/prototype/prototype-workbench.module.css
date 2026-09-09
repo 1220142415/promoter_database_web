@@ -125,9 +125,11 @@
 .primaryFileAction button { min-height: 38px; display: inline-flex; align-items: center; gap: 6px; border-color: #b9d9d2; background: var(--teal-soft); font-size: 11px; }
 .primaryFileAction button:hover { background: #e4f4f0; }
 .fileMeta { min-width: 0; overflow-wrap: anywhere; }
-.contextSources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
-.contextSources > .catalogSource { border-left: 0; padding-left: 0; }
-.contextUploadSource { border-left: 1px solid var(--line); padding-left: 24px; }
+.contextKindSwitch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.contextKindSwitch button { min-height: 42px; border: 1px solid var(--line); border-radius: 7px; background: #f8faf9; color: var(--muted); font-size: 11px; font-weight: 750; cursor: pointer; }
+.contextKindSwitch button[aria-pressed="true"] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-dark); }
+.contextSourcePanel { margin-top: 16px; }
+.contextSourcePanel .catalogSource, .contextSourcePanel .contextUploadSource { border-left: 0; padding-left: 0; }
 .contextStatus { min-height: 44px; margin: 16px 0 0; border: 1px solid var(--line); border-radius: 7px; padding: 12px 14px; background: #f8faf9; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .contextStatus.valid { border-color: #b9d9d2; background: var(--teal-soft); color: #17653d; }
 .catalogPanel { min-height: 118px; }
@@ -179,9 +181,6 @@
 
 @media (max-width: 900px) {
   .parameterGrid { grid-template-columns: 1fr; }
-  .contextSources { grid-template-columns: 1fr; }
-  .catalogSource, .contextUploadSource { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
-  .contextSources > .catalogSource { border-top: 0; padding-top: 0; }
   .summary { grid-template-columns: 1fr; }
 }
 
@@ -197,6 +196,7 @@
   .fileAction { align-items: stretch; flex-direction: column; }
   .primaryFileAction { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
   .primaryFileAction .fileMeta { flex-basis: 100%; }
+  .contextKindSwitch { grid-template-columns: 1fr; }
   .searchRow { grid-template-columns: 1fr; }
   .selection { align-items: stretch; flex-direction: column; }
   .expectedContextPrompt { align-items: stretch; flex-direction: column; }

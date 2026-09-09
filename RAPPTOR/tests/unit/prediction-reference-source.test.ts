@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
+import * as examples from '@/features/prediction/reference-example';
 
 const repositories = vi.hoisted(() => ({
   getByAccession: vi.fn(),
@@ -100,6 +103,27 @@ describe('prediction reference source', () => {
 });
 
 describe('bounded reference download', () => {
+  it.each([examples.REAL_PREDICTION_REFERENCE, examples.UPLOAD_PREDICTION_REFERENCE])('validates the distinct source for $accession', async (reference) => {
+    const sequence = reference.sample.sequence;
+    const fasta = `>${reference.sequenceId}\n${sequence}\n`;
+    const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
+    const packed = 'compression' in reference ? gzipSync(fasta) : Buffer.from(fasta);
+    const expected = {
+      ...reference, length: 100, sourceSha256: hash(packed), fastaSha256: hash(fasta), sequenceSha256: hash(sequence),
+      sample: { ...reference.sample, start: 1, end: 100 },
+    };
+    vi.spyOn(examples, 'predictionReferenceExample').mockReturnValue(expected);
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array(packed)));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(loadPredictionReference(reference.accession)).resolves.toBe(fasta);
+    expect(fetchMock).toHaveBeenCalledWith(reference.sourceUrl, expect.any(Object));
+  });
+  it('never fetches arbitrary accessions', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(loadPredictionReference('GCF_000000001.1')).rejects.toThrow('Unknown prediction reference');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('propagates network failure', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
     await expect(loadPredictionReference()).rejects.toThrow('unavailable');

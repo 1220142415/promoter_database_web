@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   consumePredictionTicket,
+  claimPredictionReferenceDownload,
   beijingQuotaDay,
   issuePredictionTicket,
   PredictionTicketConfigurationError,
@@ -24,6 +25,7 @@ interface TicketRow {
   issuedAt: string;
   expiresAt: string;
   usedAt: string | null;
+  downloadStartedAt?: string;
 }
 
 class FakeStatement {
@@ -100,6 +102,13 @@ class FakeStatement {
         this.database.quotaRows.set(key, used - 1);
         changes = 1;
       }
+    } else if (this.sql.startsWith('UPDATE prediction_tickets SET reference_download_started_at')) {
+      const [startedAt, ticketHash, modelVersion, minimumExpiry] = this.bindings;
+      const row = this.database.rows.find((candidate) => candidate.ticketHash === ticketHash
+        && candidate.modelVersion === modelVersion && candidate.mode === 'predict'
+        && candidate.usedAt === null && candidate.downloadStartedAt === undefined
+        && candidate.expiresAt > String(minimumExpiry) && candidate.maxBases >= 100);
+      if (row) { row.downloadStartedAt = String(startedAt); changes = 1; }
     } else if (this.sql.startsWith('UPDATE prediction_tickets')) {
       const [usedAt, ticketHash, modelVersion, mode, now, bases] = this.bindings;
       const row = this.database.rows.find((candidate) => (
@@ -222,6 +231,32 @@ describe('prediction ticket settings', () => {
 });
 
 describe('one-time prediction tickets', () => {
+  it('claims one reference download without consuming the Docker ticket', async () => {
+    const fake = new FakeD1(); const database = fake as unknown as D1Database;
+    const now = new Date('2026-09-09T08:00:00.000Z');
+    const issued = await issuePredictionTicket(database, settings, { address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(true);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    expect(fake.rows[0].usedAt).toBeNull();
+    expect(await consumePredictionTicket(database, { ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now)).toBe(true);
+  });
+
+  it('blocks invalid, expired, almost-expired, consumed, wrong-model, wrong-mode and undersized download tickets', async () => {
+    const fake = new FakeD1(); const database = fake as unknown as D1Database;
+    const now = new Date('2026-09-09T08:00:00.000Z');
+    const issued = await issuePredictionTicket(database, settings, { address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now);
+    expect(await claimPredictionReferenceDownload(database, 'fake', settings.modelVersion, now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, 'wrong', now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, new Date(now.getTime() + 46_000))).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, new Date(now.getTime() + 100_000))).toBe(false);
+    fake.rows[0].mode = 'genome_scan';
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    fake.rows[0].mode = 'predict'; fake.rows[0].maxBases = 99;
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    fake.rows[0].maxBases = 100; fake.rows[0].usedAt = now.toISOString();
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+  });
+
   it('stores only hashes and can be consumed exactly once', async () => {
     const database = new FakeD1();
     const now = new Date('2026-08-27T08:00:00.000Z');

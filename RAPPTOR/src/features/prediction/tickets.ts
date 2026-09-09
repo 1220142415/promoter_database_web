@@ -273,6 +273,16 @@ export async function consumePredictionTicket(
   return changedRows(result) === 1;
 }
 
+export async function claimPredictionReferenceDownload(database: D1Database, ticket: string, modelVersion: string, now = new Date()) {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(ticket) || !modelVersion) return false;
+  // Require enough remaining TTL for a bounded download and Docker's final consumption.
+  const result = await database.prepare(`UPDATE prediction_tickets SET reference_download_started_at = ?
+    WHERE ticket_hash = ? AND scope = 'prediction' AND model_version = ? AND task_kind = 'predict'
+      AND used_at IS NULL AND reference_download_started_at IS NULL AND expires_at > ? AND max_bases >= 100`)
+    .bind(now.toISOString(), await sha256(ticket), modelVersion, new Date(now.getTime() + 45_000).toISOString()).run();
+  return changedRows(result) === 1;
+}
+
 export async function verifyTurnstile(token: string, address: string, secret: string) {
   const body = new URLSearchParams({ secret, response: token, remoteip: address });
   const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {

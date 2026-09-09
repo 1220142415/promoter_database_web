@@ -17,15 +17,6 @@ async function storedPrototypeRuns(page: Page) {
     .map(([key, value]) => ({ key, value })));
 }
 
-async function uploadCgrContext(page: Page, fileName = 'matching-context.fna') {
-  await page.locator('input[type="file"]').last().setInputFiles({
-    name: fileName,
-    mimeType: 'text/plain',
-    buffer: Buffer.from(`>matching_context\n${'ACGT'.repeat(40)}\n`),
-  });
-  await expect(page.getByText('Genome context ready: Matching genome FASTA.')).toBeVisible();
-}
-
 test('the 100 bp example keeps the focused result compact and metadata-only', async ({ page }) => {
   test.setTimeout(120_000);
   const predictionRequests = capturePredictionApiRequests(page);
@@ -99,8 +90,7 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
   await page.getByRole('button', { name: 'Use E. coli K-12 genome example' }).click();
   await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByText(/Escherichia coli str\. K-12/).first()).toBeVisible();
-  await expect(page.getByText('Genome context required')).toBeVisible();
-  await uploadCgrContext(page);
+  await expect(page.getByText('Complete reference genome for 100 bp scoring')).toHaveCount(0);
   await page.getByLabel('Strands').selectOption('forward');
   await page.getByLabel('Export cutoff').fill('0.80');
   await page.getByLabel('Stride').selectOption('10');
@@ -140,7 +130,7 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
     input: {
       kind: 'genome-scan',
       scanSource: { kind: 'catalog', accession: 'GCF_000005845.1', totalLength: 4_639_675 },
-      genomeContext: { kind: 'upload', fileName: 'matching-context.fna', totalLength: 160 },
+      genomeContext: { kind: 'catalog', accession: 'GCF_000005845.1', totalLength: 4_639_675 },
     },
   });
   expect(predictionRequests).toEqual([]);
@@ -154,8 +144,7 @@ test('a longer pasted sequence stays browser-local and reports missing reference
   await page.getByLabel('Raw DNA or FASTA').fill(originalInput);
   await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByLabel('Top results')).toHaveCount(0);
-  await expect(page.getByText('Genome context required')).toBeVisible();
-  await uploadCgrContext(page);
+  await expect(page.getByText('Complete reference genome for 100 bp scoring')).toHaveCount(0);
 
   await Promise.all([
     page.waitForURL(/\/predict\/demo\/prototype_/),
@@ -184,7 +173,6 @@ test('the scan browser remains usable at 768 px', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/predict/preview');
   await page.getByRole('button', { name: 'Use E. coli K-12 genome example' }).click();
-  await uploadCgrContext(page, 'tablet-context.fna');
   await Promise.all([
     page.waitForURL(/\/predict\/demo\/prototype_/),
     page.getByRole('button', { name: 'Preview illustrative result' }).click(),

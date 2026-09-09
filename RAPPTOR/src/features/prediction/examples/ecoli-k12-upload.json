@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "accession": "GCF_000005845.2",
+  "organism": "Escherichia coli str. K-12 substr. MG1655",
+  "sequenceId": "NC_000913.3",
+  "length": 4641652,
+  "fileName": "GCF_000005845.2_ASM584v2_genomic.fna",
+  "sourceUrl": "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz",
+  "compression": "gzip",
+  "sourceSha256": "a96d3cfa58c88d477013c768f90a11d2386d42a70d566abfb6d9013dcbd24255",
+  "fastaSha256": "53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4",
+  "sequenceSha256": "e999dceccb76562d40e49a10d9e6d4cf1c05d184f4f80b92bb32d4a2420c11d0",
+  "sample": {
+    "start": 100001,
+    "end": 100100,
+    "coordinateSystem": "1-based-inclusive",
+    "strand": "+",
+    "sequence": "CCGGTTGTACTTCATGAACAAAACGGTATTGCGGGCTTAACCAATAAATGGCTGGCGAAGATTGCCACCAAAGTGATGCAGGCGTTTCCAGGTGCTTTCC",
+    "sha256": "1f22c64bb7b35b5f9d9abb71824045d7b803e96c9a8061f01e00a72311d5b772",
+    "description": "A reference-genome fragment; no experimentally validated promoter label is assigned."
+  }
+}

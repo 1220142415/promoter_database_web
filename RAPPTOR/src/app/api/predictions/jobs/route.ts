@@ -3,7 +3,8 @@ import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
-import { readGenomeScansPerDay, releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
+import { claimPredictionReferenceDownload, readGenomeScansPerDay, readPredictionTicketIssueSettings, releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
+import { downloadNcbiFasta, ncbiAccession, ncbiErrorResponse, NcbiReferenceError } from '@/features/prediction/ncbi-reference';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 import { localPredictionTestEnabled, readLocalPredictionTestSettings } from '@/features/prediction/local-test';
 
@@ -35,19 +36,54 @@ export async function POST(request: Request) {
   if (Number.isFinite(contentLength) && contentLength > maxSubmissionBytes) {
     return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction request is too large.' } }, { status: 413 });
   }
-  const body = await request.arrayBuffer();
+  let body = await request.arrayBuffer();
   if (body.byteLength > maxSubmissionBytes) {
     return Response.json({ error: { code: 'INPUT_TOO_LARGE', message: 'Prediction request is too large.' } }, { status: 413 });
   }
-  let submission: { mode?: unknown; fasta?: unknown; reference_accession?: unknown };
+  let submission: Record<string, unknown>;
   try {
     submission = JSON.parse(new TextDecoder().decode(body)) as typeof submission;
+    if (!submission || typeof submission !== 'object' || Array.isArray(submission)) throw new Error();
   } catch {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction request is invalid.' } }, { status: 400 });
   }
   const mode = submission.mode;
   if (mode !== 'predict' && mode !== 'genome_scan') {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction task mode is invalid.' } }, { status: 400 });
+  }
+
+  if ('ncbi_accession' in submission) {
+    try {
+      const accession = ncbiAccession(submission.ncbi_accession);
+      const allowed = new Set(['mode', 'sequence', 'ncbi_accession', 'complete_genome', 'reverse_complementary']);
+      if (mode !== 'predict' || submission.complete_genome !== true
+        || typeof submission.sequence !== 'string' || !/^[ACGT]{100}$/i.test(submission.sequence)
+        || (submission.reverse_complementary !== undefined && typeof submission.reverse_complementary !== 'boolean')
+        || Object.keys(submission).some((key) => !allowed.has(key))) {
+        throw new NcbiReferenceError('INVALID_REQUEST', 'NCBI genome context requires a single 100 bp sequence and no other reference source.', 400);
+      }
+      const downloadDatabase = usageDatabase();
+      if (!downloadDatabase || localTest) throw new NcbiReferenceError('UNAVAILABLE', 'NCBI submission requires the deployed prediction ticket database.', 503);
+      let claimed: boolean;
+      try {
+        const settings = readPredictionTicketIssueSettings();
+        claimed = await claimPredictionReferenceDownload(downloadDatabase, authorization.slice(7), settings.modelVersion);
+      } catch {
+        throw new NcbiReferenceError('UNAVAILABLE', 'Reference download authorization is unavailable. Please contact the site administrator.', 503);
+      }
+      if (!claimed) {
+        throw new NcbiReferenceError('INVALID_TICKET', 'This ticket is invalid, too close to expiry, or already used for a download. Verify again and resubmit.', 401);
+      }
+      const signal = AbortSignal.any([request.signal, AbortSignal.timeout(40_000)]);
+      const fasta = await downloadNcbiFasta(accession, signal);
+      submission = {
+        mode: 'predict', sequence: submission.sequence, complete_genome: true, fasta,
+        ...(submission.reverse_complementary !== undefined ? { reverse_complementary: submission.reverse_complementary } : {}),
+      };
+      const encoded = new TextEncoder().encode(JSON.stringify(submission));
+      if (encoded.byteLength > maxSubmissionBytes) throw new NcbiReferenceError('INPUT_TOO_LARGE', 'The reference and prediction exceed the request size limit.', 413);
+      body = encoded.buffer;
+    } catch (cause) { return ncbiErrorResponse(cause); }
   }
 
   const now = new Date();

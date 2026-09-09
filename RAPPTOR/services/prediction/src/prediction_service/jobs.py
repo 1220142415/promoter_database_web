@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rq import get_current_job
+from rq.job import JobStatus
 
 from .callbacks import persist_job_event, report_job_event
 from .cgr_cache import get_reference_cgr_tensor
@@ -56,7 +57,8 @@ def _failed_progress(last_progress: dict | None) -> dict:
 
 def mark_job_failed_externally(job, code: str, message: str) -> None:
     """Record a watchdog failure before RQ stops an unresponsive child."""
-    ended_at = utc_now()
+    ended = datetime.now(timezone.utc)
+    ended_at = ended.isoformat()
     safe_error = {"code": code, "type": "JobStalledError", "message": message}
     last_progress = job.meta.get("progress")
     job.meta.update({
@@ -64,7 +66,24 @@ def mark_job_failed_externally(job, code: str, message: str) -> None:
         "error": safe_error,
         "progress": _failed_progress(last_progress),
     })
-    job.save_meta()
+    job.ended_at = ended
+    executions = job.get_executions()
+    execution = executions[0] if executions else None
+    exc_string = f"{code}: {message}"
+    with job.connection.pipeline() as pipeline:
+        job.set_status(JobStatus.FAILED, pipeline=pipeline)
+        job.save(pipeline=pipeline, include_result=False)
+        for current in executions:
+            current.delete(job=job, pipeline=pipeline)
+        job._handle_failure(
+            exc_string,
+            pipeline=pipeline,
+            worker_name=execution.worker_name if execution else "",
+            execution_id=execution.id if execution else None,
+            execution_started_at=execution.created_at if execution else None,
+            execution_ended_at=ended,
+        )
+        pipeline.execute()
     try:
         submission = JobStorage(SETTINGS.data_root).read_json(job.id, "submission.json")
         persist_job_event(_permanent_event(

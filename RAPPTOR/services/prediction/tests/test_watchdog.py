@@ -1,5 +1,8 @@
 import fakeredis
 from rq import Queue
+from rq.executions import Execution
+from rq.job import JobStatus
+from rq.registry import FailedJobRegistry, StartedJobRegistry
 
 from prediction_service.jobs import _failed_progress
 from prediction_service.watchdog import health_failure, remove_legacy_timeouts
@@ -47,6 +50,31 @@ def test_failure_keeps_last_valid_progress_below_completion():
         "stage": "scanning", "percent": 42.5, "windows": 100,
     }
     assert _failed_progress({"stage": "complete", "percent": 100.0})["percent"] == 99.9
+
+
+def test_external_failure_leaves_no_started_execution():
+    connection = fakeredis.FakeRedis()
+    queue = Queue("prediction:predict", connection=connection, is_async=True)
+    job = queue.enqueue(len, "ACGT", job_timeout=-1)
+    job.meta["progress"] = {"stage": "scanning", "percent": 10.0}
+    with connection.pipeline() as pipeline:
+        job.set_status(JobStatus.STARTED, pipeline=pipeline)
+        Execution.create(job, ttl=60, pipeline=pipeline, worker_name="predict-worker")
+        job.save(pipeline=pipeline)
+        pipeline.execute()
+
+    jobs.mark_job_failed_externally(job, "JOB_PROGRESS_STALLED", "stalled")
+
+    job.refresh()
+    assert job.get_status() == JobStatus.FAILED
+    assert job.meta["error"]["code"] == "JOB_PROGRESS_STALLED"
+    assert job.meta["progress"]["last_valid_progress"] == {
+        "stage": "scanning", "percent": 10.0,
+    }
+    assert job.get_executions() == []
+    assert job.id not in StartedJobRegistry(queue.name, connection).get_job_ids(cleanup=False)
+    assert job.id in FailedJobRegistry(queue.name, connection).get_job_ids(cleanup=False)
+    assert job.latest_result().exc_string == "JOB_PROGRESS_STALLED: stalled"
 
 
 def test_persistent_worker_watchdog_records_failure_then_exits_container(monkeypatch):

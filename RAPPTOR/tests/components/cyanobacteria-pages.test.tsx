@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import CyanobacteriaPage from '@/app/cyanobacteria/page';
 import CyanobacteriaGenomePage from '@/app/cyanobacteria/[genomeId]/page';
+import { cyanobacteriaAssetVersion } from '@/features/cyanobacteria/catalog';
 import continuousRelease from '@/generated/cyanobacteria-continuous-score-release.json';
 
 vi.mock('next/navigation', () => ({ notFound: vi.fn(() => { throw new Error('not found'); }) }));
@@ -30,7 +31,7 @@ describe('cyanobacteria collection pages', () => {
     expect(screen.getByRole('link', { name: 'PMID 22135468' })).toHaveAttribute('href', 'https://pubmed.ncbi.nlm.nih.gov/22135468/');
     const config = JSON.parse(screen.getByTestId('cyanobacteria-browser-config').textContent || '{}');
     expect(config.prediction.assemblyName).toBe('ASM970v1');
-    expect(config.prediction.assetBase).toMatch(/\/v-1f43a48b29419a4a95d2970931fdd787d496953a$/);
+    expect(config.prediction.assetBase).toBe(`/api/cyanobacteria-data/ASM970v1/v-${cyanobacteriaAssetVersion}`);
     expect(config.experimental.studies[0].studyId).toBe('2011_22135468_GCF_000009705.1');
     for (const [key, strand] of [['promoterScoresPlus', 'plus'], ['promoterScoresMinus', 'minus']]) {
       const url = `/api/cyanobacteria-data/ASM970v1/v-${continuousRelease.revision || continuousRelease.version}/promoter_scores.sigma1.${strand}.bw`;

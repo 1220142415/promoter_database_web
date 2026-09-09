@@ -367,6 +367,7 @@ export default function UnifiedJBrowseViewer({ prediction, experimental, onRegio
           ...predictionDownload('promoters', promoterTrackLabel, dataUrl),
           rapptorEvidenceType: 'prediction',
           rapptorStrandFeatureMode: 'promoter',
+          rapptorSequenceLengths: prediction?.predictionSequenceLengths,
           rapptorProcessing: {
             sigma: prediction?.predictionProcessing?.sigma ?? 1,
             distance: prediction?.predictionProcessing?.distance ?? 10,

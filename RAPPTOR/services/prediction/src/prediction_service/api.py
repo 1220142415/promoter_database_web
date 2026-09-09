@@ -344,6 +344,18 @@ def current_model():
                     "configurable_cutoff": True,
                     "operator": ">",
                     "filename": "peaks.gff3",
+                    "display_interval": {
+                        "coordinate_system": "1-based closed",
+                        "upstream_bp": 79,
+                        "anchor_bp": 1,
+                        "downstream_bp": 20,
+                        "boundary_rule": "single anchor marked unavailable",
+                    },
+                    "scoring_window": {
+                        "coordinate_system": "reference 0-based half-open",
+                        "upstream_bp": 80,
+                        "downstream_bp": 20,
+                    },
                 },
             },
             "bigwig_processing": {

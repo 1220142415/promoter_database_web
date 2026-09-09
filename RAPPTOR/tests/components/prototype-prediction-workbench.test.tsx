@@ -77,7 +77,7 @@ describe('prototype prediction workbench', () => {
     render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
     expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('NC_000913.3:100001-100100');
-    expect(screen.getByText('Only the accession is submitted; the prediction service reuses its cached CGR.')).toBeInTheDocument();
+    expect(screen.getByText('Only the exact accession version is submitted; the prediction service reuses a matching CGR cache or calculates it from that exact reference.')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });

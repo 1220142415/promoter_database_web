@@ -25,9 +25,18 @@ HF_ASSET_BASE = (
 )
 PREDICTION_WINDOW = {
     "lengthBp": 100,
-    "upstreamBp": 80,
+    "upstreamBp": 79,
+    "anchorBp": 1,
     "downstreamBp": 20,
     "anchorAttribute": "peak_position",
+    "coordinateSystem": "1-based closed",
+    "boundaryRule": "retain anchor point and mark display interval unavailable",
+    "scoringWindow": {
+        "lengthBp": 100,
+        "upstreamBp": 80,
+        "downstreamBp": 20,
+        "coordinateSystem": "1-based closed",
+    },
 }
 ASSETS = {
     "fasta": "reference.fa.gz",
@@ -364,7 +373,19 @@ def read_peak_records(
     return records, counts, above_threshold
 
 
-def read_final_peak_set(path: Path, sequence_lengths: dict[str, int]) -> tuple[set[tuple[str, int, str, float]], Counter]:
+def prediction_display_interval(anchor: int, strand: str, sequence_length: int) -> tuple[int, int, bool]:
+    start = anchor - (PREDICTION_WINDOW["upstreamBp"] if strand == "+" else PREDICTION_WINDOW["downstreamBp"])
+    end = anchor + (PREDICTION_WINDOW["downstreamBp"] if strand == "+" else PREDICTION_WINDOW["upstreamBp"])
+    available = start >= 1 and end <= sequence_length
+    return (start, end, True) if available else (anchor, anchor, False)
+
+
+def read_final_peak_set(
+    path: Path,
+    sequence_lengths: dict[str, int],
+    *,
+    allow_legacy_display: bool = False,
+) -> tuple[set[tuple[str, int, str, float]], Counter]:
     values: set[tuple[str, int, str, float]] = set()
     counts: Counter = Counter()
     with path.open(encoding="utf-8") as handle:
@@ -380,18 +401,24 @@ def read_final_peak_set(path: Path, sequence_lengths: dict[str, int]) -> tuple[s
                 anchor = int(attributes.get(PREDICTION_WINDOW["anchorAttribute"], ""))
             except ValueError as exc:
                 raise ReleaseValidationError(f"{path}:{line_number}: invalid promoter anchor") from exc
-            expected_start = anchor - (
-                PREDICTION_WINDOW["upstreamBp"] if strand == "+" else PREDICTION_WINDOW["downstreamBp"] - 1
+            expected_start, expected_end, interval_available = prediction_display_interval(
+                anchor, strand, sequence_lengths[sequence],
             )
-            expected_end = anchor + (
-                PREDICTION_WINDOW["downstreamBp"] - 1 if strand == "+" else PREDICTION_WINDOW["upstreamBp"]
+            legacy_interval = (
+                (anchor - 80, anchor + 19) if strand == "+" else (anchor - 19, anchor + 80)
             )
+            expected_attributes = (
+                attributes.get("upstream_length") == str(PREDICTION_WINDOW["upstreamBp"])
+                and attributes.get("downstream_length") == str(PREDICTION_WINDOW["downstreamBp"])
+                and attributes.get("display_interval") == ("available" if interval_available else "unavailable")
+            )
+            legacy = allow_legacy_display and (start, end) == legacy_interval \
+                and attributes.get("upstream_length") == "80" \
+                and attributes.get("downstream_length") == "20"
             if (
                 feature_type != "promoter" or strand not in {"+", "-"}
-                or end - start + 1 != PREDICTION_WINDOW["lengthBp"]
-                or (start, end) != (expected_start, expected_end)
-                or attributes.get("upstream_length") != str(PREDICTION_WINDOW["upstreamBp"])
-                or attributes.get("downstream_length") != str(PREDICTION_WINDOW["downstreamBp"])
+                or ((start, end) != (expected_start, expected_end) and not legacy)
+                or (not expected_attributes and not legacy)
             ):
                 raise ReleaseValidationError(f"{path}:{line_number}: invalid 100 bp promoter interval")
             if score is None or not 0.9 < score <= 1:
@@ -448,6 +475,50 @@ def split_circular_record(fields: list[str], start: int, end: int, part: str) ->
     marker = f"rapptor_circular_origin_part={part}"
     split_fields[8] = marker if split_fields[8] == "." else f"{split_fields[8]};{marker}"
     return "\t".join(split_fields)
+
+
+def normalize_prediction_display_gff(
+    source: Path,
+    destination: Path,
+    sequence_lengths: dict[str, int],
+) -> None:
+    """Move only the display box; retain the historical model window in attributes."""
+    with source.open(encoding="utf-8") as input_handle, destination.open("w", encoding="utf-8", newline="\n") as output_handle:
+        output_handle.write("##gff-version 3\n")
+        output_handle.write("##RAPPtor-promoter-display-interval length=100 upstream=79 anchor=1 downstream=20 coordinate_system=1-based_closed\n")
+        output_handle.write("##RAPPtor-scoring-window length=100 upstream=80 downstream=20 coordinate_system=1-based_closed\n")
+        for line_number, line in enumerate(input_handle, 1):
+            stripped = line.rstrip("\r\n")
+            if not stripped or stripped.startswith("#"):
+                continue
+            fields, _start, _end, _score = gff_record(source, line_number, stripped)
+            sequence, feature_type, strand = fields[0], fields[2], fields[6]
+            if feature_type != "promoter" or strand not in {"+", "-"} or sequence not in sequence_lengths:
+                raise ReleaseValidationError(f"{source}:{line_number}: invalid final promoter record")
+            attributes = parse_gff3_attributes(fields[8])
+            try:
+                anchor = int(attributes[PREDICTION_WINDOW["anchorAttribute"]])
+            except (KeyError, ValueError) as exc:
+                raise ReleaseValidationError(f"{source}:{line_number}: invalid promoter anchor") from exc
+            display_start, display_end, available = prediction_display_interval(
+                anchor, strand, sequence_lengths[sequence],
+            )
+            scoring_start, scoring_end = (
+                (anchor - 80, anchor + 19) if strand == "+" else (anchor - 19, anchor + 80)
+            )
+            fields[3], fields[4] = str(display_start), str(display_end)
+            attributes.update({
+                "upstream_length": "79",
+                "downstream_length": "20",
+                "display_coordinate_system": "1-based_closed",
+                "display_interval": "available" if available else "unavailable",
+                "sequence_length": str(sequence_lengths[sequence]),
+                "scoring_window_start_1based": str(scoring_start),
+                "scoring_window_end_1based": str(scoring_end),
+                "scoring_window_coordinate_system": "1-based_closed",
+            })
+            fields[8] = ";".join(f"{key}={gff3_attribute(value)}" for key, value in attributes.items())
+            output_handle.write("\t".join(fields) + "\n")
 
 
 def sorted_gff(source: Path, destination: Path, sequences: list[tuple[str, int]]) -> tuple[Counter, int]:
@@ -613,7 +684,9 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
     write_bigwig(destination / ASSETS["promoterScoresPlus"], sequences, records, "+")
     write_bigwig(destination / ASSETS["promoterScoresMinus"], sequences, records, "-")
 
-    final_set, final_strands = read_final_peak_set(prediction_source, dict(sequences))
+    final_set, final_strands = read_final_peak_set(
+        prediction_source, dict(sequences), allow_legacy_display=True,
+    )
     require_exact_final_subset(genome_id, expected_final, final_set)
     observed_final = len(final_set)
     if observed_final != config["predictedPromoterCount"] or dict(plus=final_strands["+"], minus=final_strands["-"]) != config["predictedPromoterStrands"]:
@@ -624,7 +697,12 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
         temporary_root = Path(temporary)
         sorted_predictions = temporary_root / "predicted-promoters.gff3"
         sorted_annotations = temporary_root / "genome-annotations.gff3"
-        prediction_counts, prediction_origin_splits = sorted_gff(prediction_source, sorted_predictions, sequences)
+        normalized_predictions = temporary_root / "display-normalized-predictions.gff3"
+        normalize_prediction_display_gff(prediction_source, normalized_predictions, dict(sequences))
+        prediction_counts, prediction_origin_splits = sorted_gff(normalized_predictions, sorted_predictions, sequences)
+        normalized_final_set, _ = read_final_peak_set(sorted_predictions, dict(sequences))
+        if normalized_final_set != final_set:
+            raise ReleaseValidationError(f"{genome_id}: display normalization changed peak identity")
         annotation_counts, annotation_origin_splits = sorted_gff(annotation_source, sorted_annotations, sequences)
         if prediction_origin_splits:
             raise ReleaseValidationError(f"{genome_id}: promoter intervals unexpectedly cross a circular origin")
@@ -669,6 +747,7 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
     metadata = genome_catalog_entry(genome_id, config, observed)
     metadata["coordinateSystems"] = {
         "sourceGff3": "1-based closed",
+        "predictionDisplayGff3": "1-based closed display intervals",
         "bigWig": "0-based half-open single-base intervals",
         "browserDisplay": "1-based coordinates",
     }
@@ -693,7 +772,7 @@ def build_genome(genome_id: str, config: dict, source_root: Path, reference_root
             "originalFileName": prediction_source.name,
             "releaseAsset": ASSETS["predictionSource"],
             "sha256": sha256_file(prediction_source),
-            "selection": "100 bp promoter intervals spanning 80 bp upstream and 20 bp downstream of each model-score peak > 0.9",
+            "selection": "Original source selects model-score peaks > 0.9 in 80/20 scoring windows; the browser asset uses 79 bp upstream, the anchor base, and 20 bp downstream while retaining each source scoring window in attributes",
             "featureType": "promoter",
             "anchorAttribute": PREDICTION_WINDOW["anchorAttribute"],
         },

@@ -615,7 +615,7 @@ export default function PrototypePredictionWorkbench({
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
   const contextPrivacyCopy = !preview
     ? usesCachedCgr
-      ? 'Only the accession is submitted; the prediction service reuses its cached CGR.'
+      ? 'Only the exact accession version is submitted; the prediction service reuses a matching CGR cache or calculates it from that exact reference.'
       : 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 

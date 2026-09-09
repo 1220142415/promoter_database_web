@@ -9,12 +9,13 @@ import { BaseTooltip } from '@jbrowse/core/ui';
 import { getContainingTrack, type Feature } from '@jbrowse/core/util';
 import SvgFeatureRenderer from '@jbrowse/plugin-svg/esm/SvgFeatureRenderer/SvgFeatureRenderer.js';
 import { configSchema as svgFeatureConfigSchema } from '@jbrowse/plugin-svg/esm/SvgFeatureRenderer/index.js';
+import { Box } from '@mui/material';
 import { observer } from 'mobx-react';
 import {
   DirectionalAnnotationRendering,
   featureCoordinates,
-  isPromoterPeak,
   predictionAnchorCoordinate,
+  predictionSequenceLength,
   promoterDisplayCoordinates,
   PromoterFeatureRendering,
   strandLabel,
@@ -36,6 +37,23 @@ type StrandTooltipProps = {
 
 type DisplayExtensionModel = StrandTooltipModel & {
   TooltipComponent: ComponentType<StrandTooltipProps>;
+};
+
+type FeatureWidgetModel = {
+  type: string;
+  featureData?: Record<string, unknown>;
+  trackId?: string;
+};
+
+type FeatureWidgetProps = {
+  model: FeatureWidgetModel;
+  session: {
+    view?: {
+      tracks?: Array<{
+        configuration?: { metadata?: unknown; trackId?: unknown };
+      }>;
+    };
+  };
 };
 
 function strandFeatureMode(model: object): StrandFeatureMode | undefined {
@@ -74,6 +92,115 @@ function isPromoterFeature(feature: Feature, mode?: StrandFeatureMode) {
   return mode === 'promoter' || type === 'promoter' || type === 'promoter_peak';
 }
 
+function featureFromData(data: Record<string, unknown>) {
+  return {
+    id: () => String(data.id || data.name || data.type || 'feature'),
+    get: (key: string) => data[key],
+  } as unknown as Feature;
+}
+
+function isPromoterFeatureData(data: Record<string, unknown> | undefined) {
+  if (!data) return false;
+  const type = String(data.type || '').toLowerCase();
+  return type === 'promoter' || type === 'promoter_peak';
+}
+
+function intervalText(refName: string, start0: number, end0: number) {
+  const start = start0 + 1;
+  const startLabel = Number.isFinite(start) ? start.toLocaleString('en-US') : '?';
+  const endLabel = Number.isFinite(end0) ? end0.toLocaleString('en-US') : '?';
+  return `${refName}:${startLabel === endLabel ? startLabel : `${startLabel}..${endLabel}`}`;
+}
+
+function widgetSequenceLength(model: FeatureWidgetModel, session: FeatureWidgetProps['session'], refName: string) {
+  const track = session.view?.tracks?.find((candidate) => {
+    if (candidate.configuration?.trackId === model.trackId) return true;
+    try { return getConf(candidate as never, 'trackId') === model.trackId; } catch { return false; }
+  });
+  if (!track) return undefined;
+  let metadata: unknown = track.configuration?.metadata;
+  if (!metadata) {
+    try { metadata = getConf(track as never, 'metadata'); } catch { return undefined; }
+  }
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+  const lengths = (metadata as { rapptorSequenceLengths?: unknown }).rapptorSequenceLengths;
+  if (!lengths || typeof lengths !== 'object' || Array.isArray(lengths)) return undefined;
+  const length = Number((lengths as Record<string, unknown>)[refName]);
+  return Number.isSafeInteger(length) && length >= 1 ? length : undefined;
+}
+
+function scoringWindow(data: Record<string, unknown>) {
+  const start0 = Number(data.scoring_window_start_0based);
+  const end0 = Number(data.scoring_window_end_0based);
+  if (Number.isSafeInteger(start0) && Number.isSafeInteger(end0) && start0 >= 0 && end0 > start0) {
+    return {
+      start: start0,
+      end: end0,
+      convention: `stored as 0-based half-open ${start0}..${end0}`,
+    };
+  }
+  const start1 = Number(data.scoring_window_start_1based);
+  const end1 = Number(data.scoring_window_end_1based);
+  if (Number.isSafeInteger(start1) && Number.isSafeInteger(end1) && start1 >= 1 && end1 >= start1) {
+    return {
+      start: start1 - 1,
+      end: end1,
+      convention: `stored as 1-based closed ${start1}..${end1}`,
+    };
+  }
+  return undefined;
+}
+
+function promoterFeatureDetails(
+  Original: ComponentType<FeatureWidgetProps>,
+  props: Record<string, unknown>,
+) {
+  const model = props.model as FeatureWidgetModel | undefined;
+  const data = model?.featureData;
+  if (model?.type !== 'BaseFeatureWidget' || !isPromoterFeatureData(data)) return Original;
+  const feature = featureFromData(data!);
+  const source = featureCoordinates(feature);
+  const anchor = predictionAnchorCoordinate(feature);
+  const refName = String(data!.refName || data!.seq_id || '');
+  const storedSequenceLength = Number(data!.sequence_length);
+  const scoring = scoringWindow(data!);
+
+  return function PromoterFeatureDetails(featureProps: FeatureWidgetProps) {
+    const sequenceLength = Number.isSafeInteger(storedSequenceLength) && storedSequenceLength >= 1
+      ? storedSequenceLength
+      : widgetSequenceLength(featureProps.model, featureProps.session, refName);
+    const display = promoterDisplayCoordinates(feature, sequenceLength);
+    const sourceDiffers = source.start !== display.start || source.end !== display.end;
+    const displayUnavailable = String(data!.display_interval || '').toLowerCase() === 'unavailable'
+      || display.end - display.start === 1;
+    return (
+      <>
+        <Box
+          data-testid="promoter-display-details"
+          role="note"
+          sx={{
+            border: '1px solid #b9d8d1',
+            borderRadius: 1,
+            bgcolor: '#edf7f4',
+            color: '#0f4f45',
+            fontSize: 13,
+            mb: 1,
+            px: 1.5,
+            py: 1,
+          }}
+        >
+          <strong>Prediction display interval:</strong> {intervalText(refName, display.start, display.end)}
+          {displayUnavailable ? ' (anchor only; a complete 100 bp display interval is unavailable at this contig boundary)' : ' (1-based closed; 79 bp upstream, anchor base, 20 bp downstream)'}
+          {anchor === undefined ? null : <><br /><strong>Prediction anchor:</strong> {refName}:{anchor.toLocaleString('en-US')}</>}
+          {sourceDiffers ? <><br /><strong>Source file interval:</strong> {intervalText(refName, source.start, source.end)} (preserved for file compatibility)</> : null}
+          {scoring ? <><br /><strong>Model scoring window:</strong> {intervalText(refName, scoring.start, scoring.end)} ({scoring.convention})</> : null}
+        </Box>
+        <Original {...featureProps} />
+      </>
+    );
+  };
+}
+
 export const StrandFeatureTooltip = observer(function StrandFeatureTooltip({ model, clientMouseCoord }: StrandTooltipProps) {
   const feature = model.featureUnderMouse;
   if (!feature) return null;
@@ -83,8 +210,8 @@ export const StrandFeatureTooltip = observer(function StrandFeatureTooltip({ mod
   // features when the source provides one.
   const score = featureScore(feature);
   const refName = String(feature.get('refName') || '');
-  const peak = isPromoterPeak(feature);
-  const coordinates = peak ? promoterDisplayCoordinates(feature) : featureCoordinates(feature);
+  const sequenceLength = predictionSequenceLength(model as object, String(feature.get('refName') || ''));
+  const coordinates = promoter ? promoterDisplayCoordinates(feature, sequenceLength) : featureCoordinates(feature);
   const anchor = promoter ? predictionAnchorCoordinate(feature) : undefined;
   return (
     <BaseTooltip clientPoint={{ x: clientMouseCoord[0] + 5, y: clientMouseCoord[1] }}>
@@ -146,5 +273,10 @@ export default class RapptorStrandFeaturePlugin extends Plugin {
       });
       return displayType;
     });
+
+    pluginManager.addToExtensionPoint<ComponentType<FeatureWidgetProps>>(
+      'Core-replaceWidget',
+      promoterFeatureDetails,
+    );
   }
 }

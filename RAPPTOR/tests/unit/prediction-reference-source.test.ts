@@ -18,6 +18,7 @@ import {
   resolvePredictionReferenceSource,
 } from '@/features/prediction/reference-source';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
+import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
 
 
 function match(accession: string, url: string, sha256: string) {
@@ -33,6 +34,18 @@ afterEach(() => {
 });
 
 describe('prediction reference source', () => {
+  it('resolves the built-in example by its exact .2 accession and compressed checksum', async () => {
+    repositories.getByAccession.mockResolvedValue(match(
+      'GCF_000005845.1', 'https://example.test/wrong-version.fna.gz', '1'.repeat(64),
+    ));
+    await expect(resolvePredictionReferenceSource('GCF_000005845.2')).resolves.toEqual({
+      url: REAL_PREDICTION_REFERENCE.sourceUrl,
+      sha256: REAL_PREDICTION_REFERENCE.compressedSha256,
+    });
+    expect(repositories.getByAccession).not.toHaveBeenCalled();
+    expect(repositories.resolveAsset).not.toHaveBeenCalled();
+  });
+
   it('returns the Worker-resolved HTTPS URL and checksum', () => {
     const accession = 'GCF_000005845.1';
     expect(referenceSourceFromMatch(

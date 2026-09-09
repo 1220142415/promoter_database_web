@@ -45,6 +45,12 @@ export function referenceSourceFromMatch(
 
 export async function resolvePredictionReferenceSource(accession: string) {
   if (!ACCESSION.test(accession)) return null;
+  if (accession === REAL_PREDICTION_REFERENCE.accession) {
+    return {
+      url: REAL_PREDICTION_REFERENCE.sourceUrl,
+      sha256: REAL_PREDICTION_REFERENCE.sourceSha256,
+    };
+  }
   const catalogSource = referenceSourceFromMatch(
     accession,
     await genomeCatalogRepository.getByAccession(accession),

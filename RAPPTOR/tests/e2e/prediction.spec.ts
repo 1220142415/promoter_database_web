@@ -93,7 +93,7 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
   await expect(page.getByText('Complete reference genome for 100 bp scoring')).toHaveCount(0);
   await page.getByLabel('Strands').selectOption('forward');
   await page.getByLabel('Export cutoff').fill('0.80');
-  await page.getByLabel('Stride').selectOption('10');
+  await page.getByLabel('Stride').fill('10');
   await expect(page.getByLabel('Top results')).toHaveCount(0);
 
   await Promise.all([

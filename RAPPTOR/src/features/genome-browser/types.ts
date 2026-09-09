@@ -62,6 +62,8 @@ export interface JBrowseAssemblyConfig {
     annotation?: string;
   };
   predictionProcessing?: JBrowsePredictionProcessing | null;
+  /** Reference lengths loaded from a completed prediction's FAI for legacy peak boundary handling. */
+  predictionSequenceLengths?: Record<string, number>;
   /** Smooth raw stride-1 score tracks with Gaussian sigma=1 and reflect edges. */
   smoothScoreTrack?: boolean;
   /** Existing BigWigs already smoothed with this sigma; never smooth them again. */

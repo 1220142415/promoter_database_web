@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { bpToPx, measureText, type Feature, type Region } from '@jbrowse/core/util';
+import { getConf } from '@jbrowse/core/configuration';
+import { bpToPx, getContainingTrack, measureText, type Feature, type Region } from '@jbrowse/core/util';
 import { observer } from 'mobx-react';
 
 // Color always encodes the biological strand.  Reversing a JBrowse view only
@@ -146,16 +147,44 @@ export function predictionAnchorCoordinate(feature: Feature) {
   return undefined;
 }
 
-/** Expand legacy one-base peaks into the same strand-aware 80/20 bp display used by new artifacts. */
-export function promoterDisplayCoordinates(feature: Feature) {
+/**
+ * Normalize RAPPTOR prediction display boxes around an explicit peak anchor.
+ * Source coordinates remain available on the feature; experimental point
+ * observations and promoter intervals without an explicit anchor are untouched.
+ */
+export function predictionSequenceLength(model: object | undefined, refName: string) {
+  if (!model || !refName) return undefined;
+  try {
+    const track = getContainingTrack(model);
+    const metadata = getConf(track, 'metadata') as { rapptorSequenceLengths?: unknown };
+    const lengths = metadata.rapptorSequenceLengths;
+    if (!lengths || typeof lengths !== 'object' || Array.isArray(lengths)) return undefined;
+    const length = Number((lengths as Record<string, unknown>)[refName]);
+    return Number.isSafeInteger(length) && length >= 1 ? length : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function promoterDisplayCoordinates(feature: Feature, knownSequenceLength?: number) {
   const coordinates = featureCoordinates(feature);
-  if (!isPromoterPeak(feature) || coordinates.end - coordinates.start !== 1) return coordinates;
-  const anchor = predictionAnchorCoordinate(feature);
+  if (String(feature.get('display_interval') || '').toLowerCase() === 'unavailable') return coordinates;
+  const explicitAnchor = explicitAnchorCoordinate(feature);
+  if (explicitAnchor === undefined) return coordinates;
+  if (!isFormalPromoter(feature) && !isPromoterPeak(feature)) return coordinates;
+  const anchor = explicitAnchor;
   const strand = normalizeStrand(feature.get('strand'));
   if (anchor === undefined || strand === 0) return coordinates;
-  return strand === 1
-    ? { start: anchor - 81, end: anchor + 19 }
-    : { start: anchor - 20, end: anchor + 80 };
+  const display = strand === 1
+    ? { start: anchor - 80, end: anchor + 20 }
+    : { start: anchor - 21, end: anchor + 79 };
+  const embeddedLength = Number(feature.get('sequence_length'));
+  const sequenceLength = typeof knownSequenceLength === 'number'
+    && Number.isSafeInteger(knownSequenceLength) && knownSequenceLength >= 1
+    ? knownSequenceLength
+    : Number.isSafeInteger(embeddedLength) && embeddedLength >= 1 ? embeddedLength : undefined;
+  const crossesRightBoundary = sequenceLength !== undefined && display.end > sequenceLength;
+  return display.start < 0 || crossesRightBoundary ? { start: anchor - 1, end: anchor } : display;
 }
 
 export function isRegionFeature(feature: Feature) {
@@ -359,7 +388,8 @@ function renderPromoterFeature(
   const color = strandColor(strand);
   const formal = isFormalPromoter(feature);
   const peak = isPromoterPeak(feature);
-  const displayCoordinates = peak ? promoterDisplayCoordinates(feature) : sourceCoordinates;
+  const sequenceLength = predictionSequenceLength(displayModel, String(feature.get('refName') || ''));
+  const displayCoordinates = formal || peak ? promoterDisplayCoordinates(feature, sequenceLength) : sourceCoordinates;
   const { start, end } = displayCoordinates;
   const interval = screenInterval(feature, region, bpPerPx, displayCoordinates);
   if (!interval.visible || !interval.width) return null;
@@ -418,7 +448,11 @@ function renderPromoterFeature(
       data-strand={strandLabel(strand)}
       data-screen-direction={direction}
     >
-      <title>{flagged ? 'Promoter prediction (100 bp); 80 bp upstream / 20 bp downstream' : 'Promoter prediction'}</title>
+      <title>{flagged
+        ? end - start === 1
+          ? 'Promoter prediction anchor; full 100 bp display interval unavailable at contig boundary'
+          : 'Promoter prediction display interval (100 bp): 79 bp upstream, anchor base, 20 bp downstream'
+        : 'Promoter prediction'}</title>
       {showBody ? <rect data-role="promoter-body" {...bodyRect} fill={color} fillOpacity={1} /> : null}
       {flagged && anchorVisible ? promoterFlag(anchorX!, top, direction, color, formal ? '80th-base' : 'predicted-peak') : null}
       {!flagged && arrowGeometry.placement

@@ -14,9 +14,21 @@ from rq import get_current_job
 from rq.job import JobStatus
 
 from .callbacks import persist_job_event, report_job_event
+from .cgr import load_cgr_tensor
 from .cgr_cache import get_reference_cgr_tensor
 from .config import SETTINGS
-from .formats import PEAK_CUTOFF, PEAK_DISTANCE, SMOOTHING_SIGMA, ScanArtifactWriter, peak_distance_samples, scan_output_formats
+from .formats import (
+    MODEL_DOWNSTREAM_LENGTH,
+    MODEL_UPSTREAM_LENGTH,
+    PEAK_CUTOFF,
+    PEAK_DISTANCE,
+    PROMOTER_DISPLAY_DOWNSTREAM_LENGTH,
+    PROMOTER_DISPLAY_UPSTREAM_LENGTH,
+    SMOOTHING_SIGMA,
+    ScanArtifactWriter,
+    peak_distance_samples,
+    scan_output_formats,
+)
 from .queue_eta import process_heartbeat_key, record_progress, save_completed_profile
 from .runtime import get_runtime, sha256_file
 from .scan_progress import ScanProgress, count_scan_windows
@@ -219,11 +231,12 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
     )
     _progress("preparing_cgr", 15.0)
     reference_accession = request.get("reference_accession")
+    uploaded_cgr = request["cgr_source"] == "uploaded_cgr_png"
     cgr_started = time.monotonic()
     if reference_accession is not None:
         context_bases = None
         cgr, cgr_cache = get_reference_cgr_tensor(
-            reference_accession, request.get("reference_source"), device=runtime.device,
+            reference_accession, device=runtime.device,
         )
     elif request.get("fasta") is not None:
         validated = validate_fasta(
@@ -233,7 +246,10 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         )
         context_bases = validated.total_bases
         context_fasta = storage.write_text(job_id, "genome_context.fasta", validated.to_fasta())
-        cgr = runtime.make_cgr(context_fasta, job_dir)
+        cgr = (
+            load_cgr_tensor(job_dir / "cgr.png", expected_size=128).to(runtime.device)
+            if uploaded_cgr else runtime.make_cgr(context_fasta, job_dir)
+        )
         cgr_cache = "miss"
     else:
         genome_context = validate_sequence(
@@ -245,7 +261,10 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         )
         context_bases = len(genome_context)
         context_fasta = storage.write_text(job_id, "genome_context.fasta", f">genome_context\n{genome_context}\n")
-        cgr = runtime.make_cgr(context_fasta, job_dir)
+        cgr = (
+            load_cgr_tensor(job_dir / "cgr.png", expected_size=128).to(runtime.device)
+            if uploaded_cgr else runtime.make_cgr(context_fasta, job_dir)
+        )
         cgr_cache = "miss"
     timings["cgr_load_ms"] = round((time.monotonic() - cgr_started) * 1000, 1)
     timings["cgr_cache"] = cgr_cache
@@ -318,8 +337,16 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
             "cutoff": PEAK_CUTOFF,
             "operator": ">",
             "window_length_bp": runtime.seq_length,
-            "upstream_bp": runtime.upstream_len,
-            "downstream_bp": runtime.seq_length - runtime.upstream_len,
+            "upstream_bp": PROMOTER_DISPLAY_UPSTREAM_LENGTH,
+            "anchor_bp": 1,
+            "downstream_bp": PROMOTER_DISPLAY_DOWNSTREAM_LENGTH,
+            "coordinate_system": "1-based closed",
+        },
+        "scoring_window": {
+            "window_length_bp": runtime.seq_length,
+            "upstream_bp": MODEL_UPSTREAM_LENGTH,
+            "downstream_bp": MODEL_DOWNSTREAM_LENGTH,
+            "coordinate_system": "reference 0-based half-open",
         },
         "peak_count": score_writer.peak_count,
         "completed_at": utc_now(),
@@ -433,7 +460,8 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
             "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
             "scores.gff3 contains Gaussian-smoothed scores; "
             "peaks.gff3 contains cutoff-filtered sampled peaks as strand-aware 100 bp "
-            "intervals spanning 80 bp upstream and 20 bp downstream"
+            "display intervals spanning 79 bp upstream, the anchor base, and 20 bp downstream; "
+            "the original 80/20 model scoring window remains recorded separately"
             if "gff3" in output_formats
             else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
         ),
@@ -452,13 +480,21 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                 "sample_distance": peak_distance_samples(stride),
                 "resolution_bp": stride,
                 "window_length_bp": runtime.seq_length,
-                "upstream_bp": runtime.upstream_len,
-                "downstream_bp": runtime.seq_length - runtime.upstream_len,
+                "upstream_bp": PROMOTER_DISPLAY_UPSTREAM_LENGTH,
+                "anchor_bp": 1,
+                "downstream_bp": PROMOTER_DISPLAY_DOWNSTREAM_LENGTH,
+                "coordinate_system": "1-based closed",
                 "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF,
                 "operator": ">",
             }
             if "gff3" in output_formats else None
         ),
+        "scoring_window": {
+            "window_length_bp": runtime.seq_length,
+            "upstream_bp": MODEL_UPSTREAM_LENGTH,
+            "downstream_bp": MODEL_DOWNSTREAM_LENGTH,
+            "coordinate_system": "reference 0-based half-open",
+        },
         "completed_at": utc_now(),
     }
     summary_path = _write_summary(storage, job_id, payload)

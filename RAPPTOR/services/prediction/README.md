@@ -25,15 +25,17 @@ context.
   same genome and jointly form its CGR.
 - `predict`: send exactly one 100 bp `sequence` plus exactly one CGR source: a catalog-backed
   `reference_accession`, the complete sequence in `genome_context`, or an
-  uploaded complete assembly in `fasta`.
+  uploaded complete assembly in `fasta`. Custom `genome_context`/`fasta`
+  requests may also include `cgr_png_base64`; that PNG is used directly after
+  validation instead of regenerating it.
 
-For a catalog accession, Docker first validates
-`/data/cgr-cache/<accession>/<cgr-version>/cgr.png`. On a miss, ticket
-consumption returns a Worker-resolved HTTPS FASTA URL and SHA-256. Docker
-downloads that trusted URL, verifies the bytes, generates the cache through
-`generate_cgr_from_fasta(..., resolution=128, raw_counts=False)`, and atomically
-publishes the PNG and manifest. The public job schema does not accept a URL,
-local path, CGR, or checksum from the browser.
+For a catalog accession, Docker validates
+`/data/cgr-cache/<accession>/<cgr-version>/cgr.png`. Docker never downloads a
+reference. A trusted Worker or synchronization program must query and populate
+the protected reference-cache API before submitting prediction work. A cache
+miss returns `REFERENCE_CGR_NOT_FOUND`; it never falls back to a URL from a job
+request or ticket response. The public job schema does not accept a URL, local
+path, CGR, or checksum from the browser.
 
 Completeness cannot be inferred reliably from sequence text alone. The API
 validates format, alphabet, ambiguity, byte size, and configured base limits,
@@ -83,6 +85,135 @@ readiness line separately reports the one-time startup `model_load_ms`. Neither
 line contains sequence data, tickets, access tokens, download credentials, or
 reference URLs.
 
+## Protected reference-cache API
+
+These endpoints use the existing Docker-side `RAPPTOR_TICKET_SERVICE_SECRET`,
+which is the same value stored by the Cloudflare Worker as
+`RAPPTOR_PREDICTION_SERVICE_SECRET`:
+
+```text
+Authorization: Bearer <service secret>
+```
+
+The secret is only for the Worker or a trusted synchronization program and must
+never be sent to a browser. Querying does not download, generate, enqueue a
+prediction, or load a CGR tensor.
+
+```http
+GET /v1/reference-cache/GCF_000005845.1
+Authorization: Bearer <service secret>
+```
+
+```json
+{
+  "accession": "GCF_000005845.1",
+  "status": "ready",
+  "cgr_version": "cgr-128-v1",
+  "source_sha256": "64 lowercase hexadecimal characters"
+}
+```
+
+`status` is `ready`, `missing`, `preparing`, or `invalid`. `ready` means the
+manifest fields, accession/version, resolution, PNG presence, and PNG SHA-256
+all passed validation. `source_sha256` can be `null` for missing or unreadable
+entries. `memory_hit` is intentionally absent because it only describes a real
+inference-process lookup.
+
+Up to 100 accessions can be queried at once:
+
+```http
+POST /v1/reference-cache/query
+Authorization: Bearer <service secret>
+Content-Type: application/json
+
+{"accessions":["GCF_000005845.1","GCF_000005845.2"]}
+```
+
+The response is `{"entries":[...]}` in request order. Accessions always include
+their version and must match `GCF_` plus nine digits, a dot, and a numeric
+version.
+
+Import a precomputed CGR with:
+
+```http
+POST /v1/reference-cache/GCF_000005845.1/imports
+Authorization: Bearer <service secret>
+Content-Type: image/png
+X-Source-SHA256: <SHA-256 of the source genome FASTA>
+X-CGR-SHA256: <SHA-256 of this PNG request body>
+X-CGR-Version: cgr-128-v1
+
+<128x128 PNG bytes>
+```
+
+Only `image/png` is accepted. `X-Source-SHA256` preserves source-genome
+provenance in the existing `fastaSha256` manifest field; `X-CGR-SHA256` verifies
+the exact uploaded bytes. Multipart, archives, URLs, local paths, and
+caller-selected destinations are not accepted.
+
+A new import returns HTTP 202 and:
+
+```json
+{
+  "import_id": "32 lowercase hexadecimal characters",
+  "accession": "GCF_000005845.1",
+  "status": "preparing",
+  "cgr_version": "cgr-128-v1",
+  "source_sha256": "...",
+  "cgr_sha256": "...",
+  "error": null
+}
+```
+
+Poll `GET /v1/reference-cache/imports/{import_id}` with the same Bearer secret.
+It returns `preparing`, `ready`, or `failed`; failures contain only a stable code
+and safe message. An already-ready identical import returns HTTP 200 `ready` and
+does no work. An active identical import returns HTTP 202 with its existing ID.
+The dedicated `prediction:reference-cache` worker checks the upload limit, both
+hashes, PNG format and 128×128 dimensions, and verifies it through
+`load_cgr_tensor` under the accession/version file lock. It publishes through a
+temporary directory and atomic rename. Existing valid cache content is not
+replaced after a failed import.
+
+Stable cache API errors are `UNAUTHORIZED`, `CACHE_SERVICE_UNAVAILABLE`,
+`INVALID_ACCESSION`, `INVALID_SOURCE_SHA256`, `INVALID_CGR_SHA256`,
+`CGR_VERSION_MISMATCH`,
+`INVALID_CONTENT_LENGTH`, `UNSUPPORTED_SOURCE_FORMAT`, `REFERENCE_UPLOAD_TOO_LARGE`,
+`REFERENCE_CGR_CHECKSUM_MISMATCH`, `REFERENCE_CGR_INVALID`,
+`REFERENCE_SOURCE_CONFLICT`, `REFERENCE_CGR_CONFLICT`,
+`REFERENCE_IMPORT_BUSY`, `REFERENCE_IMPORT_NOT_FOUND`, and
+`REFERENCE_IMPORT_FAILED`.
+
+After an import is `ready`, normal prediction continues to send only
+`reference_accession`; no import ID, hash, URL, or path is added to the browser
+job contract. Normal prediction still requires its one-time `Ticket` header.
+Ticket consumption still sends `mode`, actual billed `bases`, and
+`referenceAccession`, so the Worker must authorize the accession and task kind.
+A ready Docker cache does not authorize an accession and does not bypass Worker
+quota checks. The Worker/synchronizer needs the accession, current CGR version,
+source FASTA SHA-256, CGR PNG SHA-256, and PNG bytes only for the protected cache
+workflow; no new browser field is required for catalog predictions.
+
+For a custom genome, the existing JSON request can optionally carry the PNG:
+
+```json
+{
+  "mode": "predict",
+  "complete_genome": true,
+  "sequence": "<exactly 100 bp>",
+  "genome_context": "<complete genome sequence>",
+  "cgr_png_base64": "<base64 encoded 128x128 PNG>"
+}
+```
+
+`fasta` can be used instead of `genome_context`. The API validates and decodes
+the PNG once, stores only `cgr.png` plus its SHA-256 in the private job directory,
+and never returns it as an artifact. The input sequence/context and CGR expire
+together under `RAPPTOR_FILE_RETENTION_SECONDS` (24 hours by default). Omitting
+`cgr_png_base64` retains the original server-generated custom-CGR behavior for
+backward compatibility. Catalog requests must omit this field and use the
+protected cache import flow.
+
 `genome_scan` accepts a configured-range `stride` and an optional
 `score_cutoff` in `[0, 1]`. JSON exports raw scores strictly above this cutoff;
 `scores.gff3` exports Gaussian-smoothed scores strictly above it. BigWig retains
@@ -104,11 +235,14 @@ greater than `score_cutoff` (or 0.9 when no cutoff is supplied) are written to
 `peaks.gff3`; a zero-peak scan still produces a valid GFF3 header. SciPy 1.15.3
 is required.
 
-Peak GFF3 records are strand-aware 100 bp scored windows in 1-based closed
-reference coordinates: `anchor-80 ... anchor+19` on `+` and
-`anchor-19 ... anchor+80` on `-`. The actual evaluated window is emitted
-without clipping or padding. Records retain `anchor_position_0based`, add the
-1-based `peak_position`, and report `upstream_length=80`,
+Peak GFF3 records use strand-aware 100 bp display intervals in 1-based closed
+reference coordinates: `anchor-79 ... anchor+20` on `+` and
+`anchor-20 ... anchor+79` on `-`. The peak anchor and the historical 80/20
+model scoring window do not move: each record retains the scoring-window start
+and end separately. A display interval that would cross a contig boundary is
+emitted as the single anchor base with `display_interval=unavailable`; it is
+never clipped or padded. Records retain `anchor_position_0based`, add the
+1-based `peak_position`, and report `upstream_length=79`,
 `downstream_length=20`, `sampled_anchor=true`, and `resolution_bp=stride`; no
 unsupported interpolation is used between evaluated windows. New score
 artifacts use reference-oriented `window_start_0based`, recorded by
@@ -218,6 +352,18 @@ python -m pip install -r services/prediction/requirements-test.txt
 PYTHONPATH=services/prediction/src python -m pytest services/prediction/tests
 ```
 
+For deployment, build one immutable image tag from the target commit, keep the
+existing `.env` and named data/Redis volumes, and recreate `cache-worker`, `api`,
+`predict-worker`, and `worker` from that same tag. Start `cache-worker` before
+accepting imports. Do not use `docker compose down -v`; the reference cache is
+inside the persistent data volume. Verify `/healthz`, `/readyz`, all worker
+containers, one protected cache query, and an existing accession prediction.
+
+To roll back, point those four services at the previously recorded image tag
+and recreate them without removing either named volume. Cache manifests are
+backward compatible, while imports queued by the new API should be allowed to
+finish or be explicitly drained before removing `cache-worker`.
+
 `test_worker_process.py` also provides an opt-in integration regression against
 an isolated Redis instance. Set `RAPPTOR_TEST_REDIS_URL`, provide the normal
 model assets, and run it with the service dependencies installed. It starts the
@@ -231,7 +377,8 @@ The internal consume request includes `mode` and optional `referenceAccession`.
 Older Workers may ignore `mode`; current Docker remains compatible. Predict
 ticket usage is the normalized 100 bp target length, while uploaded
 `genome_scan` usage is the parsed total FASTA bases. For an allowed catalog
-reference, the Worker resolves D1 metadata and returns:
+reference, the Worker may continue returning its current response during
+rollout:
 
 ```json
 {
@@ -242,3 +389,7 @@ reference, the Worker resolves D1 metadata and returns:
   }
 }
 ```
+
+Docker ignores `referenceSource` and never follows its URL. The Worker or an
+external synchronization program must obtain or generate the matching CGR PNG
+and send it through the protected cache import API before prediction submission.

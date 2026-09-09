@@ -45,8 +45,8 @@ class PeakCallingTests(unittest.TestCase):
                         expected.extend(
                             (
                                 seqid,
-                                int(anchors[i]) - (79 if strand == '+' else 18),
-                                int(anchors[i]) + (20 if strand == '+' else 81),
+                                int(anchors[i]) - (78 if strand == '+' else 19),
+                                int(anchors[i]) + (21 if strand == '+' else 80),
                                 int(anchors[i]) + 1,
                                 strand,
                                 float(smooth[i]),
@@ -64,8 +64,10 @@ class PeakCallingTests(unittest.TestCase):
                 self.assertEqual(end - start + 1, 100)
                 self.assertIn(f'peak_position={anchor}', row[8])
                 self.assertIn(f'anchor_position_0based={anchor - 1}', row[8])
-                self.assertIn('upstream_length=80', row[8])
+                self.assertIn('upstream_length=79', row[8])
                 self.assertIn('downstream_length=20', row[8])
+                self.assertIn('display_interval=available', row[8])
+                self.assertIn('scoring_window_start_0based=', row[8])
                 self.assertAlmostEqual(float(row[5]), score, places=7)
             raw_rows = json.loads((path/'scores.json').read_text())
             self.assertEqual([(r['sequence_id'], r['anchor_position_0based'], r['strand'], r['score']) for r in raw_rows], raw_expected)
@@ -167,15 +169,33 @@ class PeakCallingTests(unittest.TestCase):
             self.assertIn('##RAPPtor-peak-distance-unit bp', peak_text)
             self.assertIn('##RAPPtor-peak-distance-samples 4', peak_text)
             self.assertIn('##RAPPtor-peak-coordinate-resolution-bp 3', peak_text)
-            self.assertIn('##RAPPtor-peak-window length=100 upstream=80 downstream=20', peak_text)
+            self.assertIn('##RAPPtor-promoter-display-interval length=100 upstream=79 anchor=1 downstream=20', peak_text)
+            self.assertIn('##RAPPtor-scoring-window length=100 upstream=80 downstream=20', peak_text)
             self.assertEqual(len(peak_rows), 1)
-            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (31, 130))
+            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (32, 131))
             self.assertIn('anchor_position_0based=110', peak_rows[0][8])
             self.assertIn('peak_position=111', peak_rows[0][8])
-            self.assertIn('upstream_length=80', peak_rows[0][8])
+            self.assertIn('upstream_length=79', peak_rows[0][8])
             self.assertIn('downstream_length=20', peak_rows[0][8])
             self.assertIn('sampled_anchor=true', peak_rows[0][8])
             self.assertIn('resolution_bp=3', peak_rows[0][8])
+
+    def test_boundary_peaks_remain_single_anchor_points_without_clipping(self):
+        for strand, sampled_index, expected_anchor in (('+', 2, 83), ('-', 0, 20)):
+            with self.subTest(strand=strand), TemporaryDirectory() as folder:
+                path = Path(folder)
+                scores = np.ones(3, dtype=np.float32)
+                writer = ScanArtifactWriter(
+                    path, ['gff3'], [('a', 102)], model_version='test',
+                    checkpoint_sha256='test', stride=1, score_cutoff=.2,
+                )
+                with patch('scipy.signal.find_peaks', return_value=(np.array([sampled_index]), {})):
+                    writer.add_scores('a', 102, strand, scores, upstream_len=80, window_length=100)
+                writer.close(success=True)
+                peak = rows(path / 'peaks.gff3')[0]
+                self.assertEqual((int(peak[3]), int(peak[4])), (expected_anchor, expected_anchor))
+                self.assertIn('display_interval=unavailable', peak[8])
+                self.assertIn('scoring_window_start_0based=', peak[8])
 
     def test_non_dense_gff_is_supported_without_changing_default_formats(self):
         self.assertIn('gff3', scan_output_formats(['bigwig'], 1))

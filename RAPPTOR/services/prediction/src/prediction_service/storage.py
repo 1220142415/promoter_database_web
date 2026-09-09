@@ -45,3 +45,12 @@ class JobStorage:
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)
         return path
+
+    def write_bytes(self, job_id: str, name: str, payload: bytes) -> Path:
+        if "/" in name or "\\" in name:
+            raise ValueError("unsafe binary filename")
+        path = self.job_dir(job_id) / name
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_bytes(payload)
+        os.replace(tmp, path)
+        return path

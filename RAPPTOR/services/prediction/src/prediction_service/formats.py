@@ -21,8 +21,12 @@ SMOOTHING_SIGMA = 1.0
 PEAK_DISTANCE = 10
 PEAK_CUTOFF = 0.9
 PROMOTER_WINDOW_LENGTH = 100
-PROMOTER_UPSTREAM_LENGTH = 80
-PROMOTER_DOWNSTREAM_LENGTH = 20
+# The model still scores the historical 80/20 window. Peak display intervals
+# are anchored independently so changing their box never moves a model score.
+MODEL_UPSTREAM_LENGTH = 80
+MODEL_DOWNSTREAM_LENGTH = 20
+PROMOTER_DISPLAY_UPSTREAM_LENGTH = 79
+PROMOTER_DISPLAY_DOWNSTREAM_LENGTH = 20
 
 
 def peak_distance_samples(stride: int) -> int:
@@ -120,9 +124,16 @@ class ScanArtifactWriter:
                     peak_handle.write(f"##RAPPtor-peak-coordinate-resolution-bp {self.stride}\n")
                     peak_handle.write(f"##RAPPtor-peak-cutoff >{self.peak_cutoff:g}\n")
                     peak_handle.write(
-                        "##RAPPtor-peak-window "
-                        f"length={PROMOTER_WINDOW_LENGTH} upstream={PROMOTER_UPSTREAM_LENGTH} "
-                        f"downstream={PROMOTER_DOWNSTREAM_LENGTH}\n"
+                        "##RAPPtor-promoter-display-interval "
+                        f"length={PROMOTER_WINDOW_LENGTH} upstream={PROMOTER_DISPLAY_UPSTREAM_LENGTH} "
+                        f"anchor=1 downstream={PROMOTER_DISPLAY_DOWNSTREAM_LENGTH} "
+                        "coordinate_system=1-based_closed\n"
+                    )
+                    peak_handle.write(
+                        "##RAPPtor-scoring-window "
+                        f"length={PROMOTER_WINDOW_LENGTH} upstream={MODEL_UPSTREAM_LENGTH} "
+                        f"downstream={MODEL_DOWNSTREAM_LENGTH} "
+                        "coordinate_system=reference_0based_half_open\n"
                     )
                 elif fmt == "json":
                     self._open_text("scores.json", "json")
@@ -230,7 +241,7 @@ class ScanArtifactWriter:
         if window_length <= 0 or window_length > sequence_length:
             raise ValueError("window_length must be within the input sequence")
         if "gff3" in self.formats and (
-            upstream_len != PROMOTER_UPSTREAM_LENGTH or window_length != PROMOTER_WINDOW_LENGTH
+            upstream_len != MODEL_UPSTREAM_LENGTH or window_length != PROMOTER_WINDOW_LENGTH
         ):
             raise ValueError("promoter peak output requires the model's 80/20 bp window")
         raw_scores = np.asarray(scores, dtype=np.float32)
@@ -302,13 +313,30 @@ class ScanArtifactWriter:
                     if int(score_indices[index]) in peak_indices:
                         self._peak_counter += 1
                         peak_id = f"promoter_peak_{self._peak_counter:09d}"
+                        anchor_1based = anchor + 1
+                        if strand == "+":
+                            display_start = anchor_1based - PROMOTER_DISPLAY_UPSTREAM_LENGTH
+                            display_end = anchor_1based + PROMOTER_DISPLAY_DOWNSTREAM_LENGTH
+                        else:
+                            display_start = anchor_1based - PROMOTER_DISPLAY_DOWNSTREAM_LENGTH
+                            display_end = anchor_1based + PROMOTER_DISPLAY_UPSTREAM_LENGTH
+                        display_available = display_start >= 1 and display_end <= sequence_length
+                        if not display_available:
+                            display_start = anchor_1based
+                            display_end = anchor_1based
                         self._handles["peaks"].write(
-                            f"{sequence_id}\tRAPPtor\tpromoter_peak\t{window_start + 1}\t"
-                            f"{window_start + window_length}\t"
+                            f"{sequence_id}\tRAPPtor\tpromoter_peak\t{display_start}\t"
+                            f"{display_end}\t"
                             f"{smoothed_score:.8f}\t{strand}\t.\tID={peak_id};Name={peak_id};"
                             f"prediction_score={smoothed_score:.8f};anchor_position_0based={anchor};"
-                            f"peak_position={anchor + 1};upstream_length={PROMOTER_UPSTREAM_LENGTH};"
-                            f"downstream_length={PROMOTER_DOWNSTREAM_LENGTH};stride={self.stride};"
+                            f"peak_position={anchor_1based};upstream_length={PROMOTER_DISPLAY_UPSTREAM_LENGTH};"
+                            f"downstream_length={PROMOTER_DISPLAY_DOWNSTREAM_LENGTH};stride={self.stride};"
+                            f"display_coordinate_system=1-based_closed;"
+                            f"display_interval={'available' if display_available else 'unavailable'};"
+                            f"sequence_length={sequence_length};"
+                            f"scoring_window_start_0based={window_start};"
+                            f"scoring_window_end_0based={window_start + window_length};"
+                            f"scoring_window_coordinate_system=reference_0based_half_open;"
                             f"sampled_anchor=true;resolution_bp={self.stride}\n"
                         )
                 cutoff_score = (

@@ -8,6 +8,7 @@ import styles from './prediction.module.css';
 
 export default function PredictionBrowser({ jobId, refName, accessToken, artifacts, summary }: { jobId: string; refName: string; accessToken: string; artifacts?: readonly { filename: string }[]; summary?: JobSummary }) {
   const [annotation, setAnnotation] = useState<{ name: string; url: string } | null>(null);
+  const [sequenceLengths, setSequenceLengths] = useState<Record<string, number>>({});
   const base = `/api/predictions/jobs/${jobId}/artifacts`;
   const missing = artifacts ? ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].filter((name) => !artifacts.some((item) => item.filename === name)) : [];
   const hasMinus = !artifacts || artifacts.some((item) => item.filename === 'scores.minus.bw');
@@ -26,6 +27,24 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
     if (annotation) URL.revokeObjectURL(annotation.url);
   }, [annotation]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`${base}/input.fasta.fai`, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('FAI unavailable');
+        const entries = (await response.text()).split(/\r?\n/u).filter(Boolean).map((line) => line.split('\t'));
+        const parsed: Record<string, number> = {};
+        for (const [name, rawLength] of entries) {
+          const length = Number(rawLength);
+          if (!name || /\s/u.test(name) || !Number.isSafeInteger(length) || length < 1) throw new Error('Invalid FAI');
+          parsed[name] = length;
+        }
+        if (!controller.signal.aborted) setSequenceLengths(parsed);
+      })
+      .catch(() => { if (!controller.signal.aborted) setSequenceLengths({}); });
+    return () => controller.abort();
+  }, [base]);
+
   const assembly = useMemo<JBrowseAssemblyConfig>(() => {
     const assemblyName = `prediction-${jobId}`;
     return {
@@ -41,6 +60,7 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
         sigma: summary.smoothing.sigma, distance: summary.peak_calling.distance,
         cutoff: summary.peak_calling.cutoff, positionBase: 1,
       } : undefined,
+      predictionSequenceLengths: sequenceLengths,
       assets: {
         fasta: `${base}/input.fasta`,
         fastaFai: `${base}/input.fasta.fai`,
@@ -58,7 +78,7 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
         annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
     };
-  }, [annotation, base, jobId, refName, hasMinus, hasPeaks, summary, smoothLegacyScores, precomputedScoreSigma, smoothedScoreTrack]);
+  }, [annotation, base, jobId, refName, hasMinus, hasPeaks, summary, sequenceLengths, smoothLegacyScores, precomputedScoreSigma, smoothedScoreTrack]);
 
   if (missing.length) return <p role="alert">Required browser artifacts are missing: {missing.join(', ')}.</p>;
   return <>

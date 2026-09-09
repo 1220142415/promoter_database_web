@@ -105,18 +105,25 @@ describe('strand feature geometry', () => {
     expect(promoterAnchorCoordinate(minus)).toBe(121);
   });
 
-  it('uses explicit peak anchors and expands legacy points into strand-aware 80/20 intervals', () => {
+  it('uses explicit peak anchors and normalizes legacy prediction boxes to 79/1/20 display intervals', () => {
     const interval = feature('interval', 'promoter_peak', 1, 190, 290, {
       peak_position: 271,
       anchor_position_0based: 270,
     });
-    const legacyPlus = feature('legacy-plus', 'promoter_peak', 1, 270, 271);
-    const legacyMinus = feature('legacy-minus', 'promoter_peak', -1, 270, 271);
+    const legacyPlus = feature('legacy-plus', 'promoter_peak', 1, 270, 271, { peak_position: 271 });
+    const legacyMinus = feature('legacy-minus', 'promoter_peak', -1, 270, 271, { peak_position: 271 });
     expect(isPromoterPeak(interval)).toBe(true);
     expect(predictionAnchorCoordinate(interval)).toBe(271);
-    expect(promoterDisplayCoordinates(interval)).toEqual({ start: 190, end: 290 });
-    expect(promoterDisplayCoordinates(legacyPlus)).toEqual({ start: 190, end: 290 });
-    expect(promoterDisplayCoordinates(legacyMinus)).toEqual({ start: 251, end: 351 });
+    expect(promoterDisplayCoordinates(interval)).toEqual({ start: 191, end: 291 });
+    expect(promoterDisplayCoordinates(legacyPlus)).toEqual({ start: 191, end: 291 });
+    expect(promoterDisplayCoordinates(legacyMinus)).toEqual({ start: 250, end: 350 });
+    expect(promoterDisplayCoordinates(feature('experimental', 'promoter_peak', -1, 270, 271)))
+      .toEqual({ start: 270, end: 271 });
+    expect(promoterDisplayCoordinates(feature('boundary', 'promoter_peak', -1, 0, 100, { peak_position: 20 })))
+      .toEqual({ start: 19, end: 20 });
+    expect(promoterDisplayCoordinates(feature('right-boundary', 'promoter_peak', 1, 10, 110, {
+      peak_position: 91,
+    }), 100)).toEqual({ start: 90, end: 91 });
   });
 
   it('switches from flag-only to flag-plus-body at twelve pixels', () => {
@@ -211,7 +218,7 @@ describe('strand feature SVG output', () => {
   });
 
   it('renders legacy one-base promoter peaks as 100 bp bodies with exact prediction flags', () => {
-    const peak = feature('peak', 'promoter_peak', -1, 50, 51);
+    const peak = feature('peak', 'promoter_peak', -1, 50, 51, { peak_position: 51 });
     const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
     const glyph = container.querySelector('[data-feature-id="peak"]');
     expect(glyph).toHaveAttribute('data-formal-promoter', 'false');
@@ -224,9 +231,10 @@ describe('strand feature SVG output', () => {
   });
 
   it('renders new promoter peak intervals with their explicit anchor', () => {
-    const peak = feature('peak-window', 'promoter_peak', 1, 20, 120, {
+    const peak = feature('peak-window', 'promoter_peak', 1, 21, 121, {
       peak_position: 101,
       anchor_position_0based: 100,
+      display_interval: 'available',
     });
     const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
     const glyph = container.querySelector('[data-feature-id="peak-window"]');
@@ -236,9 +244,10 @@ describe('strand feature SVG output', () => {
   });
 
   it('reverses new peak glyph direction while retaining its biological strand and anchor', () => {
-    const peak = feature('reversed-peak', 'promoter_peak', 1, 20, 120, {
+    const peak = feature('reversed-peak', 'promoter_peak', 1, 21, 121, {
       peak_position: 101,
       anchor_position_0based: 100,
+      display_interval: 'available',
     });
     const props = {
       ...renderingProps(new Map([[peak.id(), peak]])),

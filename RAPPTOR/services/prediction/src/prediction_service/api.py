@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hashlib
+import hmac
 import json
 import re
 import uuid
+from io import BytesIO
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -15,16 +19,35 @@ from redis.exceptions import RedisError
 from rq import Queue
 from rq.job import Job
 from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
+from PIL import Image, UnidentifiedImageError
 
 from .config import SETTINGS
 from .callbacks import persist_job_event
-from .cgr_cache import ReferenceCgrNotFound, normalize_reference_source, validate_reference_cgr
+from .cgr_cache import ReferenceCgrNotFound, validate_reference_cgr
 from .jobs import process_job
 from .metrics import cpu_history, latest_cpu_sample, sample_cpu_loop, stop_sampler
 from .queueing import get_queue, get_redis_connection
 from .queue_eta import estimate_remaining_seconds, estimate_wait_seconds
+from .reference_cache import (
+    ReferenceCacheError,
+    abort_import,
+    begin_import,
+    cache_status,
+    enqueue_import,
+    get_import_state,
+    import_dir,
+    public_import_state,
+)
 from .scan_progress import count_scan_windows
-from .schemas import JobCreated, JobStatus, JobSubmission
+from .schemas import (
+    JobCreated,
+    JobStatus,
+    JobSubmission,
+    ReferenceCacheImportStatus,
+    ReferenceCacheQuery,
+    ReferenceCacheQueryResult,
+    ReferenceCacheStatus,
+)
 from .security import new_access_token, token_digest, token_matches
 from .storage import JobStorage
 from .tickets import ReferenceSourceUnavailable, TicketRejected, consume_ticket, parse_ticket_header
@@ -66,6 +89,31 @@ def artifact_expiry() -> str | None:
 
 def _http_error(status: int, code: str, message: str):
     raise HTTPException(status_code=status, detail={"code": code, "message": message})
+
+
+def _require_cache_service(authorization: str | None) -> None:
+    secret = SETTINGS.ticket_service_secret
+    if not secret:
+        _http_error(503, "CACHE_SERVICE_UNAVAILABLE", "Reference cache service is unavailable.")
+    scheme, separator, value = (authorization or "").partition(" ")
+    if not separator or scheme.lower() != "bearer" or not hmac.compare_digest(value.strip(), secret):
+        _http_error(401, "UNAUTHORIZED", "Service authentication is required.")
+
+
+def _reference_cache_error(exc: ReferenceCacheError):
+    status = {
+        "INVALID_ACCESSION": 400,
+        "INVALID_SOURCE_SHA256": 400,
+        "INVALID_CGR_SHA256": 400,
+        "UNSUPPORTED_SOURCE_FORMAT": 415,
+        "REFERENCE_UPLOAD_TOO_LARGE": 413,
+        "REFERENCE_CGR_CHECKSUM_MISMATCH": 422,
+        "REFERENCE_SOURCE_CONFLICT": 409,
+        "REFERENCE_CGR_CONFLICT": 409,
+        "REFERENCE_IMPORT_BUSY": 429,
+        "REFERENCE_IMPORT_NOT_FOUND": 404,
+    }.get(exc.code, 400)
+    _http_error(status, exc.code, exc.message)
 
 
 def _status_name(job: Job) -> str:
@@ -258,6 +306,11 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
             request["cgr_source"] = "reference_accession"
             return request, len(sequence)
         request.pop("reference_accession", None)
+        if payload.cgr_png_base64 is not None:
+            cgr_png = _decode_cgr_png(payload.cgr_png_base64)
+            request["cgr_png_base64"] = base64.b64encode(cgr_png).decode("ascii")
+            request["cgr_sha256"] = hashlib.sha256(cgr_png).hexdigest()
+            request["cgr_source"] = "uploaded_cgr_png"
         if payload.fasta is not None:
             validated = validate_fasta(
                 payload.fasta,
@@ -265,7 +318,8 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
                 max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
             )
             request["fasta"] = validated.to_fasta()
-            request["cgr_source"] = "uploaded_complete_genome_fasta"
+            if payload.cgr_png_base64 is None:
+                request["cgr_source"] = "uploaded_complete_genome_fasta"
             return request, len(sequence)
         genome_context = validate_sequence(
             payload.genome_context or "",
@@ -275,7 +329,8 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
             max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
         )
         request["genome_context"] = genome_context
-        request["cgr_source"] = "complete_genome_sequence"
+        if payload.cgr_png_base64 is None:
+            request["cgr_source"] = "complete_genome_sequence"
         return request, len(sequence)
 
     request.pop("reference_accession", None)
@@ -298,6 +353,20 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     from .formats import scan_output_formats
     request["output_formats"] = list(scan_output_formats(payload.output_formats, stride))
     return request, validated.total_bases
+
+
+def _decode_cgr_png(encoded: str) -> bytes:
+    try:
+        payload = base64.b64decode(encoded, validate=True)
+        if not payload or len(payload) > SETTINGS.reference_cache_max_upload_bytes:
+            raise ValueError
+        with Image.open(BytesIO(payload)) as image:
+            if image.format != "PNG" or image.size != (128, 128):
+                raise ValueError
+            image.verify()
+    except (binascii.Error, OSError, UnidentifiedImageError, ValueError, TypeError):
+        raise InputValidationError("cgr_png_base64 must be a valid 128x128 PNG.") from None
+    return payload
 
 
 @app.exception_handler(HTTPException)
@@ -344,6 +413,18 @@ def current_model():
                     "configurable_cutoff": True,
                     "operator": ">",
                     "filename": "peaks.gff3",
+                    "display_interval": {
+                        "coordinate_system": "1-based closed",
+                        "upstream_bp": 79,
+                        "anchor_bp": 1,
+                        "downstream_bp": 20,
+                        "boundary_rule": "single anchor marked unavailable",
+                    },
+                    "scoring_window": {
+                        "coordinate_system": "reference 0-based half-open",
+                        "upstream_bp": 80,
+                        "downstream_bp": 20,
+                    },
                 },
             },
             "bigwig_processing": {
@@ -379,6 +460,143 @@ def readyz():
     if SETTINGS.require_worker_for_ready and not worker_ready:
         return JSONResponse(status_code=503, content={"status": "not_ready", "redis": True, "worker": False})
     return {"status": "ready", "redis": True, "worker": worker_ready}
+
+
+@app.get(
+    "/v1/reference-cache/imports/{import_id}",
+    response_model=ReferenceCacheImportStatus,
+)
+def reference_cache_import_status(
+    import_id: str,
+    authorization: str | None = Header(default=None),
+):
+    _require_cache_service(authorization)
+    try:
+        connection = get_redis_connection()
+        connection.ping()
+        return public_import_state(get_import_state(connection, import_id))
+    except ReferenceCacheError as exc:
+        _reference_cache_error(exc)
+    except RedisError:
+        _http_error(503, "CACHE_SERVICE_UNAVAILABLE", "Reference cache service is unavailable.")
+
+
+@app.get(
+    "/v1/reference-cache/{accession}",
+    response_model=ReferenceCacheStatus,
+)
+def get_reference_cache(
+    accession: str,
+    authorization: str | None = Header(default=None),
+):
+    _require_cache_service(authorization)
+    try:
+        connection = get_redis_connection()
+        connection.ping()
+        return cache_status(connection, accession)
+    except ReferenceCacheError as exc:
+        _reference_cache_error(exc)
+    except RedisError:
+        _http_error(503, "CACHE_SERVICE_UNAVAILABLE", "Reference cache service is unavailable.")
+
+
+@app.post(
+    "/v1/reference-cache/query",
+    response_model=ReferenceCacheQueryResult,
+)
+def query_reference_cache(
+    payload: ReferenceCacheQuery,
+    authorization: str | None = Header(default=None),
+):
+    _require_cache_service(authorization)
+    try:
+        connection = get_redis_connection()
+        connection.ping()
+        return {"entries": [cache_status(connection, accession) for accession in payload.accessions]}
+    except ReferenceCacheError as exc:
+        _reference_cache_error(exc)
+    except RedisError:
+        _http_error(503, "CACHE_SERVICE_UNAVAILABLE", "Reference cache service is unavailable.")
+
+
+@app.post(
+    "/v1/reference-cache/{accession}/imports",
+    response_model=ReferenceCacheImportStatus,
+    status_code=202,
+)
+async def import_reference_cache(
+    accession: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_source_sha256: str | None = Header(default=None, alias="X-Source-SHA256"),
+    x_cgr_sha256: str | None = Header(default=None, alias="X-CGR-SHA256"),
+    x_cgr_version: str | None = Header(default=None, alias="X-CGR-Version"),
+):
+    _require_cache_service(authorization)
+    if x_cgr_version != SETTINGS.cgr_version:
+        _http_error(400, "CGR_VERSION_MISMATCH", "CGR version does not match this service.")
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            parsed_content_length = int(content_length)
+            if parsed_content_length < 0:
+                raise ValueError
+            if parsed_content_length > SETTINGS.reference_cache_max_upload_bytes:
+                _http_error(413, "REFERENCE_UPLOAD_TOO_LARGE", "Reference upload is too large.")
+        except ValueError:
+            _http_error(400, "INVALID_CONTENT_LENGTH", "Content-Length is invalid.")
+
+    try:
+        connection = get_redis_connection()
+        connection.ping()
+        state, created = begin_import(
+            connection,
+            uuid.uuid4().hex,
+            accession,
+            x_source_sha256 or "",
+            x_cgr_sha256 or "",
+            request.headers.get("content-type", ""),
+        )
+    except ReferenceCacheError as exc:
+        _reference_cache_error(exc)
+    except RedisError:
+        _http_error(503, "CACHE_SERVICE_UNAVAILABLE", "Reference cache service is unavailable.")
+
+    if not created:
+        return JSONResponse(
+            status_code=200 if state["status"] == "ready" else 202,
+            content=public_import_state(state),
+        )
+
+    directory = import_dir(state["import_id"])
+    upload_path = directory / "upload"
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        directory.mkdir(parents=True, exist_ok=False)
+        with upload_path.open("wb") as destination:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > SETTINGS.reference_cache_max_upload_bytes:
+                    raise ReferenceCacheError(
+                        "REFERENCE_UPLOAD_TOO_LARGE", "Reference upload is too large."
+                    )
+                digest.update(chunk)
+                destination.write(chunk)
+        if digest.hexdigest() != state["cgr_sha256"]:
+            raise ReferenceCacheError(
+                "REFERENCE_CGR_CHECKSUM_MISMATCH", "CGR PNG SHA-256 does not match."
+            )
+        enqueue_import(connection, state["import_id"])
+    except ReferenceCacheError as exc:
+        abort_import(connection, state)
+        _reference_cache_error(exc)
+    except Exception:
+        abort_import(connection, state)
+        _http_error(503, "CACHE_SERVICE_UNAVAILABLE", "Reference import could not be queued.")
+    return public_import_state(state)
 
 
 @app.get("/v1/status")
@@ -452,7 +670,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
 
     ticket = parse_ticket_header(authorization)
     try:
-        reference_source = await consume_ticket(
+        await consume_ticket(
             ticket,
             model_version=SETTINGS.model_version,
             bases=billed_bases,
@@ -470,13 +688,7 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
         try:
             validate_reference_cgr(payload.reference_accession)
         except ReferenceCgrNotFound:
-            try:
-                request_payload["reference_source"] = normalize_reference_source(
-                    payload.reference_accession,
-                    reference_source,
-                )
-            except ReferenceCgrNotFound:
-                _http_error(404, "REFERENCE_CGR_NOT_FOUND", "Reference CGR is unavailable.")
+            _http_error(404, "REFERENCE_CGR_NOT_FOUND", "Reference CGR is unavailable.")
 
     connection = get_redis_connection()
     try:
@@ -494,6 +706,9 @@ async def submit_job(payload: JobSubmission, authorization: str | None = Header(
     storage = JobStorage(SETTINGS.data_root)
     try:
         storage.create(job_id)
+        cgr_png_base64 = request_payload.pop("cgr_png_base64", None)
+        if cgr_png_base64 is not None:
+            storage.write_bytes(job_id, "cgr.png", _decode_cgr_png(cgr_png_base64))
         input_checksum = hashlib.sha256(
             json.dumps(request_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()

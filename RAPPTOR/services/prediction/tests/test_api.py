@@ -1,7 +1,9 @@
 import asyncio
+import base64
 import hashlib
 import importlib
 import json
+from io import BytesIO
 from starlette.requests import Request
 
 import fakeredis
@@ -10,6 +12,12 @@ from fastapi import HTTPException
 from PIL import Image
 from pydantic import ValidationError
 from rq import Queue
+
+
+def cgr_png_base64(color=127):
+    output = BytesIO()
+    Image.new("L", (128, 128), color=color).save(output, format="PNG")
+    return base64.b64encode(output.getvalue()).decode("ascii")
 
 
 def load_api(tmp_path, monkeypatch):
@@ -204,6 +212,45 @@ def test_predict_accepts_uploaded_fasta(tmp_path, monkeypatch):
     assert request["cgr_source"] == "uploaded_complete_genome_fasta"
     assert request["fasta"].startswith(">contig-1\n")
     assert bases == 100
+
+
+def test_predict_accepts_custom_cgr_and_stores_one_job_copy(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    encoded = cgr_png_base64()
+    payload = api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 100,
+        genome_context="ACGT" * 100,
+        cgr_png_base64=encoded,
+    )
+    request_payload, bases = api._validate_submission(payload)
+    assert request_payload["cgr_source"] == "uploaded_cgr_png"
+    assert request_payload["cgr_sha256"] == hashlib.sha256(base64.b64decode(encoded)).hexdigest()
+    assert bases == 100
+
+    created = asyncio.run(api.submit_job(payload, authorization=None))
+    job_dir = tmp_path / "jobs" / created.job_id
+    saved = json.loads((job_dir / "request.json").read_text())
+    assert "cgr_png_base64" not in saved
+    assert hashlib.sha256((job_dir / "cgr.png").read_bytes()).hexdigest() == saved["cgr_sha256"]
+    assert api.Job.fetch(created.job_id, connection=connection).origin == "prediction:predict"
+
+
+def test_predict_rejects_catalog_cgr_and_invalid_custom_cgr(tmp_path, monkeypatch):
+    api, _ = load_api(tmp_path, monkeypatch)
+    with pytest.raises(ValidationError, match="server CGR cache"):
+        api.JobSubmission(
+            mode="predict", complete_genome=True, sequence="A" * 100,
+            reference_accession="GCF_000005845.1", cgr_png_base64=cgr_png_base64(),
+        )
+    with pytest.raises(HTTPException) as invalid:
+        asyncio.run(api.submit_job(api.JobSubmission(
+            mode="predict", complete_genome=True, sequence="A" * 100,
+            genome_context="ACGT" * 100, cgr_png_base64="not-base64",
+        ), authorization=None))
+    assert invalid.value.status_code == 400
+    assert invalid.value.detail["code"] == "INVALID_INPUT"
 
 
 @pytest.mark.parametrize("length", [99, 101])

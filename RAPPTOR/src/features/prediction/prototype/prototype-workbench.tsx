@@ -689,7 +689,7 @@ export default function PrototypePredictionWorkbench({
     ? usesNcbiContext
       ? 'NCBI · External reference. On submission, the Worker downloads the complete genome FASTA and forwards it to the prediction service. Fetching an external reference may take longer.'
       : usesCachedCgr
-      ? 'Only the accession is submitted; the prediction service reuses its cached CGR.'
+      ? 'Only the exact accession version is submitted. A matching cached reference is reused; first use may take longer.'
       : 'The complete genome is sent to the configured prediction service to calculate its CGR context.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 

@@ -32,6 +32,7 @@ class ServiceSettings:
     queue_name: str
     predict_queue_name: str
     scan_queue_name: str
+    reference_cache_queue_name: str
     data_root: Path
     cgr_cache_root: Path
     cgr_version: str
@@ -39,6 +40,8 @@ class ServiceSettings:
     model_version: str
     device: str
     max_request_bytes: int
+    reference_cache_max_upload_bytes: int
+    reference_cache_max_pending: int
     max_queue_length: int
     max_predict_bases: int
     max_genome_bases: int
@@ -66,6 +69,8 @@ class ServiceSettings:
     def __post_init__(self) -> None:
         positive = {
             "max_request_bytes": self.max_request_bytes,
+            "reference_cache_max_upload_bytes": self.reference_cache_max_upload_bytes,
+            "reference_cache_max_pending": self.reference_cache_max_pending,
             "max_queue_length": self.max_queue_length,
             "max_predict_bases": self.max_predict_bases,
             "max_genome_bases": self.max_genome_bases,
@@ -99,7 +104,11 @@ class ServiceSettings:
             raise ValueError("model_version must not be empty")
         if not self.cgr_version.strip():
             raise ValueError("cgr_version must not be empty")
-        if not self.predict_queue_name.strip() or not self.scan_queue_name.strip():
+        if (
+            not self.predict_queue_name.strip()
+            or not self.scan_queue_name.strip()
+            or not self.reference_cache_queue_name.strip()
+        ):
             raise ValueError("prediction queue names must not be empty")
         if self.file_retention_seconds < 0:
             raise ValueError("file_retention_seconds must be zero or positive")
@@ -117,6 +126,9 @@ class ServiceSettings:
             queue_name=queue_name,
             predict_queue_name=os.getenv("RAPPTOR_PREDICT_QUEUE", queue_name),
             scan_queue_name=os.getenv("RAPPTOR_SCAN_QUEUE", queue_name),
+            reference_cache_queue_name=os.getenv(
+                "RAPPTOR_REFERENCE_CACHE_QUEUE", "prediction:reference-cache"
+            ),
             data_root=data_root,
             cgr_cache_root=cgr_cache_root,
             cgr_version=os.getenv("RAPPTOR_CGR_VERSION", "cgr-128-v1"),
@@ -124,6 +136,10 @@ class ServiceSettings:
             model_version=os.getenv("RAPPTOR_MODEL_VERSION", "candidate"),
             device=os.getenv("RAPPTOR_DEVICE", "cuda:0"),
             max_request_bytes=_positive_int("RAPPTOR_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES),
+            reference_cache_max_upload_bytes=_positive_int(
+                "RAPPTOR_REFERENCE_CACHE_MAX_UPLOAD_BYTES", 32 * 1024 * 1024
+            ),
+            reference_cache_max_pending=_positive_int("RAPPTOR_REFERENCE_CACHE_MAX_PENDING", 10),
             max_queue_length=int(os.getenv("RAPPTOR_MAX_QUEUE_LENGTH", "100")),
             max_predict_bases=int(os.getenv("RAPPTOR_MAX_PREDICT_BASES", "100000")),
             max_genome_bases=int(os.getenv("RAPPTOR_MAX_GENOME_BASES", "6000000")),

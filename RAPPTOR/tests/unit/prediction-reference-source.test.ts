@@ -21,6 +21,7 @@ import {
   resolvePredictionReferenceSource,
 } from '@/features/prediction/reference-source';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
+import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
 
 
 function match(accession: string, url: string, sha256: string) {
@@ -36,6 +37,18 @@ afterEach(() => {
 });
 
 describe('prediction reference source', () => {
+  it('resolves the built-in example by its exact .1 accession and source checksum', async () => {
+    repositories.getByAccession.mockResolvedValue(match(
+      'GCF_000005845.1', 'https://example.test/wrong-version.fna.gz', '1'.repeat(64),
+    ));
+    await expect(resolvePredictionReferenceSource('GCF_000005845.1')).resolves.toEqual({
+      url: REAL_PREDICTION_REFERENCE.sourceUrl,
+      sha256: REAL_PREDICTION_REFERENCE.sourceSha256,
+    });
+    expect(repositories.getByAccession).not.toHaveBeenCalled();
+    expect(repositories.resolveAsset).not.toHaveBeenCalled();
+  });
+
   it('returns the Worker-resolved HTTPS URL and checksum', () => {
     const accession = 'GCF_000005845.1';
     expect(referenceSourceFromMatch(
@@ -77,7 +90,7 @@ describe('prediction reference source', () => {
   });
 
   it('falls back to the experimental genome collection', async () => {
-    const accession = 'GCF_000005845.1';
+    const accession = 'GCF_000012685.1';
     repositories.getByAccession.mockResolvedValue(null);
     repositories.resolveAsset.mockResolvedValue({
       upstreamUrl: 'https://huggingface.co/datasets/example/repo/resolve/main/reference.fa.gz',
@@ -98,7 +111,7 @@ describe('prediction reference source', () => {
       sha256: 'c'.repeat(64),
     });
 
-    await expect(resolvePredictionReferenceSource('GCF_000005845.1')).resolves.toBeNull();
+    await expect(resolvePredictionReferenceSource('GCF_000012685.1')).resolves.toBeNull();
   });
 });
 

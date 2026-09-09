@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PredictionBrowser from '@/features/prediction/components/prediction-browser';
 
 vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
@@ -14,6 +14,7 @@ vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
     predictionProcessing?: { sigma: number; distance: number; cutoff: number; positionBase: number };
     smoothScoreTrack?: boolean;
     precomputedScoreSigma?: number;
+    predictionSequenceLengths?: Record<string, number>;
     trackLabels?: { annotation?: string };
   }; shareFragment?: string }) => <div
     data-testid="mock-unified-browser"
@@ -30,11 +31,14 @@ vi.mock('@/features/genome-browser/components/unified-browser-panel', () => ({
     data-processing={JSON.stringify(prediction.predictionProcessing)}
     data-smoothing={prediction.smoothScoreTrack ? 'on' : 'off'}
     data-precomputed-sigma={prediction.precomputedScoreSigma ?? ''}
+    data-sequence-lengths={JSON.stringify(prediction.predictionSequenceLengths || {})}
     data-annotation={prediction.assets.ncbiAnnotations || ''}
     data-annotation-label={prediction.trackLabels?.annotation || ''}
     data-share-fragment={shareFragment || ''}
   />,
 }));
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('prediction browser tracks', () => {
   const browserFiles = ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].map(filename => ({ filename }));
@@ -123,5 +127,20 @@ describe('prediction browser tracks', () => {
     const browser = screen.getByTestId('mock-unified-browser');
     expect(browser).toHaveAttribute('data-contig-name', 'NC_000913.3');
     expect(browser).toHaveAttribute('data-assembly', 'prediction-job-1');
+  });
+
+  it('loads exact contig lengths from the completed task FAI for legacy peak boundaries', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe('/api/predictions/jobs/legacy/artifacts/input.fasta.fai');
+      return new Response('chr1\t100\t6\t80\t81\nplasmid\t42\t113\t42\t43\n');
+    }));
+    render(<PredictionBrowser
+      jobId="legacy" refName="chr1" accessToken="shared_access_token_1234567890abcdef"
+      artifacts={[...browserFiles, { filename: 'peaks.gff3' }]}
+      summary={{ stride: 2, peak_count: 1 }}
+    />);
+    await waitFor(() => expect(screen.getByTestId('mock-unified-browser')).toHaveAttribute(
+      'data-sequence-lengths', JSON.stringify({ chr1: 100, plasmid: 42 }),
+    ));
   });
 });

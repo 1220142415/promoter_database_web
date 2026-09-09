@@ -9,7 +9,7 @@ import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-examp
 // These component tests isolate transport/validation; real reference checks run separately.
 vi.mock('@/features/prediction/reference-example', async (original) => ({
   ...await original<typeof import('@/features/prediction/reference-example')>(),
-  validateReferenceExample: vi.fn(async (fasta: string) => ({ fasta, sequence: 'ACGT'.repeat(40), length: 160, sequenceId: 'NC_000913.3' })),
+  validateReferenceExample: vi.fn(async (fasta: string) => ({ fasta, sequence: 'ACGT'.repeat(40), length: 160, sequenceId: 'NC_000913.2' })),
 }));
 const push = vi.fn();
 const refresh = vi.fn();
@@ -36,21 +36,21 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
     ok: true,
     json: async () => ({
       items: [{
-        accession: 'GCF_000005845.1',
-        organismName: 'Escherichia coli str. K-12 substr. MG1655',
-        genomeSizeBp: 4_639_675,
+        accession: 'GCF_000012685.1',
+        organismName: 'Chlorobaculum tepidum TLS',
+        genomeSizeBp: 2_154_946,
         contigCount: 1,
       }],
     }),
   })));
-  await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.1');
+  await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
   await user.click(screen.getByRole('button', { name: 'Search catalog' }));
   await waitFor(() => expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument());
 }
 
 describe('prototype prediction workbench', () => {
   it('keeps valid input while checking a configuration blocker and never claims it is ready to queue', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`)));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.2\n${'ACGT'.repeat(40)}\n`)));
     const user = userEvent.setup();
     const service = { available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '', submissionIssue: 'Email sign-in is not configured on this site. Prediction cannot be submitted yet.' };
     const { rerender } = render(<PrototypePredictionWorkbench localTest service={service} />);
@@ -76,7 +76,7 @@ describe('prototype prediction workbench', () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
-    expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('NC_000913.3:100001-100100');
+    expect((screen.getByLabelText('Raw DNA or FASTA') as HTMLTextAreaElement).value).toContain('NC_000913.2:100001-100100');
     expect(screen.getByText('Only the accession is submitted; the prediction service reuses its cached CGR.')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe('prototype prediction workbench', () => {
 
   it('shows Turnstile only after the prediction inputs are ready', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`)));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.2\n${'ACGT'.repeat(40)}\n`)));
     render(<PrototypePredictionWorkbench service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: 'site-key' }} />);
     expect(screen.queryByLabelText('Human verification')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
@@ -267,7 +267,7 @@ describe('prototype prediction workbench', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith('/api/genomes?')) {
-        return Response.json({ items: [{ accession: 'GCF_000005845.1', organismName: 'E. coli', genomeSizeBp: 4_639_675, contigCount: 1 }] });
+        return Response.json({ items: [{ accession: 'GCF_000012685.1', organismName: 'C. tepidum', genomeSizeBp: 2_154_946, contigCount: 1 }] });
       }
       if (url === '/api/prediction-tickets') {
         ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -289,7 +289,7 @@ describe('prototype prediction workbench', () => {
     } else {
       await user.type(screen.getByLabelText('Raw DNA or FASTA'), 'ACGT'.repeat(25));
       if (source === 'cached catalog') {
-        await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.1');
+        await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
         await user.click(screen.getByRole('button', { name: 'Search catalog' }));
       } else {
         const file = new File([fasta], 'genome.fna', { type: 'text/plain' });
@@ -314,7 +314,7 @@ describe('prototype prediction workbench', () => {
     });
     expect(jobRequest).not.toHaveProperty('genome_context');
     if (source !== 'uploaded genome') {
-      expect(jobRequest).toHaveProperty('reference_accession', source === 'example accession' ? REAL_PREDICTION_REFERENCE.accession : 'GCF_000005845.1');
+      expect(jobRequest).toHaveProperty('reference_accession', source === 'example accession' ? REAL_PREDICTION_REFERENCE.accession : 'GCF_000012685.1');
       expect(jobRequest).not.toHaveProperty('fasta');
       expect(fetchMock.mock.calls.every(([input]) => /^\/api\/(genomes\?|prediction-tickets$|predictions\/jobs$)/.test(String(input)))).toBe(true);
     } else {

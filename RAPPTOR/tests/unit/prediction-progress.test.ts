@@ -47,7 +47,7 @@ describe('prediction progress', () => {
 
   it('reports scan details and completes after six seconds without restarting from createdAt', () => {
     const scanning = prototypePredictionProgressAt(scanRun, start + 3_000);
-    expect(scanning).toMatchObject({ state: 'running', stage: 'scanning', contig: 'NC_000913.3', strand: expect.stringMatching(/[+-]/) });
+    expect(scanning).toMatchObject({ state: 'running', stage: 'scanning', contig: 'NC_000913.2', strand: expect.stringMatching(/[+-]/) });
     expect(scanning.windows).toBeGreaterThan(0);
     expect(prototypePredictionProgressAt(scanRun, start + 5_300).stage).toBe('writing_outputs');
     expect(prototypePredictionProgressAt(scanRun, start + 60_000)).toMatchObject({ state: 'succeeded', stage: 'complete', percent: 100 });

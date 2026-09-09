@@ -39,7 +39,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
 
   await page.getByRole('button', { name: 'Use 100 bp example' }).click();
   const sequenceInput = page.getByLabel('Raw DNA or FASTA');
-  await expect(sequenceInput).toHaveValue(/NC_000913.3:100001-100100/);
+  await expect(sequenceInput).toHaveValue(/NC_000913.2:100001-100100/);
   await expect(page.getByText('100 bp scoring').first()).toBeVisible();
   await expect(page.getByText('Select a catalog genome or upload its FASTA.').first()).toBeVisible();
   await expect(page.getByLabel('Top results')).toHaveCount(0);
@@ -139,7 +139,7 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
     parameters: { strandMode: 'forward', cutoff: 0.8, strideBases: 10 },
     input: {
       kind: 'genome-scan',
-      scanSource: { kind: 'catalog', accession: 'GCF_000005845.2', totalLength: 4_641_652 },
+      scanSource: { kind: 'catalog', accession: 'GCF_000005845.1', totalLength: 4_639_675 },
       genomeContext: { kind: 'upload', fileName: 'matching-context.fna', totalLength: 160 },
     },
   });

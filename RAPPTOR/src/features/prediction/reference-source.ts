@@ -1,5 +1,4 @@
 import 'server-only';
-import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -62,7 +61,6 @@ export async function resolvePredictionReferenceSource(accession: string) {
   return { url: experimentalAsset.upstreamUrl, sha256: experimentalAsset.sha256 };
 }
 
-const MAX_COMPRESSED_BYTES = 10 * 1024 * 1024;
 const MAX_FASTA_BYTES = 8 * 1024 * 1024;
 let pending: Promise<string> | undefined;
 
@@ -88,12 +86,12 @@ async function loadReference(): Promise<string> {
     const { value, done } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_COMPRESSED_BYTES) { await reader.cancel(); throw new Error('Prediction reference exceeds the size limit.'); }
+    if (size > MAX_FASTA_BYTES) { await reader.cancel(); throw new Error('Prediction reference exceeds the size limit.'); }
     chunks.push(value);
   }
   const packed = Buffer.concat(chunks);
-  if (createHash('sha256').update(packed).digest('hex') !== REAL_PREDICTION_REFERENCE.compressedSha256) throw new Error('Compressed reference checksum mismatch.');
-  const text = gunzipSync(packed, { maxOutputLength: MAX_FASTA_BYTES }).toString('utf8');
+  if (createHash('sha256').update(packed).digest('hex') !== REAL_PREDICTION_REFERENCE.sourceSha256) throw new Error('Reference source checksum mismatch.');
+  const text = packed.toString('utf8');
   await validateReferenceExample(text);
   if (localCache) {
     await mkdir(cacheDir, { recursive: true });

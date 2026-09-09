@@ -6,9 +6,9 @@ Model readiness alone does not enable submission. Production checks sign-in, hum
 
 ## Fixed public reference
 
-The checked-in source of truth is `src/features/prediction/examples/ecoli-k12.json`: E. coli K-12 MG1655, assembly `GCF_000005845.2`, chromosome `NC_000913.3`, **4,641,652 bp**. The 100 bp example is the positive-strand interval **100001–100100**, using 1-based inclusive coordinates. It is a genomic fragment, with no assumed promoter activity or experimental TSS support.
+The checked-in source of truth is `src/features/prediction/examples/ecoli-k12.json`: E. coli K-12 MG1655, assembly `GCF_000005845.1`, chromosome `NC_000913.2`, **4,639,675 bp**. The 100 bp example is the positive-strand interval **100001–100100**, using 1-based inclusive coordinates. It is a genomic fragment, with no assumed promoter activity or experimental TSS support.
 
-Both example buttons select this whole genome for CGR. The reference loader and browser validate the original FASTA checksum, contig identity, full sequence length/checksum, and coordinate-derived sample. The original FASTA SHA-256 is `53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4`. The manifest also records the NCBI source URL and compressed, normalized-sequence and sample hashes. The complete FASTA is cached only under ignored `.data/prediction-examples/` in development. Production fetches the pinned public reference. A failed download retains input and offers retry.
+Both example buttons select this whole genome for CGR. The reference loader and browser validate the original FASTA checksum, contig identity, full sequence length/checksum, and coordinate-derived sample. The original FASTA SHA-256 is `2a8e2f78bc145fa82fa325acf7d34dc944612795cee74f793045dc64d782176c`. The manifest records the fixed Hugging Face revision URL plus source, normalized-sequence and sample hashes. The complete FASTA is cached only under ignored `.data/prediction-examples/` in development. Production fetches the pinned public reference. A failed download retains input and offers retry.
 
 ## Explicit live command
 

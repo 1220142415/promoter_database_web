@@ -5,7 +5,6 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { resolve, join, relative, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { gunzipSync } from 'node:zlib';
 import { REAL_PREDICTION_REFERENCE as reference, validateReferenceExample } from '../../src/features/prediction/reference-example.ts';
 import { parseFocusedScores } from '../../src/features/prediction/focused-scores.ts';
 
@@ -97,20 +96,20 @@ async function main() {
     let fasta;
     try { fasta = await readFile(fastaFile, 'utf8'); } catch (cause) {
       if (cause.code !== 'ENOENT') throw cause;
-      console.log('Downloading the pinned NCBI reference.');
+      console.log('Downloading the pinned Hugging Face reference.');
       const upstream = await fetch(reference.sourceUrl, { signal: AbortSignal.timeout(180_000) });
-      if (!upstream.ok) throw new Error(`NCBI reference returned HTTP ${upstream.status}.`);
-      if (!upstream.body) throw new Error('NCBI reference has no response body.');
+      if (!upstream.ok) throw new Error(`Hugging Face reference returned HTTP ${upstream.status}.`);
+      if (!upstream.body) throw new Error('Hugging Face reference has no response body.');
       const chunks = [];
       let size = 0;
       for await (const chunk of upstream.body) {
         size += chunk.length;
-        if (size > 10 * 1024 * 1024) throw new Error('Compressed reference exceeds the size limit.');
+        if (size > 8 * 1024 * 1024) throw new Error('Reference exceeds the size limit.');
         chunks.push(chunk);
       }
       const packed = Buffer.concat(chunks);
-      if (packed.length > 10 * 1024 * 1024 || hash(packed) !== reference.compressedSha256) throw new Error('Compressed reference checksum/size mismatch.');
-      fasta = gunzipSync(packed, { maxOutputLength: 8 * 1024 * 1024 }).toString('utf8');
+      if (packed.length > 8 * 1024 * 1024 || hash(packed) !== reference.sourceSha256) throw new Error('Reference source checksum/size mismatch.');
+      fasta = packed.toString('utf8');
       await validateReferenceExample(fasta);
       await mkdir(cacheDir, { recursive: true });
       await writeFile(fastaFile, fasta);

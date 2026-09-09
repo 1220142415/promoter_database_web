@@ -3,8 +3,8 @@ import { acquireLiveTicket, fetchLiveRead, validateSummary } from '../../scripts
 
 describe('live acceptance summary contract (offline validation only)', () => {
   const model = { model_version: 'candidate-github-93cf', checkpoint_sha256: '93cfcbaf74e3a693dfd12406d11ad79fef0933b90913db83c230a3f3a99582ad' };
-  const genome = { model, mode: 'genome_scan', reverse_complementary: true, total_bases: 4_641_652, contig_count: 1, stride: 1, window_count: 9_283_106 };
-  it('requires all 9,283,106 windows for a complete genome', () => {
+  const genome = { model, mode: 'genome_scan', reverse_complementary: true, total_bases: 4_639_675, contig_count: 1, stride: 1, window_count: 9_279_152 };
+  it('requires all 9,279,152 windows for a complete genome', () => {
     expect(() => validateSummary(genome, 'genome')).not.toThrow();
     expect(() => validateSummary({ ...genome, window_count: 928_310 }, 'genome')).toThrow('window');
   });
@@ -14,12 +14,12 @@ describe('live acceptance summary contract (offline validation only)', () => {
     expect(() => validateSummary({ ...genome, stride: 10 }, 'genome')).toThrow('stride');
   });
   it('requires the entire genome as the short-sequence CGR background', () => {
-    const candidate = { model, mode: 'predict', reverse_complementary: true, sequence_bases: 100, genome_context_bases: 4_641_652, window_count: 2 };
+    const candidate = { model, mode: 'predict', reverse_complementary: true, sequence_bases: 100, genome_context_bases: 4_639_675, window_count: 2 };
     expect(() => validateSummary(candidate, 'candidate')).not.toThrow();
     expect(() => validateSummary({ ...candidate, genome_context_bases: 100 }, 'candidate')).toThrow('lengths');
   });
   it('does not accept the old service single-strand candidate result as a successful two-strand test', () => {
-    const returned = { model, mode: 'predict', sequence_bases: 100, genome_context_bases: 4_641_652, window_count: 1 };
+    const returned = { model, mode: 'predict', sequence_bases: 100, genome_context_bases: 4_639_675, window_count: 1 };
     expect(() => validateSummary(returned, 'candidate')).toThrow('window');
     // A failed candidate contract does not change the genome acceptance criteria.
     expect(() => validateSummary(genome, 'genome')).not.toThrow();
@@ -27,7 +27,7 @@ describe('live acceptance summary contract (offline validation only)', () => {
 });
 
 describe('automatic live ticket acquisition (offline contract only)', () => {
-  const input = { mode: 'predict', modelVersion: 'candidate-github-93cf', bases: 4_641_752 };
+  const input = { mode: 'predict', modelVersion: 'candidate-github-93cf', bases: 4_639_775 };
   it('gets a fresh ticket per call from the local app without needing a secret in the runner', async () => {
     const request = vi.fn(async () => Response.json({ ticket: 'a'.repeat(43), modelVersion: input.modelVersion, maxBases: input.bases, expiresAt: new Date(Date.now() + 120_000).toISOString() }));
     await acquireLiveTicket('http://127.0.0.1:3000', input, request);

@@ -23,7 +23,7 @@ describe('reference integrity and coordinate validation', () => {
   });
   it.each(['id', 'length', 'sequence', 'coordinate', 'sample'] as const)('rejects an inconsistent %s', async (field) => {
     const { fasta, expected } = await fixture();
-    if (field === 'id') expected.sequenceId = 'NC_000913.2';
+    if (field === 'id') expected.sequenceId = 'NC_000913.3';
     if (field === 'length') expected.length = 101;
     if (field === 'sequence') expected.sequenceSha256 = '0'.repeat(64);
     if (field === 'coordinate') expected.sample.start = 2;

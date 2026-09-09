@@ -17,8 +17,8 @@ toolchain requires Node.js 22 or newer.
 | Root directory | `/RAPPTOR` |
 | Build command | `npm run build:cf` |
 | Deploy command | `npx @opennextjs/cloudflare deploy` |
-| Non-production builds | Disabled to avoid unnecessary build usage |
-| Build cache | Enabled |
+| Non-production builds | Recommended: disabled unless previews are needed; verify in Workers Builds |
+| Build cache | Recommended: enabled; verify in Workers Builds |
 | D1 binding | `RAPPTOR_DB` |
 | D1 database ID | `13173011-d2b9-4763-b379-ecc1562ef497` |
 

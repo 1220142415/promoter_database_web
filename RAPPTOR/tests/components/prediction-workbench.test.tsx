@@ -2,7 +2,7 @@
 
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
+import PredictionWorkbench, { predictionPollDelay } from '@/features/prediction/components/prediction-workbench';
 import { PREDICTION_HISTORY_KEY, type PredictionHistoryEntry } from '@/features/prediction/history';
 import type { JobSummary } from '@/features/prediction/live-result';
 
@@ -83,6 +83,14 @@ function mockApi(mode: PredictionHistoryEntry['mode'], options: { sessionStatus?
 }
 
 describe('live prediction result layout', () => {
+  it('polls short tasks quickly, then backs off without changing scan polling', () => {
+    expect(predictionPollDelay('predict', 0)).toBe(2_000);
+    expect(predictionPollDelay('predict', 20_000)).toBe(10_000);
+    expect(predictionPollDelay('predict', 60_000)).toBe(30_000);
+    expect(predictionPollDelay('predict', 0, true)).toBe(10_000);
+    expect(predictionPollDelay('genome_scan', 0)).toBe(30_000);
+  });
+
   it('reports a legitimate zero peak result from the service on a shared task', async () => {
     mockApi('genome_scan', { summary: { peak_count: 0 } });
     localStorage.clear();
@@ -227,6 +235,25 @@ describe('live prediction result layout', () => {
     expect(polls).toBe(2);
     expect(scan).toHaveTextContent('60 / 100');
     expect(within(scan).getByRole('progressbar')).toHaveAttribute('value', '60');
+  });
+
+  it('refreshes a running short prediction after two seconds', async () => {
+    vi.useFakeTimers();
+    const focused = { ...saved, mode: 'predict' as const };
+    localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify([focused]));
+    sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(focused));
+    let polls = 0;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({
+      job_id: saved.jobId, status: 'running', mode: 'predict',
+      progress: { stage: 'inference', percent: ++polls === 1 ? 45 : 80 },
+    })));
+
+    await act(async () => { render(<PredictionWorkbench initialJobId={saved.jobId} />); });
+    expect(polls).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_999); });
+    expect(polls).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(polls).toBe(2);
   });
 
   it('passes actual queue information from the job endpoint into the waiting UI', async () => {

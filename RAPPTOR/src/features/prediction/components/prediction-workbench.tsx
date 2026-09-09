@@ -35,6 +35,7 @@ type JobProgress = {
 type JobState = {
   job_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'unknown';
+  mode?: PredictionHistoryEntry['mode'];
   model_version?: string;
   progress?: JobProgress;
   submitted_at?: string;
@@ -43,6 +44,11 @@ type JobState = {
   result?: { artifacts?: JobArtifact[] };
   error?: { code?: string; type?: string; message?: string };
 };
+
+export function predictionPollDelay(mode: PredictionHistoryEntry['mode'], elapsedMs: number, failed = false) {
+  const delay = mode !== 'predict' ? 30_000 : elapsedMs < 20_000 ? 2_000 : elapsedMs < 60_000 ? 10_000 : 30_000;
+  return failed ? Math.max(delay, 10_000) : delay;
+}
 
 function formatDate(value?: string | null) {
   if (!value) return 'Not recorded';
@@ -130,6 +136,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
     if (!entry) return;
     let cancelled = false;
     let timer: number | undefined;
+    const pollingStartedAt = Date.now();
     const load = async () => {
       try {
         const response = await fetch(`/api/predictions/jobs/${entry.jobId}`, { headers: { 'X-Job-Token': entry.token }, cache: 'no-store' });
@@ -142,14 +149,16 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
         if (cancelled) return;
         setJob(next);
         setMessage('');
-        const updated = { ...entry, status: next.status };
+        const updated = { ...entry, status: next.status, mode: next.mode || entry.mode };
         localStorage.setItem(PREDICTION_HISTORY_KEY, JSON.stringify(upsertPredictionHistory(parsePredictionHistory(localStorage.getItem(PREDICTION_HISTORY_KEY)), updated)));
         sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(updated));
-        if (next.status === 'queued' || next.status === 'running' || next.status === 'unknown') timer = window.setTimeout(load, 30_000);
+        if (next.status === 'queued' || next.status === 'running' || next.status === 'unknown') {
+          timer = window.setTimeout(load, predictionPollDelay(updated.mode, Date.now() - pollingStartedAt));
+        }
       } catch (cause) {
         if (!cancelled) {
           setMessage(cause instanceof Error ? cause.message : 'Prediction status could not be loaded.');
-          timer = window.setTimeout(load, 30_000);
+          timer = window.setTimeout(load, predictionPollDelay(entry.mode, Date.now() - pollingStartedAt, true));
         }
       }
     };

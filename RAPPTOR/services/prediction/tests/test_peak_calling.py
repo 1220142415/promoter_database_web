@@ -42,15 +42,30 @@ class PeakCallingTests(unittest.TestCase):
                     if len(raw):
                         smooth = gaussian_filter1d(ordered.astype(float), 1, mode='reflect')
                         peaks, _ = find_peaks(smooth, distance=10)
-                        expected.extend((seqid, int(anchors[i]) + 1, strand, float(smooth[i])) for i in peaks if smooth[i] > .9)
+                        expected.extend(
+                            (
+                                seqid,
+                                int(anchors[i]) - (79 if strand == '+' else 18),
+                                int(anchors[i]) + (20 if strand == '+' else 81),
+                                int(anchors[i]) + 1,
+                                strand,
+                                float(smooth[i]),
+                            )
+                            for i in peaks if smooth[i] > .9
+                        )
                     raw_expected.extend((seqid, int(a), strand, float(v)) for a, v in zip(anchors, ordered))
             writer.close(success=True)
             peaks = rows(path/'peaks.gff3')
             self.assertGreater(len(peaks), 0)
             self.assertEqual(writer.peak_count, len(expected))
             self.assertEqual(len(peaks), len(expected))
-            for row, (seqid, anchor, strand, score) in zip(peaks, expected):
-                self.assertEqual((row[0], int(row[3]), int(row[4]), row[6]), (seqid, anchor, anchor, strand))
+            for row, (seqid, start, end, anchor, strand, score) in zip(peaks, expected):
+                self.assertEqual((row[0], int(row[3]), int(row[4]), row[6]), (seqid, start, end, strand))
+                self.assertEqual(end - start + 1, 100)
+                self.assertIn(f'peak_position={anchor}', row[8])
+                self.assertIn(f'anchor_position_0based={anchor - 1}', row[8])
+                self.assertIn('upstream_length=80', row[8])
+                self.assertIn('downstream_length=20', row[8])
                 self.assertAlmostEqual(float(row[5]), score, places=7)
             raw_rows = json.loads((path/'scores.json').read_text())
             self.assertEqual([(r['sequence_id'], r['anchor_position_0based'], r['strand'], r['score']) for r in raw_rows], raw_expected)
@@ -152,9 +167,13 @@ class PeakCallingTests(unittest.TestCase):
             self.assertIn('##RAPPtor-peak-distance-unit bp', peak_text)
             self.assertIn('##RAPPtor-peak-distance-samples 4', peak_text)
             self.assertIn('##RAPPtor-peak-coordinate-resolution-bp 3', peak_text)
+            self.assertIn('##RAPPtor-peak-window length=100 upstream=80 downstream=20', peak_text)
             self.assertEqual(len(peak_rows), 1)
-            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (111, 111))
+            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (31, 130))
             self.assertIn('anchor_position_0based=110', peak_rows[0][8])
+            self.assertIn('peak_position=111', peak_rows[0][8])
+            self.assertIn('upstream_length=80', peak_rows[0][8])
+            self.assertIn('downstream_length=20', peak_rows[0][8])
             self.assertIn('sampled_anchor=true', peak_rows[0][8])
             self.assertIn('resolution_bp=3', peak_rows[0][8])
 

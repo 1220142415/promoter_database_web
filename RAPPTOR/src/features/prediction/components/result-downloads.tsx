@@ -24,7 +24,7 @@ export default function ResultDownloads({ jobId, artifacts, mode, expiresAt, big
         <DownloadRoundedIcon aria-hidden="true" /><span><strong>Prediction results <small>TSV</small></strong><span>One row per exported window, with coordinates, strand and model score.</span></span>
       </a>}
       {positions && <a className={styles.resultDownload} href={`${base}/${positions.filename}`} download>
-        <DownloadRoundedIcon aria-hidden="true" /><span><strong>{peaks ? 'Predicted peaks' : 'Prediction results'} <small>GFF3</small></strong><span>{peaks ? 'Peak anchor positions, strands and smoothed model scores.' : 'Predicted positions, strands and model scores.'}</span></span>
+        <DownloadRoundedIcon aria-hidden="true" /><span><strong>{peaks ? 'Predicted peaks' : 'Prediction results'} <small>GFF3</small></strong><span>{peaks ? '100 bp prediction intervals with anchors, strands and smoothed model scores.' : 'Predicted positions, strands and model scores.'}</span></span>
       </a>}
       {tracks.length > 0 && <a className={styles.resultDownload} href={`${base}/${SCORE_TRACKS_ZIP_FILENAME}`} download>
         <DownloadRoundedIcon aria-hidden="true" /><span><strong>Model score tracks <small>ZIP</small></strong><span>{trackDescription} Includes scores below the export cutoff.</span></span>

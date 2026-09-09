@@ -49,7 +49,7 @@ describe('strand tooltips', () => {
     } as ComponentProps<typeof StrandFeatureTooltip>;
     const { rerender } = render(<StrandFeatureTooltip {...plusProps} />);
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('contig_1:20..119');
-    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction anchor (base 80): contig_1:99');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction anchor: contig_1:99');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: +');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('model score: 0.95');
 
@@ -70,7 +70,7 @@ describe('strand tooltips', () => {
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: unknown');
   });
 
-  it('does not invent an 80th-base anchor for legacy point peaks', () => {
+  it('expands legacy point peaks and retains their exact anchor', () => {
     const props = {
       clientMouseCoord: [10, 10],
       model: {
@@ -86,8 +86,25 @@ describe('strand tooltips', () => {
       },
     } as ComponentProps<typeof StrandFeatureTooltip>;
     render(<StrandFeatureTooltip {...props} />);
-    expect(screen.getByTestId('strand-feature-tooltip')).not.toHaveTextContent('prediction anchor');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('contig_1:1..100');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction anchor: contig_1:20');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('strand: -');
     expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('model score: 0.91');
+  });
+
+  it('shows the 100 bp interval and explicit anchor for new peak artifacts', () => {
+    const props = {
+      clientMouseCoord: [10, 10],
+      model: {
+        featureUnderMouse: feature({
+          id: 'peak-window', refName: 'contig_1', start: 20, end: 120,
+          strand: 1, type: 'promoter_peak', prediction_score: 0.95,
+          peak_position: 101, anchor_position_0based: 100,
+        }),
+      },
+    } as ComponentProps<typeof StrandFeatureTooltip>;
+    render(<StrandFeatureTooltip {...props} />);
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('contig_1:21..120');
+    expect(screen.getByTestId('strand-feature-tooltip')).toHaveTextContent('prediction anchor: contig_1:101');
   });
 });

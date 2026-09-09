@@ -20,6 +20,9 @@ FORMAT_MIME = {
 SMOOTHING_SIGMA = 1.0
 PEAK_DISTANCE = 10
 PEAK_CUTOFF = 0.9
+PROMOTER_WINDOW_LENGTH = 100
+PROMOTER_UPSTREAM_LENGTH = 80
+PROMOTER_DOWNSTREAM_LENGTH = 20
 
 
 def peak_distance_samples(stride: int) -> int:
@@ -116,6 +119,11 @@ class ScanArtifactWriter:
                     peak_handle.write(f"##RAPPtor-peak-distance-samples {self.peak_distance_samples}\n")
                     peak_handle.write(f"##RAPPtor-peak-coordinate-resolution-bp {self.stride}\n")
                     peak_handle.write(f"##RAPPtor-peak-cutoff >{self.peak_cutoff:g}\n")
+                    peak_handle.write(
+                        "##RAPPtor-peak-window "
+                        f"length={PROMOTER_WINDOW_LENGTH} upstream={PROMOTER_UPSTREAM_LENGTH} "
+                        f"downstream={PROMOTER_DOWNSTREAM_LENGTH}\n"
+                    )
                 elif fmt == "json":
                     self._open_text("scores.json", "json")
                     self._handles["json"].write("[\n")
@@ -221,6 +229,10 @@ class ScanArtifactWriter:
             raise ValueError("strand must be '+' or '-'")
         if window_length <= 0 or window_length > sequence_length:
             raise ValueError("window_length must be within the input sequence")
+        if "gff3" in self.formats and (
+            upstream_len != PROMOTER_UPSTREAM_LENGTH or window_length != PROMOTER_WINDOW_LENGTH
+        ):
+            raise ValueError("promoter peak output requires the model's 80/20 bp window")
         raw_scores = np.asarray(scores, dtype=np.float32)
         if "bigwig" in self.formats and len(raw_scores) and strand not in self._bigwigs:
             self._open_bigwig(strand)
@@ -291,10 +303,13 @@ class ScanArtifactWriter:
                         self._peak_counter += 1
                         peak_id = f"promoter_peak_{self._peak_counter:09d}"
                         self._handles["peaks"].write(
-                            f"{sequence_id}\tRAPPtor\tpromoter_peak\t{anchor + 1}\t{anchor + 1}\t"
+                            f"{sequence_id}\tRAPPtor\tpromoter_peak\t{window_start + 1}\t"
+                            f"{window_start + window_length}\t"
                             f"{smoothed_score:.8f}\t{strand}\t.\tID={peak_id};Name={peak_id};"
                             f"prediction_score={smoothed_score:.8f};anchor_position_0based={anchor};"
-                            f"stride={self.stride};sampled_anchor=true;resolution_bp={self.stride}\n"
+                            f"peak_position={anchor + 1};upstream_length={PROMOTER_UPSTREAM_LENGTH};"
+                            f"downstream_length={PROMOTER_DOWNSTREAM_LENGTH};stride={self.stride};"
+                            f"sampled_anchor=true;resolution_bp={self.stride}\n"
                         )
                 cutoff_score = (
                     float(smoothed_scores[score_indices[index]])

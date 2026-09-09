@@ -8,6 +8,7 @@ it('labels new BigWigs as smoothed while retaining raw wording for legacy tasks'
   const artifacts = ['peaks.gff3', 'scores.gff3', 'scores.plus.bw', 'scores.minus.bw'].map(filename => ({ filename, format: 'gff3', size_bytes: 1, sha256: 'hash' }));
   const { rerender } = render(<ResultDownloads jobId="a" artifacts={artifacts} mode="genome_scan" expiresAt="tomorrow" bigwigSmoothing={{ method: 'gaussian', sigma: 1, mode: 'reflect' }} />);
   expect(screen.getByRole('link', { name: /Predicted peaks/ })).toHaveAttribute('href', '/api/predictions/jobs/a/artifacts/peaks.gff3');
+  expect(screen.getByRole('link', { name: /Predicted peaks/ })).toHaveTextContent('100 bp prediction intervals with anchors, strands and smoothed model scores.');
   expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveAttribute('href', '/api/predictions/jobs/a/artifacts/model-score-tracks.zip');
   expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveTextContent('Gaussian-smoothed forward and reverse BigWig files in one folder');
   expect(screen.getAllByRole('link')).toHaveLength(2);

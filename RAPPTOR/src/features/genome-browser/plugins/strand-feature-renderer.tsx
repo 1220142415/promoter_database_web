@@ -98,13 +98,12 @@ export function isFormalPromoter(feature: Feature) {
   return type === 'promoter' && end - start === 100;
 }
 
-function isPromoterPeak(feature: Feature) {
+export function isPromoterPeak(feature: Feature) {
   const type = String(feature.get('type') || '').toLowerCase();
-  const { start, end } = featureCoordinates(feature);
-  return type === 'promoter_peak' && end - start === 1;
+  return type === 'promoter_peak';
 }
 
-function featureCoordinates(feature: Feature) {
+export function featureCoordinates(feature: Feature) {
   const start = Number(feature.get('start'));
   const end = Number(feature.get('end'));
   return {
@@ -113,7 +112,21 @@ function featureCoordinates(feature: Feature) {
   };
 }
 
+function explicitAnchorCoordinate(feature: Feature) {
+  const rawPeakPosition = feature.get('peak_position');
+  const peakPosition = rawPeakPosition === undefined || rawPeakPosition === null || rawPeakPosition === ''
+    ? Number.NaN : Number(rawPeakPosition);
+  if (Number.isSafeInteger(peakPosition) && peakPosition >= 1) return peakPosition;
+  const rawAnchorPosition = feature.get('anchor_position_0based');
+  const anchorPosition = rawAnchorPosition === undefined || rawAnchorPosition === null || rawAnchorPosition === ''
+    ? Number.NaN : Number(rawAnchorPosition);
+  if (Number.isSafeInteger(anchorPosition) && anchorPosition >= 0) return anchorPosition + 1;
+  return undefined;
+}
+
 export function promoterAnchorCoordinate(feature: Feature) {
+  const explicit = explicitAnchorCoordinate(feature);
+  if (explicit !== undefined) return explicit;
   const { start, end } = featureCoordinates(feature);
   const strand = normalizeStrand(feature.get('strand'));
   if (strand === 1) return start + 80;
@@ -123,6 +136,26 @@ export function promoterAnchorCoordinate(feature: Feature) {
 
 export function promoterAnchorPosition(feature: Feature) {
   return promoterAnchorCoordinate(feature) - 0.5;
+}
+
+export function predictionAnchorCoordinate(feature: Feature) {
+  if (isFormalPromoter(feature)) return promoterAnchorCoordinate(feature);
+  const explicit = explicitAnchorCoordinate(feature);
+  if (explicit !== undefined) return explicit;
+  if (isPromoterPeak(feature)) return featureCoordinates(feature).start + 1;
+  return undefined;
+}
+
+/** Expand legacy one-base peaks into the same strand-aware 80/20 bp display used by new artifacts. */
+export function promoterDisplayCoordinates(feature: Feature) {
+  const coordinates = featureCoordinates(feature);
+  if (!isPromoterPeak(feature) || coordinates.end - coordinates.start !== 1) return coordinates;
+  const anchor = predictionAnchorCoordinate(feature);
+  const strand = normalizeStrand(feature.get('strand'));
+  if (anchor === undefined || strand === 0) return coordinates;
+  return strand === 1
+    ? { start: anchor - 81, end: anchor + 19 }
+    : { start: anchor - 20, end: anchor + 80 };
 }
 
 export function isRegionFeature(feature: Feature) {
@@ -152,8 +185,13 @@ function featureAtEvent(event: React.MouseEvent, element: SVGSVGElement | null, 
   return typeof layoutData?.featureId === 'string' ? layoutData.featureId : layoutId;
 }
 
-function screenInterval(feature: Feature, region: Region, bpPerPx: number) {
-  const { start, end } = featureCoordinates(feature);
+function screenInterval(
+  feature: Feature,
+  region: Region,
+  bpPerPx: number,
+  coordinates = featureCoordinates(feature),
+) {
+  const { start, end } = coordinates;
   const rawStartPx = bpToPx(start, region, bpPerPx);
   const rawEndPx = bpToPx(end, region, bpPerPx);
   const viewportWidth = (region.end - region.start) / bpPerPx;
@@ -315,22 +353,24 @@ function renderPromoterFeature(
   const { bpPerPx, displayModel, layout, regions } = props;
   const region = regions[0];
   const id = String(feature.id());
-  const { start, end } = featureCoordinates(feature);
+  const sourceCoordinates = featureCoordinates(feature);
   const strand = normalizeStrand(feature.get('strand'));
   const direction = screenDirection(strand, region.reversed);
   const color = strandColor(strand);
   const formal = isFormalPromoter(feature);
   const peak = isPromoterPeak(feature);
-  const interval = screenInterval(feature, region, bpPerPx);
+  const displayCoordinates = peak ? promoterDisplayCoordinates(feature) : sourceCoordinates;
+  const { start, end } = displayCoordinates;
+  const interval = screenInterval(feature, region, bpPerPx, displayCoordinates);
   if (!interval.visible || !interval.width) return null;
   const flagged = formal || peak;
-  const anchorPosition = formal ? promoterAnchorPosition(feature)
-    : peak ? start + 0.5 : undefined;
+  const anchorCoordinate = flagged ? predictionAnchorCoordinate(feature) : undefined;
+  const anchorPosition = anchorCoordinate === undefined ? undefined : anchorCoordinate - 0.5;
   const anchorX = anchorPosition === undefined ? undefined : bpToPx(anchorPosition, region, bpPerPx);
   const anchorVisible = flagged
     && anchorX !== undefined
     && endpointInViewport(anchorX, interval.viewportWidth);
-  const showBody = peak ? false : !formal || shouldShowPromoterBody(interval.width);
+  const showBody = !flagged || shouldShowPromoterBody(interval.width);
   if (flagged && !anchorVisible && !showBody) return null;
 
   const layoutBounds = flagged && anchorVisible && anchorPosition !== undefined
@@ -345,8 +385,8 @@ function renderPromoterFeature(
   const selected = displayModel?.selectedFeatureId === id;
   const hovered = displayModel?.featureIdUnderMouse === id
     || displayModel?.featureUnderMouse?.id?.() === id;
-  const bodyY = formal ? top + PROMOTER_BODY_TOP_OFFSET : top + 7;
-  const bodyHeight = formal ? PROMOTER_BODY_HEIGHT : 10;
+  const bodyY = flagged ? top + PROMOTER_BODY_TOP_OFFSET : top + 7;
+  const bodyHeight = flagged ? PROMOTER_BODY_HEIGHT : 10;
   const arrowGeometry = flagged
     ? { left: interval.left, right: interval.right, placement: undefined }
     : separateArrowFromBody(interval, direction, annotationArrowPlacement(feature, direction, interval));
@@ -378,7 +418,7 @@ function renderPromoterFeature(
       data-strand={strandLabel(strand)}
       data-screen-direction={direction}
     >
-      <title>{formal ? 'Promoter prediction (100 bp); anchor at base 80' : 'Promoter prediction anchor'}</title>
+      <title>{flagged ? 'Promoter prediction (100 bp); 80 bp upstream / 20 bp downstream' : 'Promoter prediction'}</title>
       {showBody ? <rect data-role="promoter-body" {...bodyRect} fill={color} fillOpacity={1} /> : null}
       {flagged && anchorVisible ? promoterFlag(anchorX!, top, direction, color, formal ? '80th-base' : 'predicted-peak') : null}
       {!flagged && arrowGeometry.placement

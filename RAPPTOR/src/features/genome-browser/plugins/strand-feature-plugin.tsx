@@ -12,8 +12,10 @@ import { configSchema as svgFeatureConfigSchema } from '@jbrowse/plugin-svg/esm/
 import { observer } from 'mobx-react';
 import {
   DirectionalAnnotationRendering,
-  isFormalPromoter,
-  promoterAnchorCoordinate,
+  featureCoordinates,
+  isPromoterPeak,
+  predictionAnchorCoordinate,
+  promoterDisplayCoordinates,
   PromoterFeatureRendering,
   strandLabel,
 } from '@/features/genome-browser/plugins/strand-feature-renderer';
@@ -48,10 +50,10 @@ function strandFeatureMode(model: object): StrandFeatureMode | undefined {
   }
 }
 
-function coordinateLabel(feature: Feature) {
+function coordinateLabel(feature: Feature, coordinates = featureCoordinates(feature)) {
   const refName = String(feature.get('refName') || '');
-  const start = Number(feature.get('start')) + 1;
-  const end = Number(feature.get('end'));
+  const start = coordinates.start + 1;
+  const end = coordinates.end;
   const startLabel = Number.isFinite(start) ? start.toLocaleString('en-US') : '?';
   const endLabel = Number.isFinite(end) ? end.toLocaleString('en-US') : '?';
   return `${refName}:${startLabel === endLabel ? startLabel : `${startLabel}..${endLabel}`}`;
@@ -81,13 +83,15 @@ export const StrandFeatureTooltip = observer(function StrandFeatureTooltip({ mod
   // features when the source provides one.
   const score = featureScore(feature);
   const refName = String(feature.get('refName') || '');
-  const anchor = promoter && isFormalPromoter(feature) ? promoterAnchorCoordinate(feature) : undefined;
+  const peak = isPromoterPeak(feature);
+  const coordinates = peak ? promoterDisplayCoordinates(feature) : featureCoordinates(feature);
+  const anchor = promoter ? predictionAnchorCoordinate(feature) : undefined;
   return (
     <BaseTooltip clientPoint={{ x: clientMouseCoord[0] + 5, y: clientMouseCoord[1] }}>
       <div data-testid="strand-feature-tooltip">
         {featureTitle(feature)}<br />
-        {coordinateLabel(feature)}<br />
-        {anchor === undefined ? null : <>prediction anchor (base 80): {refName}:{anchor.toLocaleString('en-US')}<br /></>}
+        {coordinateLabel(feature, coordinates)}<br />
+        {anchor === undefined ? null : <>prediction anchor: {refName}:{anchor.toLocaleString('en-US')}<br /></>}
         strand: {strandLabel(feature.get('strand'))}
         {score === undefined ? null : <><br />{promoter ? 'model score' : 'score'}: {score}</>}
       </div>

@@ -313,7 +313,14 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         "smoothed_score_filename": "scores.gff3",
         "peak_filename": "peaks.gff3",
         "smoothing": {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"},
-        "peak_calling": {"distance": PEAK_DISTANCE, "cutoff": PEAK_CUTOFF, "operator": ">"},
+        "peak_calling": {
+            "distance": PEAK_DISTANCE,
+            "cutoff": PEAK_CUTOFF,
+            "operator": ">",
+            "window_length_bp": runtime.seq_length,
+            "upstream_bp": runtime.upstream_len,
+            "downstream_bp": runtime.seq_length - runtime.upstream_len,
+        },
         "peak_count": score_writer.peak_count,
         "completed_at": utc_now(),
     }
@@ -425,7 +432,8 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "output_semantics": (
             "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
             "scores.gff3 contains Gaussian-smoothed scores; "
-            "peaks.gff3 contains cutoff-filtered sampled peaks"
+            "peaks.gff3 contains cutoff-filtered sampled peaks as strand-aware 100 bp "
+            "intervals spanning 80 bp upstream and 20 bp downstream"
             if "gff3" in output_formats
             else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
         ),
@@ -443,6 +451,9 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
                 "distance_unit": "bp",
                 "sample_distance": peak_distance_samples(stride),
                 "resolution_bp": stride,
+                "window_length_bp": runtime.seq_length,
+                "upstream_bp": runtime.upstream_len,
+                "downstream_bp": runtime.seq_length - runtime.upstream_len,
                 "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF,
                 "operator": ">",
             }

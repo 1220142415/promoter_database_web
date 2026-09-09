@@ -19,8 +19,11 @@ import {
   annotationLayoutId,
   annotationLabelPlacement,
   isFormalPromoter,
+  isPromoterPeak,
   isRegionFeature,
   normalizeStrand,
+  predictionAnchorCoordinate,
+  promoterDisplayCoordinates,
   promoterAnchorCoordinate,
   promoterFlagLayoutBounds,
   screenDirection,
@@ -100,6 +103,20 @@ describe('strand feature geometry', () => {
     expect(isFormalPromoter(minus)).toBe(true);
     expect(promoterAnchorCoordinate(plus)).toBe(80);
     expect(promoterAnchorCoordinate(minus)).toBe(121);
+  });
+
+  it('uses explicit peak anchors and expands legacy points into strand-aware 80/20 intervals', () => {
+    const interval = feature('interval', 'promoter_peak', 1, 190, 290, {
+      peak_position: 271,
+      anchor_position_0based: 270,
+    });
+    const legacyPlus = feature('legacy-plus', 'promoter_peak', 1, 270, 271);
+    const legacyMinus = feature('legacy-minus', 'promoter_peak', -1, 270, 271);
+    expect(isPromoterPeak(interval)).toBe(true);
+    expect(predictionAnchorCoordinate(interval)).toBe(271);
+    expect(promoterDisplayCoordinates(interval)).toEqual({ start: 190, end: 290 });
+    expect(promoterDisplayCoordinates(legacyPlus)).toEqual({ start: 190, end: 290 });
+    expect(promoterDisplayCoordinates(legacyMinus)).toEqual({ start: 251, end: 351 });
   });
 
   it('switches from flag-only to flag-plus-body at twelve pixels', () => {
@@ -193,17 +210,45 @@ describe('strand feature SVG output', () => {
     expect(glyph?.querySelector('[data-role="promoter-flag"]')?.getAttribute('points')).toContain(String(220.5 - PROMOTER_FLAG_LENGTH));
   });
 
-  it('renders one-base promoter peaks as exact prediction flags', () => {
+  it('renders legacy one-base promoter peaks as 100 bp bodies with exact prediction flags', () => {
     const peak = feature('peak', 'promoter_peak', -1, 50, 51);
     const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
     const glyph = container.querySelector('[data-feature-id="peak"]');
     expect(glyph).toHaveAttribute('data-formal-promoter', 'false');
     expect(glyph).toHaveAttribute('data-promoter-peak', 'true');
-    expect(glyph?.querySelector('[data-role="promoter-body"]')).toBeNull();
+    expect(glyph?.querySelector('[data-role="promoter-body"]')).toHaveAttribute('width', '100');
     expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('x1', '50.5');
     expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('data-anchor', 'predicted-peak');
     expect(glyph?.querySelector('[data-role="promoter-flag"]')).toHaveAttribute('fill', MINUS_STRAND_COLOR);
     expect(glyph?.querySelector('[data-role="promoter-arrow"]')).toBeNull();
+  });
+
+  it('renders new promoter peak intervals with their explicit anchor', () => {
+    const peak = feature('peak-window', 'promoter_peak', 1, 20, 120, {
+      peak_position: 101,
+      anchor_position_0based: 100,
+    });
+    const { container } = render(<PromoterFeatureRendering {...renderingProps(new Map([[peak.id(), peak]]))} />);
+    const glyph = container.querySelector('[data-feature-id="peak-window"]');
+    expect(glyph).toHaveAttribute('data-promoter-peak', 'true');
+    expect(glyph?.querySelector('[data-role="promoter-body"]')).toHaveAttribute('width', '100');
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('x1', '100.5');
+  });
+
+  it('reverses new peak glyph direction while retaining its biological strand and anchor', () => {
+    const peak = feature('reversed-peak', 'promoter_peak', 1, 20, 120, {
+      peak_position: 101,
+      anchor_position_0based: 100,
+    });
+    const props = {
+      ...renderingProps(new Map([[peak.id(), peak]])),
+      regions: [{ ...forwardRegion, reversed: true }],
+    } as ComponentProps<typeof PromoterFeatureRendering>;
+    const { container } = render(<PromoterFeatureRendering {...props} />);
+    const glyph = container.querySelector('[data-feature-id="reversed-peak"]');
+    expect(glyph).toHaveAttribute('data-strand', '+');
+    expect(glyph).toHaveAttribute('data-screen-direction', '-1');
+    expect(glyph?.querySelector('[data-role="promoter-flag-pole"]')).toHaveAttribute('x1', '199.5');
   });
 
   it('does not fake a formal promoter flag at a clipped anchor', () => {

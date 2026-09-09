@@ -13,6 +13,7 @@ from .config import SETTINGS
 from .cleanup import purge_expired_jobs
 from .queueing import get_redis_connection
 from .runtime import preload_runtime
+from .watchdog import remove_legacy_timeouts, watch_jobs
 
 
 def _heartbeat(connection, key: str, stop: threading.Event) -> None:
@@ -49,7 +50,12 @@ def main() -> None:
     hostname = socket.gethostname()
     key = f"rapptor:worker:{SETTINGS.queue_name}:{hostname}:{os.getpid()}:ready"
     stop = threading.Event()
-    threads = [threading.Thread(target=_heartbeat, args=(connection, key, stop), daemon=True)]
+    queue = Queue(SETTINGS.queue_name, connection=connection, default_timeout=-1)
+    updated_timeouts = remove_legacy_timeouts(queue)
+    threads = [
+        threading.Thread(target=_heartbeat, args=(connection, key, stop), daemon=True),
+        threading.Thread(target=watch_jobs, args=(connection, SETTINGS.queue_name, stop), daemon=True),
+    ]
     if SETTINGS.worker_maintenance:
         threads.extend([
             threading.Thread(target=_cleanup, args=(stop,), daemon=True),
@@ -57,10 +63,10 @@ def main() -> None:
         ])
     for thread in threads:
         thread.start()
-    print({"status": "worker_ready", **runtime.metadata()}, flush=True)
+    print({"status": "worker_ready", "legacy_timeouts_removed": updated_timeouts, **runtime.metadata()}, flush=True)
     try:
         # A fresh process avoids PyTorch CPU deadlocks after model preload.
-        worker = SpawnWorker([Queue(SETTINGS.queue_name, connection=connection)], connection=connection)
+        worker = SpawnWorker([queue], connection=connection)
         worker.work(with_scheduler=False)
     finally:
         stop.set()

@@ -76,6 +76,7 @@ class JobSubmission(BaseModel):
 
 class JobQueueStatus(BaseModel):
     ahead: int | None = None
+    estimated_wait_seconds: int | None = Field(default=None, ge=0)
     waiting: int
     total_waiting: int
     waiting_by_mode: dict[str, int]

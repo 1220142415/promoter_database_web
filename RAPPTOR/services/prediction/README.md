@@ -141,6 +141,35 @@ statistics without exposing job IDs, sequences, tickets, or user data. A
 token-protected `GET /v1/jobs/{job_id}` response also includes that job's
 `mode` and `input_bases`.
 
+The same token-protected job response includes
+`queue.estimated_wait_seconds`, an estimate of time until that job starts (not
+time until it completes). It remains `null` when workers are offline or recent
+measurements are insufficient or stalled, and becomes `0` once the job starts.
+The estimator keeps at most 120 seconds of bounded window-progress samples in
+RQ metadata. Per queue, Redis retains a small set of recent completed timing
+profiles containing measured windows/second plus preparation and output-writing
+overhead. Queued workload is calculated from input lengths, stride, strand
+count, and the model's configured window length, then assigned FIFO across the
+currently heartbeating worker slots. No other job identifiers or inputs are
+included in the response. `queue.ahead` continues to count only waiting jobs in
+front of the current job and excludes running work.
+
+RQ's former fixed 3,600-second wall-clock timeout is disabled (`job_timeout=-1`).
+Workers repair that legacy timeout on jobs that are still queued when they
+start. A separate watchdog defaults to 3,600 seconds of *no useful progress*;
+stage transitions, increasing completion percentage, or increasing processed
+window counts reset that timer. A per-job child heartbeat is tracked separately,
+so a live process that is no longer advancing does not occupy a worker forever.
+The service reports preparation, inference/scanning, output writing, and final
+completion as distinct progress points. Configure only the inactivity limit
+with `RAPPTOR_JOB_STALL_TIMEOUT_SECONDS`; the wall-clock timeout must remain
+`RAPPTOR_JOB_TIMEOUT_SECONDS=-1`.
+
+Failed jobs keep their last valid progress snapshot and percentage under
+`progress.last_valid_progress`; failure never reports 100%. `error.code`
+distinguishes ordinary `JOB_FAILED`, `JOB_PROGRESS_STALLED`, and
+`JOB_PROCESS_HEARTBEAT_LOST` failures while messages remain short and safe.
+
 ## Local validation
 
 ```bash

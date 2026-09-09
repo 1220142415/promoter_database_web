@@ -188,6 +188,12 @@ currently heartbeating worker slots. No other job identifiers or inputs are
 included in the response. `queue.ahead` continues to count only waiting jobs in
 front of the current job and excludes running work.
 
+While a job is running, the same response adds
+`progress.estimated_remaining_seconds`: the estimated time until that job
+finishes. It uses the same recent window throughput and measured preparation/output
+overhead as the queue estimator. It is `null` when measurement is insufficient,
+stalled, or the matching worker is offline, and `0` after successful completion.
+
 RQ's former fixed 3,600-second wall-clock timeout is disabled (`job_timeout=-1`).
 Workers repair that legacy timeout on jobs that are still queued when they
 start. A separate watchdog defaults to 3,600 seconds of *no useful progress*;

@@ -112,7 +112,7 @@ def test_worker_source_rejects_non_https_url():
 
 class FakeRuntime:
     seq_length = 100
-    upstream_len = 50
+    upstream_len = 80
     device = torch.device("cpu")
     checkpoint_sha256 = "b" * 64
     model_config_sha256 = "c" * 64
@@ -165,7 +165,7 @@ def test_predict_100bp_writes_one_window_per_strand(tmp_path, monkeypatch):
     )
     assert [row["strand"] for row in rows] == ["+", "-"]
     assert [row["window_start_0based"] for row in rows] == [0, 0]
-    assert [row["anchor_position_0based"] for row in rows] == [50, 49]
+    assert [row["anchor_position_0based"] for row in rows] == [80, 19]
     assert summary["window_count"] == 2
     assert summary["reverse_complementary"] is True
     assert runtime.scored_sequences == [sequence, runtime.reverse_complement(sequence)]

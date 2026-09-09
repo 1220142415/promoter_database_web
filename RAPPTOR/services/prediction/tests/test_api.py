@@ -380,6 +380,22 @@ def test_job_status_exposes_estimated_wait_without_changing_token_auth(tmp_path,
     assert queue.worker_ready is True
 
 
+def test_job_status_exposes_current_job_remaining_time_in_progress(tmp_path, monkeypatch):
+    api, connection = load_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, "estimate_remaining_seconds", lambda *args, **kwargs: 42)
+    created = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 100,
+        genome_context="ACGT" * 100,
+    ), authorization=None))
+
+    status = api.get_job(created.job_id, created.access_token)
+
+    assert status.progress["stage"] == "queued"
+    assert status.progress["estimated_remaining_seconds"] == 42
+
+
 def test_job_status_survives_queue_metric_failure(tmp_path, monkeypatch):
     api, _ = load_api(tmp_path, monkeypatch)
     created = asyncio.run(api.submit_job(api.JobSubmission(

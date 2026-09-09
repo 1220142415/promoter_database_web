@@ -262,3 +262,19 @@ def estimate_wait_seconds(connection, job: Job, status: str, queued_ids: list[st
         profiles=load_profiles(connection, job.origin, now=now),
         now=now,
     )
+
+
+def estimate_remaining_seconds(connection, job: Job, status: str, *, now: float | None = None) -> int | None:
+    """Estimate this running job's remaining work without exposing queue details."""
+    if status == "succeeded":
+        return 0
+    if status != "running":
+        return None
+    if not connection.keys(f"rapptor:worker:{job.origin}:*:ready"):
+        return None
+    now = time.time() if now is None else float(now)
+    stats = _profile_stats(load_profiles(connection, job.origin, now=now))
+    if stats is None:
+        return None
+    remaining = _running_remaining(job.meta, stats, now)
+    return None if remaining is None else max(0, math.ceil(remaining))

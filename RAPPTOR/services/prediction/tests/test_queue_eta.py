@@ -4,6 +4,7 @@ import fakeredis
 
 from prediction_service.queue_eta import (
     calculate_wait_seconds,
+    estimate_remaining_seconds,
     load_profiles,
     record_progress,
     save_completed_profile,
@@ -142,3 +143,49 @@ def test_process_heartbeat_does_not_count_as_useful_progress():
     assert meta["queue_eta"]["last_progress_at"] == 100.0
     record_progress(meta, "scanning", 101, percent=20.1, now=111.0)
     assert meta["queue_eta"]["last_progress_at"] == 111.0
+
+
+def test_running_job_remaining_time_uses_live_progress_and_output_overhead():
+    connection = fakeredis.FakeRedis()
+    connection.set("rapptor:worker:prediction:test:host:1:ready", "ready")
+    current = job(
+        "running", 10_000,
+        progress={"stage": "scanning", "windows": 6_000},
+        samples=[[NOW - 60, 0], [NOW, 6_000]],
+    )
+    current.origin = "prediction:test"
+    connection.lpush(
+        "rapptor:queue-eta:prediction:test:profiles",
+        '{"recorded_at":1000,"windows_per_second":80,"preparation_seconds":10,"output_seconds":5}',
+    )
+
+    assert estimate_remaining_seconds(connection, current, "running", now=NOW) == 45
+
+
+def test_remaining_time_is_null_when_samples_are_unreliable_or_worker_offline():
+    connection = fakeredis.FakeRedis()
+    current = job(
+        "running", 10_000,
+        progress={"stage": "scanning", "windows": 1_000},
+        samples=[[NOW - 60, 0], [NOW - 31, 1_000]],
+    )
+    current.origin = "prediction:test"
+    connection.lpush(
+        "rapptor:queue-eta:prediction:test:profiles",
+        '{"recorded_at":1000,"windows_per_second":100,"preparation_seconds":10,"output_seconds":5}',
+    )
+
+    assert estimate_remaining_seconds(connection, current, "running", now=NOW) is None
+    connection.set("rapptor:worker:prediction:test:host:1:ready", "ready")
+    connection.delete("rapptor:queue-eta:prediction:test:profiles")
+    assert estimate_remaining_seconds(connection, current, "running", now=NOW) is None
+
+
+def test_remaining_time_follows_job_status_transitions():
+    connection = fakeredis.FakeRedis()
+    current = job("target", 100)
+    current.origin = "prediction:test"
+
+    assert estimate_remaining_seconds(connection, current, "queued", now=NOW) is None
+    assert estimate_remaining_seconds(connection, current, "failed", now=NOW) is None
+    assert estimate_remaining_seconds(connection, current, "succeeded", now=NOW) == 0

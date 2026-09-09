@@ -22,7 +22,7 @@ from .cgr_cache import ReferenceCgrNotFound, normalize_reference_source, validat
 from .jobs import process_job
 from .metrics import cpu_history, latest_cpu_sample, sample_cpu_loop, stop_sampler
 from .queueing import get_queue, get_redis_connection
-from .queue_eta import estimate_wait_seconds
+from .queue_eta import estimate_remaining_seconds, estimate_wait_seconds
 from .scan_progress import count_scan_windows
 from .schemas import JobCreated, JobStatus, JobSubmission
 from .security import new_access_token, token_digest, token_matches
@@ -572,6 +572,11 @@ def get_job(job_id: str, x_job_token: str | None = Header(default=None, alias="X
     status = _status_name(job)
     result = job.meta.get("result") if status == "succeeded" else None
     error = job.meta.get("error") if status == "failed" else None
+    progress = dict(job.meta.get("progress") or {})
+    try:
+        progress["estimated_remaining_seconds"] = estimate_remaining_seconds(connection, job, status)
+    except Exception:
+        progress["estimated_remaining_seconds"] = None
     input_bases = job.meta.get("input_bases")
     if not isinstance(input_bases, int):
         try:
@@ -584,7 +589,7 @@ def get_job(job_id: str, x_job_token: str | None = Header(default=None, alias="X
         mode=job.meta.get("mode"),
         input_bases=input_bases,
         model_version=job.meta.get("model_version"),
-        progress=job.meta.get("progress"),
+        progress=progress or None,
         submitted_at=job.meta.get("submitted_at"),
         started_at=job.meta.get("started_at"),
         ended_at=job.meta.get("ended_at"),

@@ -104,9 +104,13 @@ greater than `score_cutoff` (or 0.9 when no cutoff is supplied) are written to
 `peaks.gff3`; a zero-peak scan still produces a valid GFF3 header. SciPy 1.15.3
 is required.
 
-Peak GFF3 records are sampled 1 bp anchors in 1-based reference coordinates.
-They record `sampled_anchor=true` and `resolution_bp=stride`; no unsupported
-interpolation is used between evaluated windows. New score
+Peak GFF3 records are strand-aware 100 bp scored windows in 1-based closed
+reference coordinates: `anchor-80 ... anchor+19` on `+` and
+`anchor-19 ... anchor+80` on `-`. The actual evaluated window is emitted
+without clipping or padding. Records retain `anchor_position_0based`, add the
+1-based `peak_position`, and report `upstream_length=80`,
+`downstream_length=20`, `sampled_anchor=true`, and `resolution_bp=stride`; no
+unsupported interpolation is used between evaluated windows. New score
 artifacts use reference-oriented `window_start_0based`, recorded by
 `window_start_coordinate_system: "reference_0based"` in the summary, a GFF3
 header, and Parquet metadata. Readers must preserve the older strand-oriented

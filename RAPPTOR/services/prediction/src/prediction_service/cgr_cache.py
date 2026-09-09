@@ -1,26 +1,23 @@
 from __future__ import annotations
 
 import hashlib
-import gzip
 import json
 import os
 import re
 import shutil
 import tempfile
 import uuid
+from contextlib import contextmanager
 from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
 
-import httpx
 import torch
 
 from rapptor.cgr.converter import generate_cgr_from_fasta
 
 from .cgr import load_cgr_tensor
 from .config import SETTINGS
-from .validation import validate_fasta
 
 
 ACCESSION_RE = re.compile(r"GCF_[0-9]{9}\.[0-9]+")
@@ -50,26 +47,6 @@ def cache_dir(accession: str, *, root: Path, version: str) -> Path:
     return result
 
 
-def normalize_reference_source(accession: str, source: dict | None) -> dict:
-    if not ACCESSION_RE.fullmatch(accession) or not isinstance(source, dict):
-        raise ReferenceCgrNotFound("Reference CGR is unavailable.")
-    url = source.get("url")
-    sha256 = source.get("sha256")
-    parsed = urlsplit(url) if isinstance(url, str) else None
-    if (
-        parsed is None
-        or parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or len(url) > 2048
-        or not isinstance(sha256, str)
-        or not SHA256_RE.fullmatch(sha256.lower())
-    ):
-        raise ReferenceCgrNotFound("Reference CGR is unavailable.")
-    return {"url": url, "sha256": sha256.lower()}
-
-
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -85,7 +62,28 @@ def _publish(temp_dir: Path, target_dir: Path) -> None:
     except Exception:
         os.replace(backup, target_dir)
         raise
-    shutil.rmtree(backup)
+    shutil.rmtree(backup, ignore_errors=True)
+
+
+def _write_manifest(
+    directory: Path, accession: str, fasta_sha256: str, png_sha256: str, version: str,
+) -> None:
+    (directory / "manifest.json").write_text(
+        json.dumps(
+            {
+                "accession": accession,
+                "fastaSha256": fasta_sha256,
+                "cgrPngSha256": png_sha256,
+                "resolution": 128,
+                "cgrVersion": version,
+                "generatedAt": _utc_now(),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_cache_entry(
@@ -111,22 +109,7 @@ def write_cache_entry(
         )
         load_cgr_tensor(png_path, expected_size=128)
         matrix_path.unlink()
-        (temp_dir / "manifest.json").write_text(
-            json.dumps(
-                {
-                    "accession": accession,
-                    "fastaSha256": fasta_sha256,
-                    "cgrPngSha256": sha256_file(png_path),
-                    "resolution": 128,
-                    "cgrVersion": version,
-                    "generatedAt": _utc_now(),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        _write_manifest(temp_dir, accession, fasta_sha256, sha256_file(png_path), version)
         _publish(temp_dir, target_dir)
         temp_dir = None
         return validate_reference_cgr(
@@ -140,78 +123,47 @@ def write_cache_entry(
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def _download_reference_fasta(source: dict, destination: Path) -> None:
-    digest = hashlib.sha256()
-    size = 0
-    with httpx.stream("GET", source["url"], follow_redirects=True, timeout=60.0) as response:
-        response.raise_for_status()
-        with destination.open("wb") as handle:
-            for chunk in response.iter_raw():
-                size += len(chunk)
-                if size > SETTINGS.max_request_bytes:
-                    raise ValueError("reference FASTA exceeds service byte limit")
-                digest.update(chunk)
-                handle.write(chunk)
-    if digest.hexdigest() != source["sha256"]:
-        raise ValueError("reference FASTA SHA-256 mismatch")
-
-
-def _decompress_if_needed(path: Path) -> Path:
-    with path.open("rb") as handle:
-        compressed = handle.read(2) == b"\x1f\x8b"
-    if not compressed:
-        return path
-    output = path.with_name("reference.uncompressed.fasta")
-    size = 0
-    with gzip.open(path, "rb") as source, output.open("wb") as destination:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            size += len(chunk)
-            if size > SETTINGS.max_request_bytes:
-                raise ValueError("reference FASTA exceeds service byte limit")
-            destination.write(chunk)
-    return output
-
-
-def _ensure_reference_cgr_entry(accession: str, source: dict | None = None) -> tuple[dict, bool]:
+def write_uploaded_cgr_entry(
+    accession: str,
+    source_png: Path,
+    fasta_sha256: str,
+    png_sha256: str,
+    *,
+    root: Path,
+    version: str,
+) -> dict:
+    if sha256_file(source_png) != png_sha256:
+        raise ValueError("CGR PNG SHA-256 mismatch")
+    load_cgr_tensor(source_png, expected_size=128)
+    target_dir = cache_dir(accession, root=root, version=version)
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+    temp_dir = Path(tempfile.mkdtemp(prefix=f".{version}.tmp-", dir=target_dir.parent))
     try:
-        return validate_reference_cgr(accession), False
-    except ReferenceCgrNotFound:
-        source = normalize_reference_source(accession, source)
+        shutil.copyfile(source_png, temp_dir / "cgr.png")
+        _write_manifest(temp_dir, accession, fasta_sha256, png_sha256, version)
+        _publish(temp_dir, target_dir)
+        temp_dir = None
+        return validate_reference_cgr(
+            accession,
+            root=root,
+            version=version,
+            expected_fasta_sha256=fasta_sha256,
+        )
+    finally:
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
-    root = SETTINGS.cgr_cache_root
-    root.mkdir(parents=True, exist_ok=True)
-    lock_dir = root / ".locks"
-    lock_dir.mkdir(exist_ok=True)
-    try:
-        import fcntl
 
-        with (lock_dir / f"{accession}-{SETTINGS.cgr_version}.lock").open("w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                return validate_reference_cgr(accession), False
-            except ReferenceCgrNotFound:
-                pass
-            with tempfile.TemporaryDirectory(prefix=f".{accession}.download-", dir=root) as temp:
-                fasta_path = Path(temp) / "reference.fasta"
-                _download_reference_fasta(source, fasta_path)
-                fasta_path = _decompress_if_needed(fasta_path)
-                validated = validate_fasta(
-                    fasta_path.read_text(encoding="utf-8"),
-                    max_bases=SETTINGS.max_genome_bases,
-                    max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
-                )
-                fasta_path.write_text(validated.to_fasta(), encoding="utf-8")
-                return write_cache_entry(
-                    accession,
-                    fasta_path,
-                    source["sha256"],
-                    root=root,
-                    version=SETTINGS.cgr_version,
-                ), True
-    except ReferenceCgrNotFound:
-        raise
-    except Exception as exc:
-        raise ReferenceCgrNotFound("Reference CGR is unavailable.") from exc
+@contextmanager
+def reference_cache_lock(accession: str, *, root: Path, version: str):
+    import fcntl
+
+    directory = cache_dir(accession, root=root, version=version)
+    lock_dir = Path(root) / ".locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    with (lock_dir / f"{accession}-{version}.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield directory
 
 
 @lru_cache(maxsize=128)
@@ -226,7 +178,10 @@ def get_reference_cgr_tensor(
     accession: str, source: dict | None = None, *, device="cpu",
 ) -> tuple[torch.Tensor, str]:
     """Return a bounded process-local tensor and its non-sensitive cache status."""
-    entry, generated = _ensure_reference_cgr_entry(accession, source)
+    # The source argument remains accepted for old request.json files, but Docker
+    # never downloads references. Only a previously imported cache can be used.
+    del source
+    entry = validate_reference_cgr(accession)
     before = _cached_reference_tensor.cache_info().hits
     tensor = _cached_reference_tensor(
         accession,
@@ -236,7 +191,7 @@ def get_reference_cgr_tensor(
         str(device),
     )
     memory_hit = _cached_reference_tensor.cache_info().hits > before
-    return tensor, "miss" if generated else ("memory_hit" if memory_hit else "disk_hit")
+    return tensor, "memory_hit" if memory_hit else "disk_hit"
 
 
 def ensure_reference_cgr(accession: str, source: dict | None = None) -> torch.Tensor:

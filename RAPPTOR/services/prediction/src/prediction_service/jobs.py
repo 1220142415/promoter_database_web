@@ -14,6 +14,7 @@ from rq import get_current_job
 from rq.job import JobStatus
 
 from .callbacks import persist_job_event, report_job_event
+from .cgr import load_cgr_tensor
 from .cgr_cache import get_reference_cgr_tensor
 from .config import SETTINGS
 from .formats import (
@@ -230,11 +231,12 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
     )
     _progress("preparing_cgr", 15.0)
     reference_accession = request.get("reference_accession")
+    uploaded_cgr = request["cgr_source"] == "uploaded_cgr_png"
     cgr_started = time.monotonic()
     if reference_accession is not None:
         context_bases = None
         cgr, cgr_cache = get_reference_cgr_tensor(
-            reference_accession, request.get("reference_source"), device=runtime.device,
+            reference_accession, device=runtime.device,
         )
     elif request.get("fasta") is not None:
         validated = validate_fasta(
@@ -244,7 +246,10 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         )
         context_bases = validated.total_bases
         context_fasta = storage.write_text(job_id, "genome_context.fasta", validated.to_fasta())
-        cgr = runtime.make_cgr(context_fasta, job_dir)
+        cgr = (
+            load_cgr_tensor(job_dir / "cgr.png", expected_size=128).to(runtime.device)
+            if uploaded_cgr else runtime.make_cgr(context_fasta, job_dir)
+        )
         cgr_cache = "miss"
     else:
         genome_context = validate_sequence(
@@ -256,7 +261,10 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         )
         context_bases = len(genome_context)
         context_fasta = storage.write_text(job_id, "genome_context.fasta", f">genome_context\n{genome_context}\n")
-        cgr = runtime.make_cgr(context_fasta, job_dir)
+        cgr = (
+            load_cgr_tensor(job_dir / "cgr.png", expected_size=128).to(runtime.device)
+            if uploaded_cgr else runtime.make_cgr(context_fasta, job_dir)
+        )
         cgr_cache = "miss"
     timings["cgr_load_ms"] = round((time.monotonic() - cgr_started) * 1000, 1)
     timings["cgr_cache"] = cgr_cache

@@ -43,25 +43,16 @@ def test_cache_builder_is_repeatable_and_loadable(tmp_path):
     assert not list(cache.rglob("*.npy"))
 
 
-def test_missing_cache_uses_only_trusted_worker_source(tmp_path, monkeypatch):
-    fasta = (">genome\n" + "ACGT" * 100 + "\n").encode()
-    source = {"url": "https://huggingface.co/example/reference.fna", "sha256": hashlib.sha256(fasta).hexdigest()}
+def test_missing_cache_never_downloads_worker_source(tmp_path, monkeypatch):
+    source = {"url": "https://example.test/reference.fna", "sha256": "a" * 64}
     monkeypatch.setattr(cgr_cache, "SETTINGS", replace(
         SETTINGS,
         cgr_cache_root=tmp_path / "cache",
         cgr_version=VERSION,
-        max_request_bytes=1024 * 1024,
-        max_genome_bases=1000,
     ))
-
-    def fake_download(provided_source, destination):
-        assert provided_source == source
-        destination.write_bytes(fasta)
-
-    monkeypatch.setattr(cgr_cache, "_download_reference_fasta", fake_download)
-    tensor = cgr_cache.ensure_reference_cgr(ACCESSION, source)
-    assert tensor.shape == (1, 128, 128)
-    assert cgr_cache.ensure_reference_cgr(ACCESSION).shape == (1, 128, 128)
+    with pytest.raises(cgr_cache.ReferenceCgrNotFound):
+        cgr_cache.ensure_reference_cgr(ACCESSION, source)
+    assert not (tmp_path / "cache").exists()
 
 
 def test_reference_tensor_is_reused_and_invalidated_by_png_hash(tmp_path, monkeypatch):
@@ -98,16 +89,6 @@ def test_reference_tensor_is_reused_and_invalidated_by_png_hash(tmp_path, monkey
     assert changed is not first
     assert not torch.equal(changed, first)
     assert cgr_cache._cached_reference_tensor.cache_info().maxsize == 128
-
-
-def test_worker_source_rejects_non_https_url():
-    source = {"url": "file:///etc/passwd", "sha256": "a" * 64}
-    try:
-        cgr_cache.normalize_reference_source(ACCESSION, source)
-    except cgr_cache.ReferenceCgrNotFound as exc:
-        assert str(exc) == "Reference CGR is unavailable."
-    else:
-        raise AssertionError("unsafe source URL was accepted")
 
 
 class FakeRuntime:
@@ -251,6 +232,20 @@ def test_reference_accession_completes_predict_without_fasta(tmp_path, monkeypat
     fasta_summary = storage.read_json(fasta_job_id, "summary.json")
     assert fasta_summary["cgr_source"] == "uploaded_complete_genome_fasta"
     assert fasta_summary["genome_context_bases"] == 400
+
+    uploaded_job_id = "6" * 32
+    storage.create(uploaded_job_id)
+    Image.new("L", (128, 128), color=64).save(storage.job_dir(uploaded_job_id) / "cgr.png")
+    jobs._predict(uploaded_job_id, {
+        "sequence": "A" * 100,
+        "genome_context": "ACGT" * 100,
+        "cgr_source": "uploaded_cgr_png",
+        "cgr_sha256": "d" * 64,
+        "batch_size": 1,
+    }, storage)
+    uploaded_summary = storage.read_json(uploaded_job_id, "summary.json")
+    assert uploaded_summary["cgr_source"] == "uploaded_cgr_png"
+    assert (storage.job_dir(uploaded_job_id) / "genome_context.fasta").is_file()
 
 
 def test_predict_emits_only_non_sensitive_stage_timings(tmp_path, monkeypatch, capsys):

@@ -28,6 +28,10 @@ class JobSubmission(BaseModel):
         default=None,
         description="Complete assembly FASTA. All records form one CGR context.",
     )
+    cgr_png_base64: str | None = Field(
+        default=None,
+        description="Optional 128x128 CGR PNG for a custom genome context. Never used with reference_accession.",
+    )
     stride: int | None = Field(
         default=None,
         ge=1,
@@ -57,6 +61,8 @@ class JobSubmission(BaseModel):
             sources = (self.genome_context, self.reference_accession, self.fasta)
             if sum(value is not None for value in sources) != 1:
                 raise ValueError("For mode=predict, provide exactly one of genome_context, reference_accession, or fasta.")
+            if self.reference_accession is not None and self.cgr_png_base64 is not None:
+                raise ValueError("Catalog references use the server CGR cache; omit cgr_png_base64.")
             if self.output_formats:
                 raise ValueError("output_formats is only supported for genome_scan mode.")
             if self.score_cutoff is not None:
@@ -68,6 +74,7 @@ class JobSubmission(BaseModel):
                 self.sequence is not None
                 or self.genome_context is not None
                 or self.reference_accession is not None
+                or self.cgr_png_base64 is not None
             ):
                 raise ValueError(
                     "For mode=genome_scan, use fasta and omit sequence/genome_context/reference_accession."
@@ -116,4 +123,29 @@ class JobStatus(BaseModel):
     artifacts_expires_at: str | None = None
     queue: JobQueueStatus
     result: dict | None = None
+    error: dict | None = None
+
+
+class ReferenceCacheQuery(BaseModel):
+    accessions: list[str] = Field(min_length=1, max_length=100)
+
+
+class ReferenceCacheStatus(BaseModel):
+    accession: str
+    status: Literal["ready", "missing", "preparing", "invalid"]
+    cgr_version: str
+    source_sha256: str | None = None
+
+
+class ReferenceCacheQueryResult(BaseModel):
+    entries: list[ReferenceCacheStatus]
+
+
+class ReferenceCacheImportStatus(BaseModel):
+    import_id: str | None = None
+    accession: str
+    status: Literal["preparing", "ready", "failed"]
+    cgr_version: str
+    source_sha256: str
+    cgr_sha256: str
     error: dict | None = None

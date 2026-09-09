@@ -29,6 +29,9 @@ services:
       RAPPTOR_DATA_ROOT: /data
       RAPPTOR_CGR_CACHE_ROOT: ${RAPPTOR_CGR_CACHE_ROOT:-/data/cgr-cache}
       RAPPTOR_CGR_VERSION: ${RAPPTOR_CGR_VERSION:-cgr-128-v1}
+      RAPPTOR_REFERENCE_CACHE_QUEUE: ${RAPPTOR_REFERENCE_CACHE_QUEUE:-prediction:reference-cache}
+      RAPPTOR_REFERENCE_CACHE_MAX_UPLOAD_BYTES: ${RAPPTOR_REFERENCE_CACHE_MAX_UPLOAD_BYTES:-33554432}
+      RAPPTOR_REFERENCE_CACHE_MAX_PENDING: ${RAPPTOR_REFERENCE_CACHE_MAX_PENDING:-10}
       RAPPTOR_MODEL_VERSION: candidate-github-93cf
       RAPPTOR_DEVICE: cpu
       RAPPTOR_TICKET_VALIDATION_MODE: ${RAPPTOR_TICKET_VALIDATION_MODE:-disabled}
@@ -88,6 +91,19 @@ services:
       OMP_NUM_THREADS: ${RAPPTOR_PREDICT_CPU_THREADS:-28}
       MKL_NUM_THREADS: ${RAPPTOR_PREDICT_CPU_THREADS:-28}
       OPENBLAS_NUM_THREADS: ${RAPPTOR_PREDICT_CPU_THREADS:-28}
+    volumes:
+      - rapptor-prediction-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [rapptor-prediction]
+
+  cache-worker:
+    image: rapptor-prediction-cpu:latest
+    command: ["python", "-m", "prediction_service.cache_worker"]
+    environment:
+      <<: *service_env
     volumes:
       - rapptor-prediction-data:/data
     depends_on:

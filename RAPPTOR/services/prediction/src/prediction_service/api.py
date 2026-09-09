@@ -277,8 +277,6 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
     from .formats import scan_output_formats
     request["output_formats"] = list(scan_output_formats(payload.output_formats, stride))
-    if "gff3" in request["output_formats"] and stride != 1:
-        raise InputValidationError("Smoothed GFF3 and peak output requires stride=1.")
     return request, validated.total_bases + (len(genome_context) if genome_context else 0)
 
 

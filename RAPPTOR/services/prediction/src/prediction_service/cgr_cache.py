@@ -20,7 +20,7 @@ from .cgr import load_cgr_tensor
 from .config import SETTINGS
 
 
-ACCESSION_RE = re.compile(r"GCF_[0-9]{9}\.[0-9]+")
+ACCESSION_RE = re.compile(r"GC[FA]_[0-9]{9}\.[0-9]+")
 VERSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 

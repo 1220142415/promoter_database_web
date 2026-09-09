@@ -21,7 +21,7 @@ class JobSubmission(BaseModel):
     )
     reference_accession: str | None = Field(
         default=None,
-        pattern=r"^GCF_[0-9]{9}\.[0-9]+$",
+        pattern=r"^GC[FA]_[0-9]{9}\.[0-9]+$",
         description="Accession of a server-side precomputed genome CGR.",
     )
     fasta: str | None = Field(
@@ -147,5 +147,5 @@ class ReferenceCacheImportStatus(BaseModel):
     status: Literal["preparing", "ready", "failed"]
     cgr_version: str
     source_sha256: str
-    cgr_sha256: str
+    cgr_sha256: str | None = None
     error: dict | None = None

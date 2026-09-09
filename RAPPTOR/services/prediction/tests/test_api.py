@@ -163,6 +163,21 @@ def test_predict_rejects_accession_path_traversal(tmp_path, monkeypatch):
         )
 
 
+def test_predict_accepts_versioned_gca_accession(tmp_path, monkeypatch):
+    accession = "GCA_000005845.1"
+    write_cgr_cache(tmp_path, accession=accession)
+    api, _ = load_api(tmp_path, monkeypatch)
+    request, bases = api._validate_submission(api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 100,
+        reference_accession=accession,
+    ))
+    assert request["reference_accession"] == accession
+    assert request["cgr_source"] == "reference_accession"
+    assert bases == 100
+
+
 def test_predict_unknown_accession_is_safe_error(tmp_path, monkeypatch):
     api, connection = load_api(tmp_path, monkeypatch)
     with pytest.raises(HTTPException) as missing:

@@ -73,7 +73,7 @@ describe('prototype prediction workbench', () => {
     expect(screen.queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
     await user.click(option);
     expect(screen.getByText('Genome context ready: NCBI external reference.')).toBeInTheDocument();
-    expect(screen.getByText(/Worker downloads the complete genome FASTA/)).toBeInTheDocument();
+    expect(screen.getByText(/A cached reference is reused when available/)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
     await waitFor(() => expect(push).toHaveBeenCalled());

@@ -86,7 +86,7 @@ def submit(api, monkeypatch, accession, body, *, source_sha256=SOURCE_SHA256, co
         request(body, content_type),
         authorization=f"Bearer {SECRET}",
         x_source_sha256=source_sha256,
-        x_cgr_sha256=hashlib.sha256(body).hexdigest(),
+        x_cgr_sha256=hashlib.sha256(body).hexdigest() if content_type == "image/png" else None,
         x_cgr_version=VERSION,
     ))
     return response_json(response), queued
@@ -154,6 +154,65 @@ def test_png_import_is_async_loadable_and_idempotent(tmp_path, monkeypatch):
     assert second["status"] == "ready"
     assert second["import_id"] is None
     assert second_queued == []
+
+
+def test_fasta_import_generates_cgr_and_accepts_gca(tmp_path, monkeypatch):
+    api, reference_cache, cgr_cache, connection = load_cache_api(tmp_path, monkeypatch)
+    accession = "GCA_000005845.1"
+    body = (">synthetic\n" + "ACGT" * 100 + "\n").encode()
+    source_sha256 = hashlib.sha256(body).hexdigest()
+
+    first, queued = submit(
+        api, monkeypatch, accession, body,
+        source_sha256=source_sha256, content_type="text/x-fasta; charset=utf-8",
+    )
+    assert first["status"] == "preparing"
+    assert first["cgr_sha256"] is None
+    assert reference_cache.process_reference_import(queued[0])["status"] == "ready"
+    ready = reference_cache.public_import_state(
+        reference_cache.get_import_state(connection, queued[0])
+    )
+    assert ready["status"] == "ready"
+    assert ready["cgr_sha256"] == cgr_cache.sha256_file(
+        cgr_cache.cache_dir(accession, root=api.SETTINGS.cgr_cache_root, version=VERSION) / "cgr.png"
+    )
+
+    second, second_queued = submit(
+        api, monkeypatch, accession, body,
+        source_sha256=source_sha256, content_type="text/x-fasta",
+    )
+    assert second["status"] == "ready"
+    assert second["cgr_sha256"] == ready["cgr_sha256"]
+    assert second_queued == []
+
+
+@pytest.mark.parametrize("body", [b"ACGT", b">empty\n", b">bad\nACGX\n", b"\xff"])
+def test_fasta_import_rejects_invalid_records_and_cleans_upload(tmp_path, monkeypatch, body):
+    api, reference_cache, cgr_cache, connection = load_cache_api(tmp_path, monkeypatch)
+    source_sha256 = hashlib.sha256(body).hexdigest()
+    _, queued = submit(
+        api, monkeypatch, ACCESSION, body,
+        source_sha256=source_sha256, content_type="text/x-fasta",
+    )
+    assert reference_cache.process_reference_import(queued[0]) == {
+        "status": "failed", "error": "REFERENCE_FASTA_INVALID",
+    }
+    assert reference_cache.get_import_state(connection, queued[0])["status"] == "failed"
+    assert not reference_cache.import_dir(queued[0]).exists()
+    assert not cgr_cache.cache_dir(
+        ACCESSION, root=api.SETTINGS.cgr_cache_root, version=VERSION,
+    ).exists()
+
+
+def test_fasta_import_requires_exact_source_hash(tmp_path, monkeypatch):
+    api, _, _, _ = load_cache_api(tmp_path, monkeypatch)
+    body = b">synthetic\nACGTACGTACGT\n"
+    with pytest.raises(HTTPException) as mismatch:
+        submit(
+            api, monkeypatch, ACCESSION, body,
+            source_sha256="b" * 64, content_type="text/x-fasta",
+        )
+    assert mismatch.value.detail["code"] == "REFERENCE_SOURCE_CHECKSUM_MISMATCH"
 
 
 def test_accession_versions_are_isolated_and_hash_conflicts_are_rejected(tmp_path, monkeypatch):

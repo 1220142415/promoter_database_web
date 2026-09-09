@@ -14,16 +14,20 @@ from .cgr_cache import (
     ReferenceCgrNotFound,
     cache_dir,
     reference_cache_lock,
+    sha256_file,
     validate_reference_cgr,
+    write_cache_entry,
     write_uploaded_cgr_entry,
 )
 from .config import SETTINGS
 from .queueing import get_redis_connection
+from .validation import InputValidationError, validate_fasta
 
 
 IMPORT_ID_RE = re.compile(r"[0-9a-f]{32}")
 SUPPORTED_CONTENT_TYPES = {
     "image/png",
+    "text/x-fasta",
 }
 
 
@@ -142,18 +146,21 @@ def begin_import(
     import_id: str,
     accession: str,
     source_sha256: str,
-    cgr_sha256: str,
+    cgr_sha256: str | None,
     content_type: str,
 ) -> tuple[dict, bool]:
     accession = _validate_accession(accession)
     source_sha256 = source_sha256.lower()
     if not SHA256_RE.fullmatch(source_sha256):
         raise ReferenceCacheError("INVALID_SOURCE_SHA256", "Source SHA-256 is invalid.")
-    cgr_sha256 = cgr_sha256.lower()
-    if not SHA256_RE.fullmatch(cgr_sha256):
-        raise ReferenceCacheError("INVALID_CGR_SHA256", "CGR PNG SHA-256 is invalid.")
-    if content_type.split(";", 1)[0].strip().lower() not in SUPPORTED_CONTENT_TYPES:
+    content_type = content_type.split(";", 1)[0].strip().lower()
+    if content_type not in SUPPORTED_CONTENT_TYPES:
         raise ReferenceCacheError("UNSUPPORTED_SOURCE_FORMAT", "Source format is not supported.")
+    cgr_sha256 = cgr_sha256.lower() if content_type == "image/png" and cgr_sha256 else None
+    if content_type == "image/png" and (
+        cgr_sha256 is None or not SHA256_RE.fullmatch(cgr_sha256)
+    ):
+        raise ReferenceCacheError("INVALID_CGR_SHA256", "CGR PNG SHA-256 is invalid.")
 
     try:
         entry = validate_reference_cgr(accession)
@@ -165,7 +172,7 @@ def begin_import(
                 "REFERENCE_SOURCE_CONFLICT",
                 "This accession and CGR version already use a different source.",
             )
-        if entry["png_sha256"] != cgr_sha256:
+        if cgr_sha256 is not None and entry["png_sha256"] != cgr_sha256:
             raise ReferenceCacheError(
                 "REFERENCE_CGR_CONFLICT",
                 "This accession and CGR version already use a different CGR.",
@@ -176,7 +183,7 @@ def begin_import(
             "status": "ready",
             "cgr_version": SETTINGS.cgr_version,
             "source_sha256": source_sha256,
-            "cgr_sha256": cgr_sha256,
+            "cgr_sha256": entry["png_sha256"],
             "error": None,
         }, False
 
@@ -194,6 +201,7 @@ def begin_import(
         if (
             active.get("source_sha256") == source_sha256
             and active.get("cgr_sha256") == cgr_sha256
+            and active.get("content_type", "image/png") == content_type
         ):
             return active, False
         raise ReferenceCacheError("REFERENCE_IMPORT_BUSY", "A different import is already preparing.")
@@ -205,6 +213,7 @@ def begin_import(
         "cgr_version": SETTINGS.cgr_version,
         "source_sha256": source_sha256,
         "cgr_sha256": cgr_sha256,
+        "content_type": content_type,
         "created_at": _now(),
         "error": None,
     }
@@ -223,6 +232,7 @@ def begin_import(
             active
             and active.get("source_sha256") == source_sha256
             and active.get("cgr_sha256") == cgr_sha256
+            and active.get("content_type", "image/png") == content_type
         ):
             return active, False
         raise ReferenceCacheError("REFERENCE_IMPORT_BUSY", "A different import is already preparing.")
@@ -296,6 +306,10 @@ def process_reference_import(import_id: str) -> dict:
     directory = import_dir(import_id)
     upload_path = directory / "upload"
     try:
+        if upload_path.stat().st_size > SETTINGS.reference_cache_max_upload_bytes:
+            raise ReferenceCacheError(
+                "REFERENCE_UPLOAD_TOO_LARGE", "Reference upload is too large."
+            )
         with reference_cache_lock(
             state["accession"], root=SETTINGS.cgr_cache_root, version=state["cgr_version"],
         ):
@@ -312,27 +326,51 @@ def process_reference_import(import_id: str) -> dict:
                         "REFERENCE_SOURCE_CONFLICT",
                         "This accession and CGR version already use a different source.",
                     )
-                try:
-                    entry = write_uploaded_cgr_entry(
-                        state["accession"],
-                        upload_path,
-                        state["source_sha256"],
-                        state["cgr_sha256"],
-                        root=SETTINGS.cgr_cache_root,
-                        version=state["cgr_version"],
-                    )
-                except (OSError, ValueError) as exc:
-                    code = (
-                        "REFERENCE_CGR_CHECKSUM_MISMATCH"
-                        if "SHA-256" in str(exc)
-                        else "REFERENCE_CGR_INVALID"
-                    )
-                    raise ReferenceCacheError(code, "Uploaded CGR PNG is invalid.") from exc
-            elif entry["png_sha256"] != state["cgr_sha256"]:
+                if state.get("content_type", "image/png") == "text/x-fasta":
+                    if sha256_file(upload_path) != state["source_sha256"]:
+                        raise ReferenceCacheError(
+                            "REFERENCE_SOURCE_CHECKSUM_MISMATCH", "FASTA SHA-256 does not match."
+                        )
+                    try:
+                        validate_fasta(
+                            upload_path.read_text(encoding="utf-8"),
+                            max_bases=SETTINGS.max_genome_bases,
+                            max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
+                        )
+                        entry = write_cache_entry(
+                            state["accession"],
+                            upload_path,
+                            state["source_sha256"],
+                            root=SETTINGS.cgr_cache_root,
+                            version=state["cgr_version"],
+                        )
+                    except (OSError, UnicodeError, InputValidationError, ValueError) as exc:
+                        raise ReferenceCacheError(
+                            "REFERENCE_FASTA_INVALID", "Uploaded FASTA is invalid."
+                        ) from exc
+                else:
+                    try:
+                        entry = write_uploaded_cgr_entry(
+                            state["accession"],
+                            upload_path,
+                            state["source_sha256"],
+                            state["cgr_sha256"],
+                            root=SETTINGS.cgr_cache_root,
+                            version=state["cgr_version"],
+                        )
+                    except (OSError, ValueError) as exc:
+                        code = (
+                            "REFERENCE_CGR_CHECKSUM_MISMATCH"
+                            if "SHA-256" in str(exc)
+                            else "REFERENCE_CGR_INVALID"
+                        )
+                        raise ReferenceCacheError(code, "Uploaded CGR PNG is invalid.") from exc
+            elif state["cgr_sha256"] is not None and entry["png_sha256"] != state["cgr_sha256"]:
                 raise ReferenceCacheError(
                     "REFERENCE_CGR_CONFLICT",
                     "This accession and CGR version already use a different CGR.",
                 )
+        state["cgr_sha256"] = entry["png_sha256"]
         _finish(connection, state, status="ready")
         return {"status": "ready", "png_sha256": entry["png_sha256"]}
     except ReferenceCacheError as exc:

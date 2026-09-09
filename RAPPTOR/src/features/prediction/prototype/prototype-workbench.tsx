@@ -583,8 +583,8 @@ export default function PrototypePredictionWorkbench({
           bases = sequence.length;
           referenceName = contextCatalog.accession;
         } else if (usesCachedCgr) {
-          if (contextCatalog?.kind !== 'catalog' || !/^GCF_\d{9}\.\d+$/.test(contextCatalog.accession)) {
-            throw new Error('Cached short-sequence prediction currently requires a versioned GCF accession.');
+          if (contextCatalog?.kind !== 'catalog' || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(contextCatalog.accession)) {
+            throw new Error('Select a versioned GCF or GCA accession.');
           }
           request = {
             mode: 'predict', complete_genome: true, sequence,
@@ -687,7 +687,7 @@ export default function PrototypePredictionWorkbench({
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
   const contextPrivacyCopy = !preview
     ? usesNcbiContext
-      ? 'NCBI · External reference. On submission, the Worker downloads the complete genome FASTA and forwards it to the prediction service. Fetching an external reference may take longer.'
+      ? 'NCBI · External reference. A cached reference is reused when available. Preparing a new reference may take longer.'
       : usesCachedCgr
       ? 'Only the exact accession version is submitted. A matching cached reference is reused; first use may take longer.'
       : 'The complete genome is sent to the configured prediction service to calculate its CGR context.'

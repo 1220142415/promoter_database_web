@@ -8,7 +8,7 @@ import { genomeCatalogRepository } from '@/features/genomes/repository';
 import type { GenomeCatalogMatch } from '@/features/genomes/types';
 import { REAL_PREDICTION_REFERENCE, predictionReferenceExample, validateReferenceExample } from './reference-example';
 
-const ACCESSION = /^GCF_\d{9}\.\d+$/;
+const ACCESSION = /^GC[AF]_\d{9}\.[1-9]\d{0,3}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
 export interface PredictionReferenceSource {

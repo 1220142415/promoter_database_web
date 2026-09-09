@@ -1,18 +1,19 @@
 # Cloudflare Workers Builds
 
-This document records the production deployment path for RAPPTOR. The build is
-performed by Cloudflare Workers Builds on Linux. Local Windows builds use the
-Node.js 20 selection in `scripts/cloudflare/run-opennext-build.mjs` to avoid the
-known OpenNext edge-config copy failure under Node.js 22/24.
+This document records the production deployment path for RAPPTOR. Production
+is deployed with Wrangler from a Linux build. A Cloudflare Workers Builds
+connection may also be used, but its repository settings must be verified in
+the dashboard before relying on an automatic deployment. The locked Wrangler
+toolchain requires Node.js 22 or newer.
 
 ## Current Configuration
 
 | Setting | Value |
 | --- | --- |
 | Cloudflare Worker | `rapptor` |
-| Git account | `duolaJohn` |
-| Repository | `duolaJohn/promoter_database_web` |
-| Production branch | `feature/genome-resource-db-promoter-v1` |
+| Git account | `1220142415` |
+| Repository | `1220142415/promoter_database_web` |
+| Production branch | `main` |
 | Root directory | `/RAPPTOR` |
 | Build command | `npm run build:cf` |
 | Deploy command | `npx @opennextjs/cloudflare deploy` |
@@ -45,22 +46,25 @@ be copied into the repository or pasted into build logs.
    npm run check
    ```
 
-2. If the commit adds a numbered D1 migration, apply it before deploying the
-   Worker. Wrangler records applied migrations and skips them on later runs:
+2. If the commit adds numbered D1 migrations, list and apply all pending
+   migrations in order before deploying the Worker. Wrangler records applied
+   migrations and skips them on later runs:
 
    ```bash
+   npx wrangler d1 migrations list RAPPTOR_DB --remote
    npx wrangler d1 migrations apply RAPPTOR_DB --remote
    ```
 
-   Migration `0004_taxonomy_search.sql` adds the value index used by the
-   current catalog taxonomy search. The query can still run if only the older
-   schema is present, but D1 may scan the facet table; apply `0004` before
-   production traffic so the bounded search path stays inexpensive.
+   The prediction reference deployment requires
+   `0015_prediction_reference_download.sql` followed by
+   `0016_prediction_reference_binding.sql`.
 
-3. Push the reviewed commit or merge its PR into the deployment branch.
-4. Open the Worker Deployments/Builds page and wait for the Linux build.
-5. Inspect the build log. The expected sequence is `npm run build:cf`, then
-   `npx @opennextjs/cloudflare deploy`.
+3. Push the reviewed commit or merge its PR into `main`.
+4. Deploy from Linux with `npm run deploy:cf`. If Workers Builds is connected,
+   first verify the repository, branch, root directory, and commands above in
+   the dashboard, then use its retry action or push a new commit to trigger it.
+5. Inspect the build and deployment log. The expected sequence is
+   `npm run build:cf`, then `npx @opennextjs/cloudflare deploy`.
 6. Smoke-test `/`, `/genomes`, a genome detail route, `/api/genomes`, and one
    remote-data route through the configured proxy if Hugging Face is not
    directly reachable.
@@ -113,10 +117,9 @@ do not satisfy this check.
 
 ### `ENOENT ... open-next.config.edge.mjs` on Windows
 
-This is the known OpenNext Windows bundling failure under Node.js 22/24.
-Install Node.js 20 with `nvm install 20` and use `npm run build:cf`, which
-selects that runtime automatically. If it still fails, use Workers Builds, WSL,
-or another Linux CI runner. Do not add a generated `.open-next` file to Git.
+This is a known OpenNext Windows bundling failure. Use Node.js 22 or newer in
+WSL, Workers Builds, or another Linux CI runner. Do not downgrade to Node.js 20
+or add a generated `.open-next` file to Git.
 
 ### Build cannot find `package.json`
 

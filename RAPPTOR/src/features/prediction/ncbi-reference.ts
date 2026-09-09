@@ -25,7 +25,7 @@ const metadataCache = new Map<string, { expires: number; value: NcbiReference | 
 const EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
 const MAX_METADATA_BYTES = 256 * 1024;
 
-async function boundedBytes(stream: ReadableStream<Uint8Array> | null, maxBytes: number) {
+export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, maxBytes: number) {
   if (!stream) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI returned an empty response.');
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];

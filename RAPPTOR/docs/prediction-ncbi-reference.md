@@ -6,7 +6,7 @@ The existing genome-context search checks the site catalog first. If it returns 
 
 External results and the selected reference are marked `NCBI · External reference`. Users explicitly select the result before submitting. Missing versions are never silently replaced by a newer version. Search failures preserve the input and do not start a prediction or download a genome.
 
-This fallback is for the complete-genome **context of a single 100 bp prediction**. Whole-genome scanning retains its FASTA submission contract; this change does not add NCBI-as-scan-input or alter model behavior. Preview mode does not offer this fallback. Local test tickets cannot authorize this download because they belong to the deployed ticket database.
+This fallback is for the complete-genome **context of a single 100 bp prediction**. Whole-genome scanning retains its FASTA submission contract; this change does not add NCBI-as-scan-input or alter model behavior. Preview mode does not offer this fallback. Preparation runs on the deployed Worker with its ticket database; the loopback development proxy only passes through already-cached catalog references.
 
 ## Data flow
 
@@ -19,10 +19,21 @@ Browser: existing genome search
 
 Browser: verify, obtain ticket, submit 100 bp + ncbi_accession
   → Worker /api/predictions/jobs
-      → D1: atomically claim one download on a valid predict ticket
-      → NCBI: md5checksums.txt + complete *_genomic.fna.gz
-      → bounded download, official MD5 verification, gzip decompression
-      → Docker /v1/jobs: standard mode=predict + sequence + fasta
+      → D1: atomically claim preparation and bind the exact accession to the ticket
+      → Docker GET /v1/reference-cache/{accession} (service Bearer secret)
+          ready → skip download/import
+          preparing → wait for the existing import
+          missing/invalid → Worker downloads the exact reference:
+              catalog: Hugging Face source + published source SHA-256
+              external: NCBI md5checksums.txt + *_genomic.fna.gz + official MD5
+              → bounded decompression in the Worker
+              → POST /v1/reference-cache/{accession}/imports
+                  Content-Type: text/x-fasta
+                  X-Source-SHA256: SHA-256 of the uncompressed request bytes
+                  X-CGR-Version: cgr-128-v1
+              → Docker asynchronously validates FASTA and generates/persists CGR
+              → Worker polls the import every 3 seconds until ready
+      → Docker /v1/jobs: mode=predict + sequence + reference_accession
           → Docker consumes the original ticket normally
           → existing job ID, token, status and artifact flow
 ```
@@ -39,26 +50,27 @@ Browser request to `/api/predictions/jobs`:
 }
 ```
 
-Use the normal `Authorization: Ticket ...` header. Ticket `bases` is **100**, matching Docker's current predict billing; reference byte limits are checked separately. The Worker strips `ncbi_accession` and sends `fasta` to Docker. No URLs, file paths, checksums or new internal metadata fields are accepted from the browser. Supplying another reference source or using this field with `genome_scan` is rejected before downloading.
+Use the normal `Authorization: Ticket ...` header. Ticket `bases` is **100**, matching Docker's current predict billing; reference byte limits are checked separately. The Worker translates `ncbi_accession` to the existing Docker `reference_accession` only after cache preparation. Ordinary catalog `reference_accession` requests use the same preparation flow with Hugging Face on a miss. No URLs, file paths, checksums or import IDs are accepted from the browser. Supplying another reference source or using either accession field with `genome_scan` is rejected before downloading.
 
 ## Storage, limits and failure behavior
 
 - FASTA is held in temporary memory for the Worker request, not persisted to D1, R2 or the browser. The runtime reclaims that memory; there is no persistent Worker filesystem cache.
 - Only small lookup metadata is cached: up to 128 entries per isolate; positive results for five minutes and misses for one minute. This is best-effort, not a global cache or global NCBI rate limiter.
-- Each external-reference submission downloads again. Existing Docker upload-path caching is not an accession-cache registration mechanism. This change does **not** populate Docker's catalog CGR cache automatically.
-- A download requires an unused, matching-model `predict` ticket with at least 100 bases and more than 45 seconds remaining. A new D1 column claims at most one download per ticket without setting `used_at`; Docker still performs the final consume operation.
+- A ready Docker cache causes no FASTA download. CGR PNG and manifest persist in Docker's existing data volume, separated by exact accession and CGR version. Docker deletes temporary imported FASTA after processing. PNG imports remain supported for trusted offline synchronization.
+- Preparation requires an unused, matching-model `predict` ticket with at least 100 bases and more than 45 seconds remaining. D1 claims at most one preparation per ticket and records `reference_accession` without setting `used_at`; Docker still performs the final consume operation. Consumption rejects a different reference or omission of a bound reference.
 - No automatic retry of downloads. A failed claim/download preserves browser input. To submit again, perform verification again and obtain a new ticket. The existing per-minute ticket limit still applies.
-- Metadata calls have a 10-second deadline; the submission download phase, including a metadata cache miss, has a 40-second deadline and follows request cancellation.
-- Compressed and decompressed data are each capped at `min(RAPPTOR_MAX_REQUEST_BYTES, 12 MiB)`. The final encoded JSON must also fit `RAPPTOR_MAX_REQUEST_BYTES` (default 12 MiB).
+- Metadata calls have a 10-second deadline; the entire preparation phase (cache query, download, import, polling) has a 40-second deadline and follows request cancellation. Polling is once every 3 seconds only during preparation. A still-running import returns `REFERENCE_PREPARING` with preserved input; it is not canceled or automatically resubmitted. A later submission rechecks the cache.
+- Compressed and decompressed data are each capped at `min(RAPPTOR_MAX_REQUEST_BYTES, 12 MiB)`. The prediction JSON remains small because it carries only the accession and target sequence.
 - Only the exact NCBI assembly directory on `https://ftp.ncbi.nlm.nih.gov/genomes/all/` is accepted. Redirects are rejected. The gzip checksum is checked against NCBI's official **MD5**, not mislabeled as SHA-256. Docker retains final FASTA alphabet/record validation.
-- No new API key or secret is required. NCBI upstream throttling/outages are reported as unavailable, not as a successful empty search.
+- Hugging Face downloads use server-resolved catalog sources only. Redirects are bounded and confined to HTTPS Hugging Face / hf.co hosts; service credentials are never attached to downloads. Source file SHA-256 and uncompressed FASTA SHA-256 are distinct and must not be interchanged.
+- No new API key or secret is required. Worker `RAPPTOR_PREDICTION_SERVICE_SECRET` equals Docker `RAPPTOR_TICKET_SERVICE_SECRET`; the secret stays server-side. NCBI upstream throttling/outages are reported as unavailable, not as a successful empty search.
 
 ## Deployment prerequisites and acceptance
 
-1. Apply D1 migration `database/migrations/0015_prediction_reference_download.sql` **before** deploying these routes. It adds nullable `reference_download_started_at` to `prediction_tickets`. Keep existing ticket secret/model/TTL settings. Missing database/schema fails closed for this path.
-2. Deploy the Worker/frontend together. Docker requires no change: it receives the already-supported `fasta` field.
+1. Apply D1 migrations `0015_prediction_reference_download.sql` and `0016_prediction_reference_binding.sql` **before** deploying these routes. They add nullable preparation time and exact reference binding to `prediction_tickets`. Keep existing ticket secret/model/TTL settings. Missing database/schema fails closed for this path.
+2. Deploy Docker's FASTA-capable cache API and cache worker first, preserving data/Redis volumes and model mounts. Then deploy the Worker/frontend together. Docker and Worker both accept exact GCF/GCA versions; Docker does not download references.
 3. In the deployed UI, search a missing catalog accession with a known NCBI version. Check the source label, explicit selection, 100 bp ticket and small browser POST; there must be no full genome response to the browser on this new path.
 4. Validate a real NCBI download from Cloudflare and record CPU time, peak memory, wall time and error outcome. Download waiting is not CPU time, but checksum/decompression/JSON serialization consume CPU; mock tests cannot prove compliance with the free plan's CPU limit. Do not call this production-accepted until measured.
 5. Confirm duplicate/expired tickets do not download, NCBI failures preserve input, and ordinary catalog/upload/scan submissions still work.
 
-At implementation time, direct and proxied NCBI checks from the development machine timed out. Automated tests cover mocked official response shapes, safe URL derivation, MD5/gzip handling, size caps, ticket claims and frontend transport. **Real NCBI connectivity and Cloudflare free-plan CPU acceptance remain unverified. No deployment is included in this change.**
+Automated tests cover official response shapes, safe URL derivation/redirects, MD5/SHA-256/gzip handling, size caps, ticket binding, cache hit/miss/import polling and frontend transport. Mock tests alone do not establish real NCBI connectivity or Cloudflare CPU acceptance; see the dated integration report for actual deployment and live acceptance evidence.

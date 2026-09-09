@@ -1,6 +1,7 @@
 import { usageDatabase } from '@/features/usage/store';
 import {
   consumePredictionTicket,
+  hasPreparedPredictionReference,
   PredictionTicketConfigurationError,
   readPredictionTicketSettings,
   serviceSecretMatches,
@@ -39,13 +40,14 @@ export async function POST(request: Request) {
       return Response.json({ allowed: false }, { status: 400 });
     }
     if (body.referenceAccession !== null && body.referenceAccession !== undefined
-      && (typeof body.referenceAccession !== 'string' || !/^GCF_\d{9}\.\d+$/.test(body.referenceAccession))) {
+      && (typeof body.referenceAccession !== 'string' || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(body.referenceAccession))) {
       return Response.json({ allowed: false }, { status: 400 });
     }
     const referenceSource = typeof body.referenceAccession === 'string'
       ? await resolvePredictionReferenceSource(body.referenceAccession)
       : null;
-    if (body.referenceAccession && !referenceSource) {
+    if (body.referenceAccession && !referenceSource
+      && !await hasPreparedPredictionReference(database, body.ticket, body.referenceAccession as string)) {
       return Response.json({ allowed: false, errorCode: 'REFERENCE_CGR_NOT_FOUND' }, {
         headers: { 'Cache-Control': 'no-store' },
       });
@@ -55,6 +57,7 @@ export async function POST(request: Request) {
       modelVersion: body.modelVersion,
       bases: body.bases,
       mode: body.mode,
+      referenceAccession: typeof body.referenceAccession === 'string' ? body.referenceAccession : null,
     });
     return Response.json({ allowed, ...(allowed && referenceSource ? { referenceSource } : {}) }, {
       headers: { 'Cache-Control': 'no-store' },

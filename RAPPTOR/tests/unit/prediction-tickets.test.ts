@@ -26,6 +26,7 @@ interface TicketRow {
   expiresAt: string;
   usedAt: string | null;
   downloadStartedAt?: string;
+  referenceAccession?: string;
 }
 
 class FakeStatement {
@@ -103,14 +104,14 @@ class FakeStatement {
         changes = 1;
       }
     } else if (this.sql.startsWith('UPDATE prediction_tickets SET reference_download_started_at')) {
-      const [startedAt, ticketHash, modelVersion, minimumExpiry] = this.bindings;
+      const [startedAt, referenceAccession, ticketHash, modelVersion, minimumExpiry] = this.bindings;
       const row = this.database.rows.find((candidate) => candidate.ticketHash === ticketHash
         && candidate.modelVersion === modelVersion && candidate.mode === 'predict'
         && candidate.usedAt === null && candidate.downloadStartedAt === undefined
         && candidate.expiresAt > String(minimumExpiry) && candidate.maxBases >= 100);
-      if (row) { row.downloadStartedAt = String(startedAt); changes = 1; }
+      if (row) { row.downloadStartedAt = String(startedAt); row.referenceAccession = String(referenceAccession); changes = 1; }
     } else if (this.sql.startsWith('UPDATE prediction_tickets')) {
-      const [usedAt, ticketHash, modelVersion, mode, now, bases] = this.bindings;
+      const [usedAt, ticketHash, modelVersion, mode, now, bases, referenceAccession] = this.bindings;
       const row = this.database.rows.find((candidate) => (
         candidate.ticketHash === ticketHash
         && candidate.modelVersion === modelVersion
@@ -118,6 +119,7 @@ class FakeStatement {
         && candidate.usedAt === null
         && candidate.expiresAt > String(now)
         && candidate.maxBases >= Number(bases)
+        && (!candidate.referenceAccession || candidate.referenceAccession === referenceAccession)
       ));
       if (row) {
         row.usedAt = String(usedAt);
@@ -235,26 +237,28 @@ describe('one-time prediction tickets', () => {
     const fake = new FakeD1(); const database = fake as unknown as D1Database;
     const now = new Date('2026-09-09T08:00:00.000Z');
     const issued = await issuePredictionTicket(database, settings, { address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now);
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(true);
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', now)).toBe(true);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', now)).toBe(false);
     expect(fake.rows[0].usedAt).toBeNull();
-    expect(await consumePredictionTicket(database, { ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now)).toBe(true);
+    expect(await consumePredictionTicket(database, { ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 100, mode: 'predict', referenceAccession: 'GCF_000005845.2' }, now)).toBe(false);
+    expect(await consumePredictionTicket(database, { ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now)).toBe(false);
+    expect(await consumePredictionTicket(database, { ticket: issued.ticket, modelVersion: settings.modelVersion, bases: 100, mode: 'predict', referenceAccession: 'GCF_000005845.1' }, now)).toBe(true);
   });
 
   it('blocks invalid, expired, almost-expired, consumed, wrong-model, wrong-mode and undersized download tickets', async () => {
     const fake = new FakeD1(); const database = fake as unknown as D1Database;
     const now = new Date('2026-09-09T08:00:00.000Z');
     const issued = await issuePredictionTicket(database, settings, { address: '203.0.113.8', modelVersion: settings.modelVersion, bases: 100, mode: 'predict' }, now);
-    expect(await claimPredictionReferenceDownload(database, 'fake', settings.modelVersion, now)).toBe(false);
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, 'wrong', now)).toBe(false);
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, new Date(now.getTime() + 46_000))).toBe(false);
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, new Date(now.getTime() + 100_000))).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, 'fake', settings.modelVersion, 'GCF_000005845.1', now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, 'wrong', 'GCF_000005845.1', now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', new Date(now.getTime() + 46_000))).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', new Date(now.getTime() + 100_000))).toBe(false);
     fake.rows[0].mode = 'genome_scan';
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', now)).toBe(false);
     fake.rows[0].mode = 'predict'; fake.rows[0].maxBases = 99;
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', now)).toBe(false);
     fake.rows[0].maxBases = 100; fake.rows[0].usedAt = now.toISOString();
-    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, now)).toBe(false);
+    expect(await claimPredictionReferenceDownload(database, issued.ticket, settings.modelVersion, 'GCF_000005845.1', now)).toBe(false);
   });
 
   it('stores only hashes and can be consumed exactly once', async () => {

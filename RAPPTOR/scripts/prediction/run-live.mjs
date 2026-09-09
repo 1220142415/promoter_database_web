@@ -128,7 +128,7 @@ async function main() {
       if (!access[kind]?.jobId) {
         let issued;
         try {
-          issued = await acquireLiveTicket(localBase, { mode: submission.mode, modelVersion: MODEL, bases: kind === 'candidate' ? reference.length + 100 : reference.length });
+          issued = await acquireLiveTicket(localBase, { mode: submission.mode, modelVersion: MODEL, bases: kind === 'candidate' ? 100 : reference.length });
         } catch (cause) {
           jobReport.status = 'blocked_credentials';
           throw cause;

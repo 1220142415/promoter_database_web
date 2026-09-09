@@ -554,7 +554,7 @@ async def import_reference_cache(
             uuid.uuid4().hex,
             accession,
             x_source_sha256 or "",
-            x_cgr_sha256 or "",
+            x_cgr_sha256,
             request.headers.get("content-type", ""),
         )
     except ReferenceCacheError as exc:
@@ -585,9 +585,13 @@ async def import_reference_cache(
                     )
                 digest.update(chunk)
                 destination.write(chunk)
-        if digest.hexdigest() != state["cgr_sha256"]:
+        if state["content_type"] == "image/png" and digest.hexdigest() != state["cgr_sha256"]:
             raise ReferenceCacheError(
                 "REFERENCE_CGR_CHECKSUM_MISMATCH", "CGR PNG SHA-256 does not match."
+            )
+        if state["content_type"] == "text/x-fasta" and digest.hexdigest() != state["source_sha256"]:
+            raise ReferenceCacheError(
+                "REFERENCE_SOURCE_CHECKSUM_MISMATCH", "FASTA SHA-256 does not match."
             )
         enqueue_import(connection, state["import_id"])
     except ReferenceCacheError as exc:

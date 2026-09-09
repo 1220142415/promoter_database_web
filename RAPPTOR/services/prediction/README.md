@@ -130,8 +130,8 @@ Content-Type: application/json
 ```
 
 The response is `{"entries":[...]}` in request order. Accessions always include
-their version and must match `GCF_` plus nine digits, a dot, and a numeric
-version.
+their version and must match `GCF_` or `GCA_` plus nine digits, a dot, and a
+numeric version.
 
 Import a precomputed CGR with:
 
@@ -146,9 +146,13 @@ X-CGR-Version: cgr-128-v1
 <128x128 PNG bytes>
 ```
 
-Only `image/png` is accepted. `X-Source-SHA256` preserves source-genome
-provenance in the existing `fastaSha256` manifest field; `X-CGR-SHA256` verifies
-the exact uploaded bytes. Multipart, archives, URLs, local paths, and
+Raw, uncompressed FASTA can instead be imported with `Content-Type:
+text/x-fasta`, `X-Source-SHA256` set to the exact request-body SHA-256, and no
+`X-CGR-SHA256`. The worker validates the FASTA and generates the CGR locally.
+`cgr_sha256` is `null` while preparing and becomes the generated PNG SHA-256
+when ready. For PNG imports, `X-Source-SHA256` preserves source-genome
+provenance in the existing `fastaSha256` manifest field and `X-CGR-SHA256`
+verifies the exact uploaded bytes. Multipart, archives, URLs, local paths, and
 caller-selected destinations are not accepted.
 
 A new import returns HTTP 202 and:
@@ -160,7 +164,7 @@ A new import returns HTTP 202 and:
   "status": "preparing",
   "cgr_version": "cgr-128-v1",
   "source_sha256": "...",
-  "cgr_sha256": "...",
+  "cgr_sha256": null,
   "error": null
 }
 ```
@@ -180,6 +184,7 @@ Stable cache API errors are `UNAUTHORIZED`, `CACHE_SERVICE_UNAVAILABLE`,
 `CGR_VERSION_MISMATCH`,
 `INVALID_CONTENT_LENGTH`, `UNSUPPORTED_SOURCE_FORMAT`, `REFERENCE_UPLOAD_TOO_LARGE`,
 `REFERENCE_CGR_CHECKSUM_MISMATCH`, `REFERENCE_CGR_INVALID`,
+`REFERENCE_SOURCE_CHECKSUM_MISMATCH`, `REFERENCE_FASTA_INVALID`,
 `REFERENCE_SOURCE_CONFLICT`, `REFERENCE_CGR_CONFLICT`,
 `REFERENCE_IMPORT_BUSY`, `REFERENCE_IMPORT_NOT_FOUND`, and
 `REFERENCE_IMPORT_FAILED`.

@@ -7,16 +7,17 @@ const basename = `${accession}_ASM584v2`;
 const directory = `https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/846/${basename}`;
 const fasta = '>test_reference\nACGTACGT\n';
 
-function upstream(options: { path?: string; reportedAccession?: string; empty?: boolean; checksum?: string; fasta?: string } = {}) {
+function upstream(options: { assemblyName?: string; reportedAccession?: string; empty?: boolean; checksum?: string; fasta?: string } = {}) {
   const compressed = gzipSync(options.fasta ?? fasta);
   const checksum = options.checksum ?? createHash('md5').update(compressed).digest('hex');
   return vi.fn(async (input: string, init?: RequestInit) => {
     expect(init?.redirect).toBe('error');
-    if (input.includes('esearch.fcgi')) return Response.json({ esearchresult: { idlist: options.empty ? [] : ['123'] } });
-    if (input.includes('esummary.fcgi')) return Response.json({ result: { uids: ['123'], '123': {
-      assemblyaccession: options.reportedAccession ?? accession, organism: 'Example assembly',
-      assemblystatus: 'Complete Genome', ftppath_refseq: options.path ?? directory,
-    } } });
+    if (input.includes('/dataset_report')) return Response.json({ reports: options.empty ? [] : [{
+      accession: options.reportedAccession ?? accession,
+      current_accession: options.reportedAccession ?? accession,
+      organism: { organism_name: 'Example assembly' },
+      assembly_info: { assembly_status: 'current', assembly_name: options.assemblyName ?? 'ASM584v2' },
+    }] });
     if (input === `${directory}/md5checksums.txt`) return new Response(`${checksum}  ./${basename}_genomic.fna.gz\n`);
     if (input === `${directory}/${basename}_genomic.fna.gz`) return new Response(compressed);
     throw new Error(`Unexpected URL ${input}`);
@@ -42,10 +43,10 @@ describe('NCBI reference lookup and bounded download', () => {
     const { GET } = await import('@/app/api/prediction-references/ncbi/route');
     const result = await GET(new Request(`https://example.test/api/prediction-references/ncbi?accession=${accession}`));
     expect(await result.json()).toEqual({ items: [{ accession, organismName: 'Example assembly', source: 'ncbi' }] });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const { downloadNcbiFasta } = await import('@/features/prediction/ncbi-reference');
     expect(await downloadNcbiFasta(accession, AbortSignal.timeout(1000))).toBe(fasta);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it.each(['GCF_000005845', 'https://evil.test/reference.fa', 'GCF_000005845.2/../x', 'GCF_1.2', null])('rejects invalid accession %s before network access', async (input) => {
@@ -77,20 +78,19 @@ describe('NCBI reference lookup and bounded download', () => {
     });
   });
 
-  it.each([
-    'https://evil.test/genome', `${directory}/../../secret`, `${directory}?url=secret`,
-    directory.replace('000/005/846', '000/005/847'), directory.replace('.2_ASM', '.1_ASM'),
-  ])('rejects untrusted metadata paths: %s', async (path) => {
-    const fetchMock = upstream({ path }); vi.stubGlobal('fetch', fetchMock);
+  it.each(['../secret', 'name with spaces', 'name?query', 'name/slash'])('rejects unsafe assembly names: %s', async (assemblyName) => {
+    const fetchMock = upstream({ assemblyName }); vi.stubGlobal('fetch', fetchMock);
     const { downloadNcbiFasta } = await import('@/features/prediction/ncbi-reference');
     await expect(downloadNcbiFasta(accession, AbortSignal.timeout(1000))).rejects.toMatchObject({ code: 'NCBI_REFERENCE_UNAVAILABLE' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('accepts the NCBI GenBank synonym only with a matching GCA path', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('esearch')
-      ? Response.json({ esearchresult: { idlist: ['123'] } })
-      : Response.json({ result: { '123': { assemblyaccession: accession, organism: 'Example', synonym: { genbank: 'GCA_000005846.2' }, ftppath_genbank: directory.replaceAll('GCF', 'GCA') } } })));
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ reports: [{
+      accession: 'GCA_000005846.2', current_accession: 'GCA_000005846.2', paired_accession: accession,
+      organism: { organism_name: 'Example' },
+      assembly_info: { assembly_status: 'current', assembly_name: 'ASM584v2' },
+    }] })));
     const { findNcbiReference } = await import('@/features/prediction/ncbi-reference');
     expect(await findNcbiReference('GCA_000005846.2')).toMatchObject({ accession: 'GCA_000005846.2', source: 'ncbi' });
   });

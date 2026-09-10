@@ -24,7 +24,7 @@ export function ncbiAccession(value: unknown): string {
 
 // Metadata only: never keep genome bytes in a Worker isolate or D1.
 const metadataCache = new Map<string, { expires: number; value: NcbiReference | null }>();
-const EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
+const DATASETS = 'https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/';
 const MAX_METADATA_BYTES = 256 * 1024;
 
 export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, maxBytes: number) {
@@ -69,7 +69,7 @@ async function fetchBytes(url: string, signal: AbortSignal, maxBytes: number, he
 }
 
 async function metadataJson(path: string, signal: AbortSignal) {
-  return JSON.parse(new TextDecoder().decode(await fetchBytes(`${EUTILS}${path}`, signal, MAX_METADATA_BYTES)));
+  return JSON.parse(new TextDecoder().decode(await fetchBytes(`${DATASETS}${path}`, signal, MAX_METADATA_BYTES)));
 }
 
 export function withTimeout(signal: AbortSignal | undefined, timeoutMs: number) {
@@ -144,24 +144,18 @@ export async function findNcbiReference(input: unknown, signal?: AbortSignal): P
   let value: NcbiReference | null = null;
   const metadataTimeout = withTimeout(signal, 10_000);
   try {
-    const search = await metadataJson(`esearch.fcgi?db=assembly&retmode=json&retmax=5&term=${encodeURIComponent(`${accession}[Assembly Accession]`)}`, metadataTimeout.signal);
-    if (!Array.isArray(search?.esearchresult?.idlist) || search.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search is unavailable.');
-    const ids = search.esearchresult.idlist as unknown[];
-    if (ids.length) {
-      if (ids.length > 5 || ids.some((id) => typeof id !== 'string' || !/^\d+$/.test(id))) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search returned invalid identifiers.');
-      const summary = await metadataJson(`esummary.fcgi?db=assembly&retmode=json&id=${ids.join(',')}`, metadataTimeout.signal);
-      if (!summary?.result || summary.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
-      for (const id of ids as string[]) {
-        const record = summary.result[id];
-        if (!record || record.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
-        // RefSeq and GenBank may share an Assembly UID; only accept the exact requested version.
-        if (![record.assemblyaccession, record.synonym?.refseq, record.synonym?.genbank].includes(accession)) continue;
-        if (['suppressed', 'withdrawn'].includes(String(record.assemblystatus).toLowerCase())) continue;
-        const directory = safeDirectory(accession.startsWith('GCF_') ? record.ftppath_refseq : record.ftppath_genbank, accession);
-        if (typeof record.organism !== 'string' || !record.organism.trim()) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is incomplete.');
-        value = { accession, organismName: record.organism.slice(0, 500), source: 'ncbi', directory };
-        break;
+    const report = await metadataJson(`${accession}/dataset_report?page_size=1`, metadataTimeout.signal);
+    const record = Array.isArray(report?.reports) ? report.reports[0] : null;
+    if (record) {
+      if (![record.accession, record.current_accession, record.paired_accession].includes(accession)) return null;
+      if (String(record.assembly_info?.assembly_status).toLowerCase() !== 'current') return null;
+      const assemblyName = record.assembly_info?.assembly_name;
+      const organismName = record.organism?.organism_name;
+      if (typeof assemblyName !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(assemblyName)
+        || typeof organismName !== 'string' || !organismName.trim()) {
+        throw new NcbiReferenceError('NCBI_REFERENCE_UNAVAILABLE', 'NCBI assembly metadata is incomplete.', 404);
       }
+      value = { accession, organismName: organismName.slice(0, 500), source: 'ncbi', directory: `${assemblyParent(accession)}${accession}_${assemblyName}` };
     }
   } catch (cause) {
     if (cause instanceof NcbiReferenceError && cause.code !== 'NCBI_UNAVAILABLE') throw cause;

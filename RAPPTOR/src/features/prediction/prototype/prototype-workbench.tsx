@@ -31,7 +31,7 @@ import {
   type PrototypeStrandMode,
   type PrototypeStrideBases,
 } from '.';
-import { REAL_PREDICTION_REFERENCE, UPLOAD_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
+import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
 import type { QueuedPredictionCapabilities } from '../service-capabilities';
 import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
@@ -432,32 +432,6 @@ export default function PrototypePredictionWorkbench({
     }
   }
 
-  async function loadUploadExample() {
-    const revision = ++contextRevision.current;
-    setContextKind('upload');
-    setContextCatalog(null);
-    setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true });
-    setFormError(null);
-    try {
-      const reference = UPLOAD_PREDICTION_REFERENCE;
-      const response = await fetch(`/api/prediction-reference/${reference.accession}`, { signal: AbortSignal.timeout(120_000) });
-      if (!response.ok) throw new Error('The NCBI example could not be loaded. Retry or choose a FASTA file.');
-      const verified = await validateReferenceExample(await response.text(), reference);
-      const file = new File([verified.fasta], reference.fileName, { type: 'text/plain' });
-      validatePrototypeGenomeFile(file, maxGenomeBytes);
-      if (revision === contextRevision.current) setContextUpload({
-        file, totalLength: verified.length,
-        contigs: [{ sequenceId: verified.sequenceId, length: verified.length }],
-        loading: false, error: null,
-      });
-    } catch (cause) {
-      if (revision === contextRevision.current) setContextUpload({
-        ...EMPTY_CONTEXT_UPLOAD,
-        error: cause instanceof Error ? cause.message : 'The NCBI example could not be loaded.',
-      });
-    }
-  }
-
   async function resolveGenomeContextMetadata(): Promise<PrototypeGenomeContext> {
     if (contextKind === 'catalog') {
       if (!contextCatalog) throw new Error('Select the matching genome context.');
@@ -791,14 +765,10 @@ export default function PrototypePredictionWorkbench({
                       <button type="button" aria-pressed={contextCatalog?.kind === 'catalog' && contextCatalog.accession === expectedExampleGenome.accession} onClick={() => selectContextCatalog(expectedExampleGenome)}>Use this genome</button>
                     </div>
                   ) : null}
-                  <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => { selectContextKind('upload'); requestAnimationFrame(() => contextFileRef.current?.click()); }} allowNcbi={!preview} />
+                  <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => { selectContextKind('upload'); requestAnimationFrame(() => contextFileRef.current?.click()); }} />
                   {usesCachedCgr || usesNcbiContext ? <p className={styles.localNote}>{contextPrivacyCopy}</p> : null}
                 </div> : <div className={styles.contextUploadSource} role="group" aria-label="FASTA genome context">
                   <p className={styles.sourceHeading}>Upload a complete genome FASTA</p>
-                  <div className={styles.expectedContextPrompt}>
-                    <div><span>NCBI FASTA example</span><strong>E. coli K-12 MG1655</strong><small>{UPLOAD_PREDICTION_REFERENCE.accession} · {UPLOAD_PREDICTION_REFERENCE.length.toLocaleString()} bp</small></div>
-                    <button type="button" disabled={contextUpload.loading} onClick={() => void loadUploadExample()}>Load NCBI .2 FASTA example</button>
-                  </div>
                   {contextUpload.loading ? <p role="status">Loading and checking genome FASTA…</p> : null}
                   <div className={styles.fileAction}>
                     <div><strong>{contextUpload.file?.name || 'Choose genome FASTA'}</strong><span>{contextUpload.loading ? 'Reading metadata…' : contextUpload.file ? formatPrototypeBytes(contextUpload.file.size) : `.fa, .fasta, or .fna, optionally .gz · max ${genomeLimitLabel}`}</span></div>

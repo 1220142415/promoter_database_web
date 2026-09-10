@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
-import { REAL_PREDICTION_REFERENCE, UPLOAD_PREDICTION_REFERENCE, validateReferenceExample } from '@/features/prediction/reference-example';
+import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
 
 // These component tests isolate transport/validation; real reference checks run separately.
 vi.mock('@/features/prediction/reference-example', async (original) => ({
@@ -49,35 +49,19 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('prototype prediction workbench', () => {
-  it('uses the existing search to offer labeled NCBI metadata and submits only its ID', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.startsWith('/api/genomes?')) return Response.json({ items: [] });
-      if (url === '/api/prediction-references/ncbi?accession=GCF_000005845.2') return Response.json({ items: [{ accession: 'GCF_000005845.2', organismName: 'NCBI test genome', source: 'ncbi' }] });
-      if (url === '/api/prediction-tickets') { expect(JSON.parse(String(init?.body)).bases).toBe(100); return Response.json({ ticket: 'ticket' }); }
-      if (url === '/api/predictions/jobs') {
-        expect(JSON.parse(String(init?.body))).toEqual({ mode: 'predict', sequence: 'A'.repeat(100), ncbi_accession: 'GCF_000005845.2', complete_genome: true, reverse_complementary: true });
-        return Response.json({ job_id: 'a'.repeat(32), access_token: 'token' });
-      }
-      throw new Error(`Unexpected browser download: ${url}`);
-    });
+  it('keeps an exact catalog miss local and offers upload instead of NCBI', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ items: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
+    render(<PrototypePredictionWorkbench />);
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'A'.repeat(100) } });
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.2');
-    expect(fetchMock).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
-    const option = await screen.findByRole('option', { name: /NCBI test genome.*NCBI · External reference/ });
-    expect(screen.queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
-    await user.click(option);
-    expect(screen.getByText('Genome context ready: NCBI external reference.')).toBeInTheDocument();
-    expect(screen.getByText(/A cached reference is reused when available/)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
-    await waitFor(() => expect(push).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(await screen.findByText('No assemblies found. Try accession, organism, or strain.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload FASTA instead' })).toBeInTheDocument();
+    expect(screen.queryByText(/NCBI/)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue('A'.repeat(100));
   });
 
   it('does not query NCBI for a species name with no local match and preserves input', async () => {
@@ -87,7 +71,7 @@ describe('prototype prediction workbench', () => {
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'A'.repeat(100) } });
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'Unknown species');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
-    expect(await screen.findByText(/Enter a versioned GCF or GCA/)).toBeInTheDocument();
+    expect(await screen.findByText('No assemblies found. Try accession, organism, or strain.')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue('A'.repeat(100));
   });
@@ -123,80 +107,6 @@ describe('prototype prediction workbench', () => {
     expect(screen.getByText('Only the exact accession version is submitted. A matching cached reference is reused; first use may take longer.')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
-  });
-
-  it('places .1 in the catalog and submits the .2 example as uploaded FASTA', async () => {
-    const fasta = `>NC_000913.3\n${'ACGT'.repeat(40)}\n`;
-    // jsdom File lacks Blob.text(); emulate the browser method for the generated file.
-    vi.stubGlobal('File', class extends File {
-      text() { return new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(this);
-      }); }
-    });
-    let submitted: Record<string, unknown> | undefined;
-    let ticket: Record<string, unknown> | undefined;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/prediction-reference/GCF_000005845.2') return new Response(fasta);
-      if (url === '/api/prediction-tickets') {
-        ticket = JSON.parse(String(init?.body));
-        return Response.json({ ticket: 'ticket' });
-      }
-      if (url === '/api/predictions/jobs') {
-        submitted = JSON.parse(String(init?.body));
-        return Response.json({ job_id: 'a'.repeat(32), access_token: 'token' });
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
-    const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
-    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
-    const catalog = screen.getByRole('group', { name: 'Catalog genome context' });
-    expect(catalog).toHaveTextContent('GCF_000005845.1');
-    expect(catalog).not.toHaveTextContent('GCF_000005845.2');
-    expect(screen.getByRole('button', { name: 'Search reference genome' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.queryByRole('group', { name: 'FASTA genome context' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Upload complete genome FASTA' }));
-    const upload = screen.getByRole('group', { name: 'FASTA genome context' });
-    expect(screen.getByRole('button', { name: 'Upload complete genome FASTA' })).toHaveAttribute('aria-pressed', 'true');
-    expect(upload).toHaveTextContent('GCF_000005845.2');
-    expect(screen.queryByRole('group', { name: 'Catalog genome context' })).not.toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
-    await user.click(within(upload).getByRole('button', { name: 'Load NCBI .2 FASTA example' }));
-    await waitFor(() => expect(upload).toHaveTextContent(UPLOAD_PREDICTION_REFERENCE.fileName));
-    expect(validateReferenceExample).toHaveBeenCalledWith(fasta, UPLOAD_PREDICTION_REFERENCE);
-    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
-    await waitFor(() => expect(push).toHaveBeenCalled());
-    expect(submitted).toMatchObject({ mode: 'predict', fasta: fasta.trimEnd(), sequence: REAL_PREDICTION_REFERENCE.sample.sequence });
-    expect(submitted).not.toHaveProperty('reference_accession');
-    expect(ticket).toMatchObject({ bases: 100, mode: 'predict' });
-  });
-
-  it('allows retry after a failed .2 download and ignores late results after switching to .1', async () => {
-    let finish: (response: Response) => void = () => {};
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
-    vi.stubGlobal('fetch', fetchMock);
-    const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
-    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
-    await user.click(screen.getByRole('button', { name: 'Upload complete genome FASTA' }));
-    await user.click(screen.getByRole('button', { name: 'Load NCBI .2 FASTA example' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('The NCBI example could not be loaded');
-    await user.click(screen.getByRole('button', { name: 'Load NCBI .2 FASTA example' }));
-    await user.click(screen.getByRole('button', { name: 'Search reference genome' }));
-    await user.click(screen.getByRole('button', { name: 'Use this genome' }));
-    finish(new Response(`>NC_000913.3\n${'ACGT'.repeat(40)}\n`));
-    await waitFor(() => expect(validateReferenceExample).toHaveBeenCalled());
-    expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Remove genome FASTA' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('does not offer an illustrative fallback when the real service is unavailable', () => {

@@ -275,6 +275,7 @@ export default function PrototypePredictionWorkbench({
   const [strideBases, setStrideBases] = useState<PrototypeStrideBases>(PROTOTYPE_STRIDE_BASES);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [verificationRevision, setVerificationRevision] = useState(0);
   const [exampleLoading, setExampleLoading] = useState(false);
@@ -335,6 +336,7 @@ export default function PrototypePredictionWorkbench({
     setContextKind(nextKind);
     setContextCatalog(null);
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
+    setReferenceError(null);
   }
 
   function clearPrimaryInput() {
@@ -345,6 +347,7 @@ export default function PrototypePredictionWorkbench({
     setPrimaryKind('inline');
     clearGenomeContext();
     setFormError(null);
+    setReferenceError(null);
   }
 
   function removeContextFile() {
@@ -352,6 +355,7 @@ export default function PrototypePredictionWorkbench({
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
     setContextKind('catalog');
     setFormError(null);
+    setReferenceError(null);
   }
 
   function selectContextCatalog(context: PrototypeGenomeContext | null) {
@@ -362,6 +366,7 @@ export default function PrototypePredictionWorkbench({
       setContextUpload(EMPTY_CONTEXT_UPLOAD);
     }
     setFormError(null);
+    setReferenceError(null);
   }
 
   function selectContextKind(kind: ContextSourceKind) {
@@ -370,6 +375,7 @@ export default function PrototypePredictionWorkbench({
     setContextCatalog(null);
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
     setFormError(null);
+    setReferenceError(null);
   }
 
   function loadFocusedExample() {
@@ -381,6 +387,7 @@ export default function PrototypePredictionWorkbench({
     clearGenomeContext('catalog');
     if (!preview) setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
     setFormError(null);
+    setReferenceError(null);
   }
 
   function loadGenomeExample() {
@@ -393,6 +400,7 @@ export default function PrototypePredictionWorkbench({
     setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
     if (!preview) void prepareExampleReference();
     setFormError(null);
+    setReferenceError(null);
   }
 
   async function handlePrimaryFile(event: ChangeEvent<HTMLInputElement>) {
@@ -440,7 +448,7 @@ export default function PrototypePredictionWorkbench({
   async function loadUploadExample() {
     const revision = ++contextRevision.current;
     setContextKind('upload'); setContextCatalog(null);
-    setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true }); setFormError(null);
+    setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true }); setFormError(null); setReferenceError(null);
     try {
       const reference = REAL_PREDICTION_REFERENCE;
       const response = await fetch(`/api/prediction-reference/${reference.accession}`);
@@ -536,6 +544,7 @@ export default function PrototypePredictionWorkbench({
     if (!preview && needsExampleReference && (exampleLoading || exampleError)) { setFormError('Load and verify the example reference before submitting.'); return; }
     setSubmitting(true);
     setFormError(null);
+    setReferenceError(null);
     try {
       if (preview) {
         const runId = createPrototypeRunId();
@@ -665,7 +674,17 @@ export default function PrototypePredictionWorkbench({
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
       router.push(`/predict/task/${encodeURIComponent(created.job_id)}`);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : !preview ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
+      const errorCode = cause instanceof Error && typeof (cause as { code?: unknown }).code === 'string'
+        ? (cause as unknown as { code: string }).code
+        : null;
+      const referencePreparationFailed = usesNcbiContext
+        && Boolean(errorCode && /^(NCBI_|REFERENCE_|CACHE_)/.test(errorCode));
+      if (referencePreparationFailed) {
+        setReferenceError('This NCBI reference is temporarily unavailable. Upload the complete genome FASTA to continue.');
+        setFormError(null);
+      } else {
+        setFormError(cause instanceof Error ? cause.message : !preview ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
+      }
       setSubmitting(false);
       if (!preview) { setTurnstileToken(''); setVerificationRevision((value) => value + 1); }
     }
@@ -785,10 +804,11 @@ export default function PrototypePredictionWorkbench({
                     <div className={styles.expectedContextPrompt}>
                       <div><span>Recommended reference</span><strong>{expectedExampleGenome.displayName}</strong><small>{expectedExampleGenome.accession} · {expectedExampleGenome.totalLength?.toLocaleString()} bp</small></div>
                       <button type="button" aria-pressed={contextCatalog?.kind === 'catalog' && contextCatalog.accession === expectedExampleGenome.accession} onClick={() => selectContextCatalog(expectedExampleGenome)}>Use this genome</button>
-                    </div>
-                  ) : null}
                   <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => { selectContextKind('upload'); requestAnimationFrame(() => contextFileRef.current?.click()); }} allowNcbi={!preview} />
+                  ) : null}
                   {usesCachedCgr || usesNcbiContext ? <p className={styles.localNote}>{contextPrivacyCopy}</p> : null}
+                  {referenceError ? <p className={styles.catalogError} role="alert">{referenceError}</p> : null}
+                   {usesCachedCgr || usesNcbiContext ? <p className={styles.localNote}>{contextPrivacyCopy}</p> : null}
                 </div> : <div className={styles.contextUploadSource} role="group" aria-label="FASTA genome context">
                   <p className={styles.sourceHeading}>Upload a complete genome FASTA</p>
                   <div className={styles.expectedContextPrompt}>

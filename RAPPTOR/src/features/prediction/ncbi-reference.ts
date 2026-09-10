@@ -48,8 +48,13 @@ export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, ma
   return bytes;
 }
 
-async function fetchBytes(url: string, signal: AbortSignal, maxBytes: number) {
-  const response = await fetch(url, { signal, redirect: 'error', cache: 'no-store' });
+const NCBI_HEADERS = {
+  Accept: 'application/json, text/plain;q=0.9, */*;q=0.1',
+  'User-Agent': 'RAPPTOR-genome-lookup/1.0 (NCBI assembly metadata; contact site administrator)',
+};
+
+async function fetchBytes(url: string, signal: AbortSignal, maxBytes: number, headers: HeadersInit = NCBI_HEADERS) {
+  const response = await fetch(url, { signal, redirect: 'error', cache: 'no-store', headers });
   if (!response.ok) {
     await response.body?.cancel();
     throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI could not supply this reference. Please try again later.', response.status === 429 ? 503 : 502);
@@ -63,6 +68,38 @@ async function fetchBytes(url: string, signal: AbortSignal, maxBytes: number) {
 
 async function metadataJson(path: string, signal: AbortSignal) {
   return JSON.parse(new TextDecoder().decode(await fetchBytes(`${EUTILS}${path}`, signal, MAX_METADATA_BYTES)));
+}
+
+function assemblyParent(accession: string) {
+  const match = /^GC([AF])_(\d{3})(\d{3})(\d{3})\.(\d+)$/.exec(accession)!;
+  return `https://ftp.ncbi.nlm.nih.gov/genomes/all/GC${match[1]}/${match[2]}/${match[3]}/${match[4]}/`;
+}
+
+async function findNcbiReferenceFromFtp(accession: string, signal: AbortSignal): Promise<NcbiReference | null> {
+  const parent = assemblyParent(accession);
+  const listing = new TextDecoder().decode(await fetchBytes(parent, signal, MAX_METADATA_BYTES, {
+    Accept: 'text/html, text/plain;q=0.9, */*;q=0.1',
+    'User-Agent': NCBI_HEADERS['User-Agent'],
+  }));
+  const escaped = accession.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const candidates = [...listing.matchAll(new RegExp(`(?:href=["']?)(${escaped}_[A-Za-z0-9_.-]+)(?:/["']?)`, 'gi'))]
+    .map((match) => match[1])
+    .filter((value, index, all) => all.indexOf(value) === index);
+  const directoryName = candidates[0];
+  if (!directoryName) return null;
+  const directory = `${parent}${directoryName}`;
+  let organismName = `NCBI assembly ${accession}`;
+  try {
+    const report = new TextDecoder().decode(await fetchBytes(`${directory}/${directoryName}_assembly_report.txt`, signal, MAX_METADATA_BYTES, {
+      Accept: 'text/plain, */*;q=0.1',
+      'User-Agent': NCBI_HEADERS['User-Agent'],
+    }));
+    const match = report.match(/^#\s*Organism name:\s*(.+)$/mi);
+    if (match?.[1]?.trim()) organismName = match[1].trim().slice(0, 500);
+  } catch {
+    // The directory itself is sufficient to prepare the exact reference; name is display-only.
+  }
+  return { accession, organismName, source: 'ncbi', directory };
 }
 
 function safeDirectory(value: unknown, accession: string) {
@@ -80,25 +117,35 @@ export async function findNcbiReference(input: unknown, signal = AbortSignal.tim
   const accession = ncbiAccession(input);
   const cached = metadataCache.get(accession);
   if (cached && cached.expires > Date.now()) return cached.value;
-  const search = await metadataJson(`esearch.fcgi?db=assembly&retmode=json&retmax=5&term=${encodeURIComponent(`${accession}[Assembly Accession]`)}`, signal);
-  if (!Array.isArray(search?.esearchresult?.idlist) || search.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search is unavailable.');
-  const ids = search.esearchresult.idlist as unknown[];
   let value: NcbiReference | null = null;
-  if (ids.length) {
-    if (ids.length > 5 || ids.some((id) => typeof id !== 'string' || !/^\d+$/.test(id))) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search returned invalid identifiers.');
-    const summary = await metadataJson(`esummary.fcgi?db=assembly&retmode=json&id=${ids.join(',')}`, signal);
-    if (!summary?.result || summary.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
-    for (const id of ids as string[]) {
-      const record = summary.result[id];
-      if (!record || record.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
-      // RefSeq and GenBank may share an Assembly UID; only accept the exact requested version.
-      if (![record.assemblyaccession, record.synonym?.refseq, record.synonym?.genbank].includes(accession)) continue;
-      if (['suppressed', 'withdrawn'].includes(String(record.assemblystatus).toLowerCase())) continue;
-      const directory = safeDirectory(accession.startsWith('GCF_') ? record.ftppath_refseq : record.ftppath_genbank, accession);
-      if (typeof record.organism !== 'string' || !record.organism.trim()) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is incomplete.');
-      value = { accession, organismName: record.organism.slice(0, 500), source: 'ncbi', directory };
-      break;
+  const metadataSignal = AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
+  try {
+    const search = await metadataJson(`esearch.fcgi?db=assembly&retmode=json&retmax=5&term=${encodeURIComponent(`${accession}[Assembly Accession]`)}`, metadataSignal);
+    if (!Array.isArray(search?.esearchresult?.idlist) || search.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search is unavailable.');
+    const ids = search.esearchresult.idlist as unknown[];
+    if (ids.length) {
+      if (ids.length > 5 || ids.some((id) => typeof id !== 'string' || !/^\d+$/.test(id))) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search returned invalid identifiers.');
+      const summary = await metadataJson(`esummary.fcgi?db=assembly&retmode=json&id=${ids.join(',')}`, metadataSignal);
+      if (!summary?.result || summary.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
+      for (const id of ids as string[]) {
+        const record = summary.result[id];
+        if (!record || record.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
+        // RefSeq and GenBank may share an Assembly UID; only accept the exact requested version.
+        if (![record.assemblyaccession, record.synonym?.refseq, record.synonym?.genbank].includes(accession)) continue;
+        if (['suppressed', 'withdrawn'].includes(String(record.assemblystatus).toLowerCase())) continue;
+        const directory = safeDirectory(accession.startsWith('GCF_') ? record.ftppath_refseq : record.ftppath_genbank, accession);
+        if (typeof record.organism !== 'string' || !record.organism.trim()) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is incomplete.');
+        value = { accession, organismName: record.organism.slice(0, 500), source: 'ncbi', directory };
+        break;
+      }
     }
+  } catch (cause) {
+    if (cause instanceof NcbiReferenceError && cause.code !== 'NCBI_UNAVAILABLE') throw cause;
+    if (signal.aborted && signal.reason?.name !== 'TimeoutError') throw cause;
+    const fallbackSignal = signal.aborted && signal.reason?.name === 'TimeoutError'
+      ? AbortSignal.timeout(8_000)
+      : AbortSignal.any([signal, AbortSignal.timeout(8_000)]);
+    value = await findNcbiReferenceFromFtp(accession, fallbackSignal);
   }
   if (metadataCache.size >= 128) metadataCache.delete(metadataCache.keys().next().value!);
   metadataCache.set(accession, { value, expires: Date.now() + (value ? 300_000 : 60_000) });

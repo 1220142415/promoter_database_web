@@ -51,6 +51,22 @@ describe('NCBI reference lookup and bounded download', () => {
     expect(await findNcbiReference(accession)).toBeNull();
   });
 
+  it('falls back to the exact FTP assembly directory when E-utilities is unavailable', async () => {
+    const parent = 'https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/';
+    const directoryName = `${accession}_ASM584v2`;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response(`<a href="${directoryName}/">${directoryName}/</a>`))
+      .mockResolvedValueOnce(new Response(`# Organism name: Escherichia coli str. K-12 substr. MG1655\n`));
+    vi.stubGlobal('fetch', fetchMock);
+    const { findNcbiReference } = await import('@/features/prediction/ncbi-reference');
+    await expect(findNcbiReference(accession)).resolves.toMatchObject({
+      accession,
+      organismName: 'Escherichia coli str. K-12 substr. MG1655',
+      directory: `${parent}${directoryName}`,
+    });
+  });
+
   it.each([
     'https://evil.test/genome', `${directory}/../../secret`, `${directory}?url=secret`,
     directory.replace('000/005/845', '000/005/846'), directory.replace('.2_ASM', '.1_ASM'),
@@ -93,6 +109,6 @@ describe('NCBI reference lookup and bounded download', () => {
     const fetchMock = vi.fn(async () => new Response('', { status: 429 })); vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('@/app/api/prediction-references/ncbi/route');
     expect((await GET(new Request(`https://example.test/?accession=${accession}`))).status).toBe(503);
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

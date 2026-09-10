@@ -52,7 +52,6 @@ export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, ma
 
 const NCBI_HEADERS = {
   Accept: 'application/json, text/plain;q=0.9, */*;q=0.1',
-  'User-Agent': 'RAPPTOR-genome-lookup/1.0 (NCBI assembly metadata; contact site administrator)',
 };
 
 async function fetchBytes(url: string, signal: AbortSignal, maxBytes: number, headers: HeadersInit = NCBI_HEADERS) {
@@ -96,7 +95,6 @@ async function findNcbiReferenceFromFtp(accession: string, signal: AbortSignal):
   const parent = assemblyParent(accession);
   const listing = new TextDecoder().decode(await fetchBytes(parent, signal, MAX_METADATA_BYTES, {
     Accept: 'text/html, text/plain;q=0.9, */*;q=0.1',
-    'User-Agent': NCBI_HEADERS['User-Agent'],
   }));
   const escaped = accession.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const candidates = [...listing.matchAll(new RegExp(`(?:href=["']?)(${escaped}_[A-Za-z0-9_.-]+)(?:/["']?)`, 'gi'))]
@@ -109,7 +107,6 @@ async function findNcbiReferenceFromFtp(accession: string, signal: AbortSignal):
   try {
     const report = new TextDecoder().decode(await fetchBytes(`${directory}/${directoryName}_assembly_report.txt`, signal, MAX_METADATA_BYTES, {
       Accept: 'text/plain, */*;q=0.1',
-      'User-Agent': NCBI_HEADERS['User-Agent'],
     }));
     const match = report.match(/^#\s*Organism name:\s*(.+)$/mi);
     if (match?.[1]?.trim()) organismName = match[1].trim().slice(0, 500);

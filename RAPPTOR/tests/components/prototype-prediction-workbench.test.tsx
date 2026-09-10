@@ -314,6 +314,9 @@ describe('prototype prediction workbench', () => {
     expect(screen.getByRole('button', { name: 'Search reference genome' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload complete genome FASTA' })).toBeInTheDocument();
     expect(container.querySelectorAll<HTMLInputElement>('input[type="file"]')).toHaveLength(2);
+    expect(screen.getByLabelText('Selected uploaded FASTA')).toHaveTextContent('uploaded-scan.fna');
+    expect(screen.queryByLabelText('Raw DNA or FASTA')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replace FASTA' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove input' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Remove input' }));

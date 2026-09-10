@@ -738,6 +738,12 @@ export default function PrototypePredictionWorkbench({
                   <div><strong>{inputCatalog.displayName}</strong><span>{inputCatalog.kind === 'catalog' ? inputCatalog.accession : inputCatalog.fileName}{inputCatalog.totalLength ? ` · ${inputCatalog.totalLength.toLocaleString()} bp` : ''}</span><span>Complete genome FASTA · {PORTAL_TERMS.sequenceScan}</span></div>
                   <button type="button" onClick={clearPrimaryInput}>Remove input</button>
                 </div>
+              ) : primaryKind === 'upload' && uploadedInput.file ? (
+                <div className={styles.selection} aria-label="Selected uploaded FASTA">
+                  <div><strong>{uploadedInput.file.name}</strong><span>{formatPrototypeBytes(uploadedInput.file.size)} · {uploadedInput.loading ? 'Reading file metadata…' : parsedDescription || 'FASTA could not be read'}</span><span>FASTA file{inferredMode ? ` · ${inferredLabel(inferredMode)}` : ''}</span></div>
+                  <button type="button" onClick={() => primaryFileRef.current?.click()}>Replace FASTA</button>
+                  <button type="button" onClick={clearPrimaryInput}>Remove input</button>
+                </div>
               ) : (
                 <>
                   <label className={styles.fieldLabel} htmlFor="prototype-sequence-input">Raw DNA or FASTA</label>
@@ -753,12 +759,11 @@ export default function PrototypePredictionWorkbench({
               {needsExampleReference && exampleLoading ? <p role="status">Loading and verifying the complete reference genome…</p> : null}
               {needsExampleReference && !exampleLoading && !exampleError && verifiedExample.current ? <p className={styles.localNote} role="status">Genome ready: {REAL_PREDICTION_REFERENCE.sequenceId} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp.</p> : null}
               {needsExampleReference && exampleError ? <div role="alert"><p>{exampleError}</p><button type="button" onClick={() => void prepareExampleReference()}>Retry reference download</button></div> : null}
-              <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
-                <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />{uploadedInput.file ? 'Replace FASTA' : 'Upload FASTA'}</button>
-                {uploadedInput.file ? <button type="button" onClick={clearPrimaryInput}>Remove input</button> : null}
-                <span className={styles.fileMeta}>{uploadedInput.loading ? 'Reading file metadata…' : uploadedInput.file ? `${uploadedInput.file.name} · ${formatPrototypeBytes(uploadedInput.file.size)}` : `FASTA (.fa, .fasta, .fna, optionally .gz) · max ${genomeLimitLabel}`}</span>
-                <input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} />
-              </div>
+              {primaryKind !== 'upload' || !uploadedInput.file ? <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
+                <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />Upload FASTA</button>
+                <span className={styles.fileMeta}>FASTA (.fa, .fasta, .fna, optionally .gz) · max {genomeLimitLabel}</span>
+              </div> : null}
+              <input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} />
               {uploadedInput.error ? <p className={styles.fileError}>{uploadedInput.error}</p> : null}
             </div>
 

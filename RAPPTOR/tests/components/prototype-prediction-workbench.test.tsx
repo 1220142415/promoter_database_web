@@ -258,7 +258,7 @@ describe('prototype prediction workbench', () => {
     expect(JSON.parse(stored)).toMatchObject({ parameters: { strideBases: 37 }, modelSpec: { strideBases: 37 } });
   });
 
-  it('uses the E. coli K-12 FASTA itself for a genome scan and replaces the editor with a compact card', async () => {
+  it('selects the E. coli reference for the genome example and replaces the editor with a compact card', async () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
@@ -269,8 +269,10 @@ describe('prototype prediction workbench', () => {
     expect(screen.getByText(/Bases between consecutive 100 bp windows\. Enter an integer from 1 to 100\./)).toBeInTheDocument();
     expect(screen.queryByLabelText('Raw DNA or FASTA')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Selected genome example')).toHaveTextContent('GCF_000005845.1');
-    expect(screen.getByRole('button', { name: 'Use scan FASTA as reference' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Genome context ready: Scan FASTA (complete genome).')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Complete reference source' })).toHaveTextContent('Search reference genomeUpload complete genome FASTA');
+    expect(screen.queryByRole('button', { name: 'Use scan FASTA as reference' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search reference genome' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Accession, organism, or strain' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Hugging Face|SHA-256/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
@@ -291,7 +293,7 @@ describe('prototype prediction workbench', () => {
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
     expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Change input' }));
+    await user.click(screen.getByRole('button', { name: 'Remove input' }));
     await user.clear(screen.getByLabelText('Raw DNA or FASTA'));
     await user.type(screen.getByLabelText('Raw DNA or FASTA'), 'ACGT'.repeat(25));
     expect(screen.getAllByText('100 bp scoring')).not.toHaveLength(0);
@@ -308,14 +310,15 @@ describe('prototype prediction workbench', () => {
     await user.upload(primaryInput, primaryFile);
     expect((await screen.findAllByText('Sequence scan')).length).toBeGreaterThan(0);
     expect(screen.getByText('Reference genome required')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use scan FASTA as reference' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: 'Use scan FASTA as reference' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search reference genome' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload complete genome FASTA' })).toBeInTheDocument();
     expect(container.querySelectorAll<HTMLInputElement>('input[type="file"]')).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Remove uploaded FASTA' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Use scan FASTA as reference' }));
-    expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Remove input' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Remove uploaded FASTA' }));
+    await user.click(screen.getByRole('button', { name: 'Remove input' }));
     expect(screen.getByRole('button', { name: 'Upload FASTA' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue('');
     expect(screen.getByText('Prediction input required')).toBeInTheDocument();
   });
 
@@ -331,7 +334,7 @@ describe('prototype prediction workbench', () => {
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
     expect(screen.getByText('Reference genome required')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Accession, organism, or strain' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Use scan FASTA as reference' }));
+    await selectCgrCatalog(user);
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
   });
 
@@ -449,6 +452,9 @@ describe('prototype prediction workbench', () => {
     let ticketRequest: Record<string, unknown> | null = null;
     const scanSequence = `${'ACGT'.repeat(25)}A`;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith('/api/genomes?')) {
+        return Response.json({ items: [{ accession: 'GCF_000012685.1', organismName: 'Chlorobaculum tepidum TLS', genomeSizeBp: 2_154_946 }] });
+      }
       if (String(input) === '/api/prediction-tickets') {
         ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return Response.json({ ticket: 'local-ticket' }, { status: 201 });
@@ -463,7 +469,8 @@ describe('prototype prediction workbench', () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: true, supportsPeakCalling: true, gff3RequiresStride1: true, siteKey: '' }} />);
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: scanSequence } });
-    await user.click(screen.getByRole('button', { name: 'Use scan FASTA as reference' }));
+    await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     const stride = screen.getByRole('spinbutton', { name: 'Stride' });
     await user.clear(stride);
     await user.type(stride, '37');
@@ -479,6 +486,7 @@ describe('prototype prediction workbench', () => {
     });
     expect(jobRequest).not.toHaveProperty('sequence');
     expect(jobRequest).not.toHaveProperty('genome_context');
+    expect(jobRequest).toHaveProperty('reference_accession', 'GCF_000012685.1');
     expect(ticketRequest).toMatchObject({ mode: 'genome_scan', bases: 101 });
   });
 
@@ -543,11 +551,12 @@ describe('prototype prediction workbench', () => {
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
   });
 
-  it('submits an uploaded scan FASTA as the only genome input', async () => {
+  it('submits an uploaded scan FASTA with a searched reference genome', async () => {
     let jobRequest: Record<string, unknown> | null = null;
     let ticketRequest: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.startsWith('/api/genomes?')) return Response.json({ items: [{ accession: 'GCF_000012685.1', organismName: 'Chlorobaculum tepidum TLS', genomeSizeBp: 2_154_946 }] });
       if (url === '/api/prediction-tickets') {
         ticketRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return Response.json({ ticket: 'local-ticket' }, { status: 201 });
@@ -567,11 +576,12 @@ describe('prototype prediction workbench', () => {
     Object.defineProperty(scanFile, 'text', { value: async () => scanText });
 
     await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0], scanFile);
-    await user.click(screen.getByRole('button', { name: 'Use scan FASTA as reference' }));
+    await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'c'.repeat(32)}`));
-    expect(jobRequest).toMatchObject({ mode: 'genome_scan', fasta: scanText.trimEnd() });
+    expect(jobRequest).toMatchObject({ mode: 'genome_scan', fasta: scanText.trimEnd(), reference_accession: 'GCF_000012685.1' });
     expect(jobRequest).not.toHaveProperty('genome_context');
     expect(ticketRequest).toMatchObject({ bases: 160, mode: 'genome_scan' });
   });

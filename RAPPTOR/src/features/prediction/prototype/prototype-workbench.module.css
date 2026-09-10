@@ -130,9 +130,6 @@
 .contextKindSwitch button[aria-pressed="true"] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-dark); }
 .contextSourcePanel { margin-top: 16px; }
 .contextSourcePanel .catalogSource, .contextSourcePanel .contextUploadSource { border-left: 0; padding-left: 0; }
-.sameContextSource { border: 1px solid #b9d9d2; border-radius: 7px; padding: 13px 14px; background: var(--teal-soft); }
-.sameContextSource .sourceHeading, .sameContextSource .localNote { margin: 0; }
-.sameContextSource .localNote { margin-top: 5px; }
 .contextStatus { min-height: 44px; margin: 16px 0 0; border: 1px solid var(--line); border-radius: 7px; padding: 12px 14px; background: #f8faf9; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .contextStatus.valid { border-color: #b9d9d2; background: var(--teal-soft); color: #17653d; }
 .catalogPanel { min-height: 118px; }

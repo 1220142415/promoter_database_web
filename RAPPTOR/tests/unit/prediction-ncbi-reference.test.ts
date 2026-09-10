@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 
-const accession = 'GCF_000005845.2';
+const accession = 'GCF_000005846.2';
 const basename = `${accession}_ASM584v2`;
-const directory = `https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/${basename}`;
+const directory = `https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/846/${basename}`;
 const fasta = '>test_reference\nACGTACGT\n';
 
 function upstream(options: { path?: string; reportedAccession?: string; empty?: boolean; checksum?: string; fasta?: string } = {}) {
@@ -27,6 +27,16 @@ beforeEach(() => vi.resetModules());
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('NCBI reference lookup and bounded download', () => {
+  it('uses verified bundled metadata for an NCBI-backed reference', async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+    const { findNcbiReference } = await import('@/features/prediction/ncbi-reference');
+    await expect(findNcbiReference('GCF_000005845.2')).resolves.toMatchObject({
+      accession: 'GCF_000005845.2', source: 'ncbi',
+      organismName: 'Escherichia coli str. K-12 substr. MG1655',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('returns metadata without a FASTA URL, caches it and verifies the official checksum on download', async () => {
     const fetchMock = upstream(); vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('@/app/api/prediction-references/ncbi/route');
@@ -46,13 +56,13 @@ describe('NCBI reference lookup and bounded download', () => {
   });
 
   it('does not substitute another assembly version', async () => {
-    vi.stubGlobal('fetch', upstream({ reportedAccession: 'GCF_000005845.1' }));
+    vi.stubGlobal('fetch', upstream({ reportedAccession: 'GCF_000005846.1' }));
     const { findNcbiReference } = await import('@/features/prediction/ncbi-reference');
     expect(await findNcbiReference(accession)).toBeNull();
   });
 
   it('falls back to the exact FTP assembly directory when E-utilities is unavailable', async () => {
-    const parent = 'https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/';
+    const parent = 'https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/846/';
     const directoryName = `${accession}_ASM584v2`;
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response('', { status: 503 }))
@@ -69,7 +79,7 @@ describe('NCBI reference lookup and bounded download', () => {
 
   it.each([
     'https://evil.test/genome', `${directory}/../../secret`, `${directory}?url=secret`,
-    directory.replace('000/005/845', '000/005/846'), directory.replace('.2_ASM', '.1_ASM'),
+    directory.replace('000/005/846', '000/005/847'), directory.replace('.2_ASM', '.1_ASM'),
   ])('rejects untrusted metadata paths: %s', async (path) => {
     const fetchMock = upstream({ path }); vi.stubGlobal('fetch', fetchMock);
     const { downloadNcbiFasta } = await import('@/features/prediction/ncbi-reference');
@@ -80,9 +90,9 @@ describe('NCBI reference lookup and bounded download', () => {
   it('accepts the NCBI GenBank synonym only with a matching GCA path', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('esearch')
       ? Response.json({ esearchresult: { idlist: ['123'] } })
-      : Response.json({ result: { '123': { assemblyaccession: accession, organism: 'Example', synonym: { genbank: 'GCA_000005845.2' }, ftppath_genbank: directory.replaceAll('GCF', 'GCA') } } })));
+      : Response.json({ result: { '123': { assemblyaccession: accession, organism: 'Example', synonym: { genbank: 'GCA_000005846.2' }, ftppath_genbank: directory.replaceAll('GCF', 'GCA') } } })));
     const { findNcbiReference } = await import('@/features/prediction/ncbi-reference');
-    expect(await findNcbiReference('GCA_000005845.2')).toMatchObject({ accession: 'GCA_000005845.2', source: 'ncbi' });
+    expect(await findNcbiReference('GCA_000005846.2')).toMatchObject({ accession: 'GCA_000005846.2', source: 'ncbi' });
   });
 
   it('rejects checksum mismatch', async () => {

@@ -1,6 +1,8 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { predictionMaxRequestBytes, DEFAULT_PREDICTION_MAX_REQUEST_BYTES } from './capabilities';
+import { predictionReferenceExample } from './reference-example';
+import { loadPredictionReference } from './reference-source';
 
 export class NcbiReferenceError extends Error {
   constructor(readonly code: string, message: string, readonly status = 502) { super(message); }
@@ -130,6 +132,13 @@ function safeDirectory(value: unknown, accession: string) {
 
 export async function findNcbiReference(input: unknown, signal?: AbortSignal): Promise<NcbiReference | null> {
   const accession = ncbiAccession(input);
+  const example = predictionReferenceExample(accession);
+  if (example) {
+    const url = new URL(example.sourceUrl);
+    if (url.hostname === 'ftp.ncbi.nlm.nih.gov') {
+      return { accession, organismName: example.organism, source: 'ncbi', directory: new URL('.', url).toString().replace(/\/$/, '') };
+    }
+  }
   const cached = metadataCache.get(accession);
   if (cached && cached.expires > Date.now()) return cached.value;
   let value: NcbiReference | null = null;
@@ -169,6 +178,8 @@ export async function findNcbiReference(input: unknown, signal?: AbortSignal): P
 }
 
 export async function downloadNcbiFasta(accession: string, signal: AbortSignal) {
+  const example = predictionReferenceExample(accession);
+  if (example && new URL(example.sourceUrl).hostname === 'ftp.ncbi.nlm.nih.gov') return loadPredictionReference(accession);
   const reference = await findNcbiReference(accession, signal);
   if (!reference) throw new NcbiReferenceError('NCBI_REFERENCE_NOT_FOUND', 'This exact assembly version was not found at NCBI.', 404);
   const directory = safeDirectory(reference.directory, accession);

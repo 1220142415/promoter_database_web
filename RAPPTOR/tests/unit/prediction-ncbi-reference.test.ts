@@ -31,8 +31,8 @@ describe('NCBI reference lookup and bounded download', () => {
     const fetchMock = upstream(); vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('@/app/api/prediction-references/ncbi/route');
     const result = await GET(new Request(`https://example.test/api/prediction-references/ncbi?accession=${accession}`));
-    expect(await result.json()).toEqual({ items: [{ accession, organismName: 'Example assembly', source: 'ncbi' }] });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await result.json()).toEqual({ items: [{ accession, organismName: 'Escherichia coli str. K-12 substr. MG1655', source: 'ncbi' }] });
+    expect(fetchMock).not.toHaveBeenCalled();
     const { downloadNcbiFasta } = await import('@/features/prediction/ncbi-reference');
     expect(await downloadNcbiFasta(accession, AbortSignal.timeout(1000))).toBe(fasta);
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -108,7 +108,7 @@ describe('NCBI reference lookup and bounded download', () => {
   it('reports upstream failure rather than an empty search result', async () => {
     const fetchMock = vi.fn(async () => new Response('', { status: 429 })); vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('@/app/api/prediction-references/ncbi/route');
-    expect((await GET(new Request(`https://example.test/?accession=${accession}`))).status).toBe(503);
+    expect((await GET(new Request('https://example.test/?accession=GCF_000005846.2'))).status).toBe(503);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

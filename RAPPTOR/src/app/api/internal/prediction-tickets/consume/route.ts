@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       ? await resolvePredictionReferenceSource(body.referenceAccession)
       : null;
     if (body.referenceAccession && !referenceSource
-      && !await hasPreparedPredictionReference(database, body.ticket, body.referenceAccession as string)) {
+      && !await hasPreparedPredictionReference(database, body.ticket, body.referenceAccession as string, body.mode)) {
       return Response.json({ allowed: false, errorCode: 'REFERENCE_CGR_NOT_FOUND' }, {
         headers: { 'Cache-Control': 'no-store' },
       });

@@ -81,7 +81,16 @@ describe('prediction ticket consumption', () => {
     mocks.preparedReference.mockResolvedValue(true);
     const response = await POST(request('GCA_000005845.2'));
     expect(await response.json()).toEqual({ allowed: true });
-    expect(mocks.preparedReference).toHaveBeenCalledWith({}, 'one-time-ticket', 'GCA_000005845.2');
+    expect(mocks.preparedReference).toHaveBeenCalledWith({}, 'one-time-ticket', 'GCA_000005845.2', 'predict');
     expect(mocks.consumeTicket).toHaveBeenCalledWith({}, expect.objectContaining({ referenceAccession: 'GCA_000005845.2' }));
+  });
+
+  it('checks a prepared external reference against genome-scan mode', async () => {
+    mocks.resolveReference.mockResolvedValue(null);
+    mocks.preparedReference.mockResolvedValue(true);
+    const response = await POST(request('GCA_000005845.2', 'genome_scan'));
+    expect(await response.json()).toEqual({ allowed: true });
+    expect(mocks.preparedReference).toHaveBeenCalledWith({}, 'one-time-ticket', 'GCA_000005845.2', 'genome_scan');
+    expect(mocks.consumeTicket).toHaveBeenCalledWith({}, expect.objectContaining({ mode: 'genome_scan' }));
   });
 });

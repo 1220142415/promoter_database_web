@@ -274,21 +274,31 @@ export async function consumePredictionTicket(
   return changedRows(result) === 1;
 }
 
-export async function claimPredictionReferenceDownload(database: D1Database, ticket: string, modelVersion: string, accession: string, now = new Date()) {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(ticket) || !modelVersion || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(accession)) return false;
+export async function claimPredictionReferenceDownload(
+  database: D1Database,
+  ticket: string,
+  modelVersion: string,
+  input: { accession: string; mode: PredictionTaskMode; bases: number },
+  now = new Date(),
+) {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(ticket) || !modelVersion
+    || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(input.accession)
+    || (input.mode !== 'predict' && input.mode !== 'genome_scan')
+    || !Number.isSafeInteger(input.bases) || input.bases <= 0) return false;
   // Require enough remaining TTL for a bounded download and Docker's final consumption.
   const result = await database.prepare(`UPDATE prediction_tickets SET reference_download_started_at = ?, reference_accession = ?
-    WHERE ticket_hash = ? AND scope = 'prediction' AND model_version = ? AND task_kind = 'predict'
-      AND used_at IS NULL AND reference_download_started_at IS NULL AND expires_at > ? AND max_bases >= 100`)
-    .bind(now.toISOString(), accession, await sha256(ticket), modelVersion, new Date(now.getTime() + 45_000).toISOString()).run();
+    WHERE ticket_hash = ? AND scope = 'prediction' AND model_version = ? AND task_kind = ?
+      AND used_at IS NULL AND reference_download_started_at IS NULL AND expires_at > ? AND max_bases >= ?`)
+    .bind(now.toISOString(), input.accession, await sha256(ticket), modelVersion, input.mode,
+      new Date(now.getTime() + 45_000).toISOString(), input.bases).run();
   return changedRows(result) === 1;
 }
 
-export async function hasPreparedPredictionReference(database: D1Database, ticket: string, accession: string) {
+export async function hasPreparedPredictionReference(database: D1Database, ticket: string, accession: string, mode: PredictionTaskMode) {
   return Boolean(await database.prepare(`SELECT 1 AS allowed FROM prediction_tickets
     WHERE ticket_hash = ? AND reference_accession = ? AND reference_download_started_at IS NOT NULL
-      AND used_at IS NULL AND expires_at > ? AND task_kind = 'predict'`)
-    .bind(await sha256(ticket), accession, new Date().toISOString()).first());
+      AND used_at IS NULL AND expires_at > ? AND task_kind = ?`)
+    .bind(await sha256(ticket), accession, new Date().toISOString(), mode).first());
 }
 
 export async function verifyTurnstile(token: string, address: string, secret: string) {

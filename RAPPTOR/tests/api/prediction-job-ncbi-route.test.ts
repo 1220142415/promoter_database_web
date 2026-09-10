@@ -31,7 +31,9 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('Worker NCBI to Docker FASTA bridge', () => {
   it('claims ticket before download and forwards only the existing Docker fields', async () => {
     expect((await POST(request())).status).toBe(202);
-    expect(claimPredictionReferenceDownload).toHaveBeenCalledWith({}, 't'.repeat(43), 'model-test', payload.ncbi_accession);
+    expect(claimPredictionReferenceDownload).toHaveBeenCalledWith({}, 't'.repeat(43), 'model-test', {
+      accession: payload.ncbi_accession, mode: 'predict', bases: 100,
+    });
     expect(preparePredictionReference).toHaveBeenCalledWith(payload.ncbi_accession, 'ncbi', expect.any(AbortSignal));
     expect(vi.mocked(claimPredictionReferenceDownload).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(preparePredictionReference).mock.invocationCallOrder[0]);
     const [url, init] = vi.mocked(fetch).mock.calls[0];
@@ -81,7 +83,56 @@ describe('Worker NCBI to Docker FASTA bridge', () => {
     const ordinary = { mode: 'predict', sequence: payload.sequence, reference_accession: 'GCF_000005845.1', complete_genome: true };
     expect((await POST(request(ordinary))).status).toBe(202);
     expect(preparePredictionReference).toHaveBeenCalledWith('GCF_000005845.1', 'catalog', expect.any(AbortSignal));
-    expect(claimPredictionReferenceDownload).toHaveBeenCalledWith({}, 't'.repeat(43), 'model-test', 'GCF_000005845.1');
+    expect(claimPredictionReferenceDownload).toHaveBeenCalledWith({}, 't'.repeat(43), 'model-test', {
+      accession: 'GCF_000005845.1', mode: 'predict', bases: 100,
+    });
+  });
+
+  it.each([
+    ['ncbi_accession', 'ncbi'],
+    ['reference_accession', 'catalog'],
+  ] as const)('prepares and forwards a separate %s CGR reference for a partial genome scan', async (referenceField, source) => {
+    const fasta = `>region_1\n${'ACGT'.repeat(75)}\n`;
+    const scan = {
+      mode: 'genome_scan', fasta, [referenceField]: 'GCF_000005845.2', complete_genome: true,
+      stride: 2, score_cutoff: 0.9, reverse_complementary: false, output_formats: ['bigwig', 'gff3'],
+    };
+    expect((await POST(request(scan))).status).toBe(202);
+    expect(claimPredictionReferenceDownload).toHaveBeenCalledWith({}, 't'.repeat(43), 'model-test', {
+      accession: 'GCF_000005845.2', mode: 'genome_scan', bases: 300,
+    });
+    expect(preparePredictionReference).toHaveBeenCalledWith('GCF_000005845.2', source, expect.any(AbortSignal));
+    expect(vi.mocked(claimPredictionReferenceDownload).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(preparePredictionReference).mock.invocationCallOrder[0]);
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(new TextDecoder().decode(init?.body as ArrayBuffer))).toEqual({
+      mode: 'genome_scan', fasta, reference_accession: 'GCF_000005845.2', complete_genome: true,
+      stride: 2, score_cutoff: 0.9, reverse_complementary: false, output_formats: ['bigwig', 'gff3'],
+    });
+  });
+
+  it.each([
+    '>region\nACGTZ',
+    `${'ACGT'.repeat(75)}`,
+    '>region\n',
+    '>same\nACGT\n>same\nACGT',
+  ])('rejects invalid scan FASTA before claiming a reference download: %j', async (fasta) => {
+    const scan = { mode: 'genome_scan', fasta, reference_accession: 'GCF_000005845.1', complete_genome: true };
+    expect((await POST(request(scan))).status).toBe(400);
+    expect(claimPredictionReferenceDownload).not.toHaveBeenCalled();
+    expect(preparePredictionReference).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the existing FASTA-only genome scan path unchanged', async () => {
+    const scan = {
+      mode: 'genome_scan', fasta: `>region\n${'ACGT'.repeat(75)}\n`, complete_genome: true,
+      stride: 1, reverse_complementary: true, output_formats: ['bigwig'],
+    };
+    expect((await POST(request(scan))).status).toBe(202);
+    expect(claimPredictionReferenceDownload).not.toHaveBeenCalled();
+    expect(preparePredictionReference).not.toHaveBeenCalled();
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(new TextDecoder().decode(init?.body as ArrayBuffer))).toEqual(scan);
   });
 
   it.each([null, [], 'invalid'])('rejects non-object JSON %j', async (body) => {

@@ -248,6 +248,38 @@ def test_reference_accession_completes_predict_without_fasta(tmp_path, monkeypat
     assert (storage.job_dir(uploaded_job_id) / "genome_context.fasta").is_file()
 
 
+def test_reference_accession_supplies_cgr_for_partial_genome_scan(tmp_path, monkeypatch):
+    runtime = FakeRuntime()
+    monkeypatch.setattr(jobs, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(jobs, "_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        jobs,
+        "get_reference_cgr_tensor",
+        lambda accession, source=None, device="cpu": (
+            torch.zeros((1, 128, 128), device=device), "memory_hit",
+        ),
+    )
+    storage = JobStorage(tmp_path / "data")
+    job_id = "7" * 32
+    storage.create(job_id)
+    jobs._scan(job_id, {
+        "fasta": ">region\n" + "ACGT" * 30,
+        "reference_accession": ACCESSION,
+        "cgr_source": "reference_accession",
+        "stride": 10,
+        "batch_size": 8,
+        "reverse_complementary": False,
+        "output_formats": ["json"],
+    }, storage)
+    summary = storage.read_json(job_id, "summary.json")
+    assert summary["total_bases"] == 120
+    assert summary["reference_accession"] == ACCESSION
+    assert summary["cgr_source"] == "reference_accession"
+    assert summary["cgr_cache"] == "memory_hit"
+    assert summary["genome_context_bases"] is None
+    assert not (storage.job_dir(job_id) / "genome_context.fasta").exists()
+
+
 def test_predict_emits_only_non_sensitive_stage_timings(tmp_path, monkeypatch, capsys):
     data_root = tmp_path / "data"
     monkeypatch.setattr(jobs, "SETTINGS", replace(

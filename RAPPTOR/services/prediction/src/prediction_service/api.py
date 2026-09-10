@@ -333,9 +333,7 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
             request["cgr_source"] = "complete_genome_sequence"
         return request, len(sequence)
 
-    request.pop("reference_accession", None)
     request.pop("sequence", None)
-    request.pop("genome_context", None)
     validated = validate_fasta(
         payload.fasta or "",
         max_bases=SETTINGS.max_genome_bases,
@@ -347,7 +345,21 @@ def _validate_submission(payload: JobSubmission) -> tuple[dict, int]:
     if stride > SETTINGS.max_scan_stride:
         raise InputValidationError(f"Stride must be at most {SETTINGS.max_scan_stride} bp.")
     request["fasta"] = validated.to_fasta()
-    request["cgr_source"] = "complete_genome_assembly_fasta"
+    if payload.reference_accession is not None:
+        request["cgr_source"] = "reference_accession"
+    elif payload.genome_context is not None:
+        request["genome_context"] = validate_sequence(
+            payload.genome_context,
+            label="genome_context",
+            min_bases=100,
+            max_bases=SETTINGS.max_genome_bases,
+            max_ambiguous_fraction=SETTINGS.max_ambiguous_fraction,
+        )
+        request["cgr_source"] = "separate_complete_genome_sequence"
+    else:
+        request.pop("reference_accession", None)
+        request.pop("genome_context", None)
+        request["cgr_source"] = "complete_genome_assembly_fasta"
     request["stride"] = stride
     request["score_cutoff"] = float(payload.score_cutoff) if payload.score_cutoff is not None else None
     from .formats import scan_output_formats

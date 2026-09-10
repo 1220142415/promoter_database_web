@@ -12,7 +12,7 @@ class JobSubmission(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["predict", "genome_scan"]
     complete_genome: Literal[True] = Field(
-        description="Confirms that the selected reference, genome_context, or fasta is a complete genome."
+        description="Confirms that the CGR reference is a complete genome; the scanned FASTA may be a region."
     )
     sequence: str | None = Field(default=None, description="Target DNA for mode=predict.")
     genome_context: str | None = Field(
@@ -26,7 +26,10 @@ class JobSubmission(BaseModel):
     )
     fasta: str | None = Field(
         default=None,
-        description="Complete assembly FASTA. All records form one CGR context.",
+        description=(
+            "FASTA to scan for mode=genome_scan, or a complete reference FASTA for mode=predict. "
+            "A scan may use a separate genome_context or reference_accession for its CGR."
+        ),
     )
     cgr_png_base64: str | None = Field(
         default=None,
@@ -70,15 +73,12 @@ class JobSubmission(BaseModel):
         else:
             if self.fasta is None:
                 raise ValueError("For mode=genome_scan, fasta is required.")
-            if (
-                self.sequence is not None
-                or self.genome_context is not None
-                or self.reference_accession is not None
-                or self.cgr_png_base64 is not None
-            ):
+            if self.sequence is not None or self.cgr_png_base64 is not None:
                 raise ValueError(
-                    "For mode=genome_scan, use fasta and omit sequence/genome_context/reference_accession."
+                    "For mode=genome_scan, use fasta and omit sequence/cgr_png_base64."
                 )
+            if self.genome_context is not None and self.reference_accession is not None:
+                raise ValueError("For mode=genome_scan, provide at most one separate CGR reference source.")
             if self.output_formats is not None:
                 if not self.output_formats:
                     raise ValueError("output_formats must contain at least one format.")

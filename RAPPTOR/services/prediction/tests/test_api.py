@@ -347,19 +347,33 @@ def test_sampled_scan_accepts_smoothed_gff3_and_peaks(tmp_path, monkeypatch):
     assert request["output_formats"] == ["gff3"]
 
 
-@pytest.mark.parametrize("extra", [
-    {"genome_context": "TGCA" * 40},
-    {"reference_accession": "GCF_000005845.1"},
+@pytest.mark.parametrize(("extra", "source"), [
+    ({"genome_context": "TGCA" * 40}, "separate_complete_genome_sequence"),
+    ({"reference_accession": "GCF_000005845.1"}, "reference_accession"),
 ])
-def test_genome_scan_accepts_only_uploaded_fasta(tmp_path, monkeypatch, extra):
+def test_genome_scan_accepts_separate_cgr_reference(tmp_path, monkeypatch, extra, source):
     api, _ = load_api(tmp_path, monkeypatch)
-    with pytest.raises(ValidationError, match="omit sequence/genome_context/reference_accession"):
+    payload = api.JobSubmission(
+        mode="genome_scan",
+        complete_genome=True,
+        fasta=">target\n" + "ACGT" * 30,
+        stride=10,
+        **extra,
+    )
+    request, billed_bases = api._validate_submission(payload)
+    assert request["cgr_source"] == source
+    assert billed_bases == 120
+
+
+def test_genome_scan_rejects_conflicting_cgr_references(tmp_path, monkeypatch):
+    api, _ = load_api(tmp_path, monkeypatch)
+    with pytest.raises(ValidationError, match="at most one"):
         api.JobSubmission(
             mode="genome_scan",
             complete_genome=True,
             fasta=">target\n" + "ACGT" * 30,
-            stride=10,
-            **extra,
+            genome_context="TGCA" * 40,
+            reference_accession="GCF_000005845.1",
         )
 
 

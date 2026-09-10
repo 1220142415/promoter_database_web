@@ -14,7 +14,12 @@ Docker originally accepted only precomputed PNG imports, so it could not impleme
 
 ## Final request contract
 
-Exactly one 100 bp target uses `predict`. A longer input uses `genome_scan` and its sole input is FASTA (raw pasted DNA is wrapped in a FASTA record). Scan submissions do not carry `sequence`, `reference_accession` or `genome_context`.
+Exactly one 100 bp target uses `predict`. A longer input uses `genome_scan` and
+its target is always FASTA (raw pasted DNA is wrapped in a FASTA record). A
+complete target assembly can also supply its own CGR. A partial scan may carry
+one independent complete-reference source: `reference_accession` or
+`genome_context`. These fields condition the model only; they do not replace
+the target FASTA or its coordinates.
 
 For catalog/NCBI 100 bp requests, Worker claims a valid ticket, binds its exact accession, checks Docker cache, downloads and imports only on a miss, then submits the accession after readiness. CGR generation/storage remains in Docker. HF sources use the uploaded exact version; NCBI fallback does not silently replace accession versions. Cache preparation has a 40-second bound, import status polling uses 3-second intervals, and failed/expired attempts are not automatically resubmitted.
 

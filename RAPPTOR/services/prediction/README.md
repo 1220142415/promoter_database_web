@@ -21,8 +21,10 @@ must therefore identify or include the **complete genome**, not only a promoter
 window or a short neighborhood. The worker uses its 128 × 128 CGR as the model
 context.
 
-- `genome_scan`: upload the complete assembly FASTA; all contigs belong to the
-  same genome and jointly form its CGR.
+- `genome_scan`: send the FASTA records to scan. For a whole assembly, that
+  FASTA can also form the CGR. For a region or partial assembly, add either a
+  cached `reference_accession` or the complete reference DNA in
+  `genome_context`; the scan coordinates still come from the submitted FASTA.
 - `predict`: send exactly one 100 bp `sequence` plus exactly one CGR source: a catalog-backed
   `reference_accession`, the complete sequence in `genome_context`, or an
   uploaded complete assembly in `fasta`. Custom `genome_context`/`fasta`
@@ -266,12 +268,19 @@ jobs are not rescanned and retain browser-side smoothing for their raw BigWigs.
 {
   "mode": "genome_scan",
   "complete_genome": true,
-  "fasta": ">contig\nACGT...",
+  "fasta": ">region_or_assembly\nACGT...",
+  "reference_accession": "GCF_000005845.1",
   "stride": 1,
   "score_cutoff": 0.9,
   "output_formats": ["bigwig", "parquet", "gff3"]
 }
 ```
+
+For scan requests, `fasta` is always the sequence being evaluated. Exactly
+zero or one separate CGR source may be supplied: `reference_accession`, or
+`genome_context`. Omitting both retains the legacy behavior and derives the
+CGR from the scan FASTA itself. Billing and ticket limits count only parsed
+scan FASTA bases, not the separate complete reference.
 
 `GET /v1/models/current` publishes the active stride limits, cutoff range and
 operator, affected formats, and default output formats for frontend clients.

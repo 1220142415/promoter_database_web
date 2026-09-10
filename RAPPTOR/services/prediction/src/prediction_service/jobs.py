@@ -369,8 +369,15 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
     fasta_path = storage.write_text(job_id, "input.fasta", validated.to_fasta())
     fasta_index_path = _write_fasta_index(storage, job_id, validated.records)
     _progress("preparing_cgr", 10.0, total_bases=validated.total_bases)
+    reference_accession = request.get("reference_accession")
     genome_context = request.get("genome_context")
-    if genome_context:
+    cgr_cache = None
+    if reference_accession:
+        cgr, cgr_cache = get_reference_cgr_tensor(
+            reference_accession, device=runtime.device,
+        )
+        cgr_source = "reference_accession"
+    elif genome_context:
         context_path = storage.write_text(job_id, "genome_context.fasta", f">genome_context\n{genome_context}\n")
         cgr = runtime.make_cgr(context_path, job_dir)
         cgr_source = "separate_complete_genome_sequence"
@@ -444,7 +451,13 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "contig_count": len(validated.records),
         "ambiguous_fraction": validated.ambiguous_fraction,
         "cgr_source": cgr_source,
-        "genome_context_bases": len(genome_context) if genome_context else validated.total_bases,
+        "reference_accession": reference_accession,
+        "cgr_cache": cgr_cache,
+        "genome_context_bases": (
+            None if reference_accession
+            else len(genome_context) if genome_context
+            else validated.total_bases
+        ),
         "complete_genome": "submitter_asserted",
         "stride": stride,
         "batch_size": batch_size,

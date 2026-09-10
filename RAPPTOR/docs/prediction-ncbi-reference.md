@@ -6,7 +6,13 @@ The existing genome-context search checks the site catalog first. If it returns 
 
 External results and the selected reference are marked `NCBI · External reference`. Users explicitly select the result before submitting. Missing versions are never silently replaced by a newer version. Search failures preserve the input and do not start a prediction or download a genome.
 
-This fallback is for the complete-genome **context of a single 100 bp prediction**. Whole-genome scanning retains its FASTA submission contract; this change does not add NCBI-as-scan-input or alter model behavior. Preview mode does not offer this fallback. Preparation runs on the deployed Worker with its ticket database; the loopback development proxy only passes through already-cached catalog references.
+This fallback supplies the complete-genome **CGR context** for either a single
+100 bp prediction or a sequence scan. In scan mode, the NCBI assembly is not
+silently substituted as the target: the browser still supplies the FASTA
+region or assembly to evaluate, while the selected accession supplies only its
+complete-reference CGR. Preview mode does not offer this fallback. Preparation
+runs on the deployed Worker with its ticket database; the loopback development
+proxy only passes through already-cached catalog references.
 
 ## Data flow
 
@@ -50,14 +56,29 @@ Browser request to `/api/predictions/jobs`:
 }
 ```
 
-Use the normal `Authorization: Ticket ...` header. Ticket `bases` is **100**, matching Docker's current predict billing; reference byte limits are checked separately. The Worker translates `ncbi_accession` to the existing Docker `reference_accession` only after cache preparation. Ordinary catalog `reference_accession` requests use the same preparation flow with Hugging Face on a miss. No URLs, file paths, checksums or import IDs are accepted from the browser. Supplying another reference source or using either accession field with `genome_scan` is rejected before downloading.
+Use the normal `Authorization: Ticket ...` header. For `predict`, ticket `bases`
+is **100**; for `genome_scan`, it is the parsed target FASTA base count.
+Reference byte limits are checked separately. The Worker translates
+`ncbi_accession` to the existing Docker `reference_accession` only after cache
+preparation. Ordinary catalog `reference_accession` requests use the same
+preparation flow on a miss. No URLs, file paths, checksums or import IDs are
+accepted from the browser. A request with more than one reference source is
+rejected before downloading.
+
+For `genome_scan`, the same protected preparation path accepts the selected
+accession, but the ticket is bound to `genome_scan`, the exact accession and
+the parsed bases in the target FASTA. Docker receives the target FASTA plus
+`reference_accession`; it loads the cached CGR and never treats the downloaded
+reference as scan input. A scan may instead send `genome_context`, or omit both
+reference fields to derive the CGR from the target FASTA. Conflicting reference
+sources are rejected.
 
 ## Storage, limits and failure behavior
 
 - FASTA is held in temporary memory for the Worker request, not persisted to D1, R2 or the browser. The runtime reclaims that memory; there is no persistent Worker filesystem cache.
 - Only small lookup metadata is cached: up to 128 entries per isolate; positive results for five minutes and misses for one minute. This is best-effort, not a global cache or global NCBI rate limiter.
 - A ready Docker cache causes no FASTA download. CGR PNG and manifest persist in Docker's existing data volume, separated by exact accession and CGR version. Docker deletes temporary imported FASTA after processing. PNG imports remain supported for trusted offline synchronization.
-- Preparation requires an unused, matching-model `predict` ticket with at least 100 bases and more than 45 seconds remaining. D1 claims at most one preparation per ticket and records `reference_accession` without setting `used_at`; Docker still performs the final consume operation. Consumption rejects a different reference or omission of a bound reference.
+- Preparation requires an unused, matching-model ticket for the exact task kind with at least the submitted target bases and more than 45 seconds remaining. D1 claims at most one preparation per ticket and records `reference_accession` without setting `used_at`; Docker still performs the final consume operation. Consumption rejects a different task kind, reference, or omission of a bound reference.
 - No automatic retry of downloads. A failed claim/download preserves browser input. To submit again, perform verification again and obtain a new ticket. The existing per-minute ticket limit still applies.
 - Metadata calls have a 10-second deadline; the entire preparation phase (cache query, download, import, polling) has a 40-second deadline and follows request cancellation. Polling is once every 3 seconds only during preparation. A still-running import returns `REFERENCE_PREPARING` with preserved input; it is not canceled or automatically resubmitted. A later submission rechecks the cache.
 - Compressed and decompressed data are each capped at `min(RAPPTOR_MAX_REQUEST_BYTES, 12 MiB)`. The prediction JSON remains small because it carries only the accession and target sequence.

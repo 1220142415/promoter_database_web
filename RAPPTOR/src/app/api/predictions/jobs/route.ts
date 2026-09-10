@@ -16,6 +16,42 @@ function serviceUrl(path: string) {
   return base ? `${base}${path}` : null;
 }
 
+function scanFastaBases(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan reference selection requires FASTA input.', 400);
+  }
+  let bases = 0;
+  let records = 0;
+  let currentBases = 0;
+  const seen = new Set<string>();
+  for (const rawLine of value.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('>')) {
+      if (records && !currentBases) throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan FASTA contains an empty record.', 400);
+      const identifier = line.slice(1).trim().split(/\s+/, 1)[0];
+      if (!identifier || !/^[A-Za-z0-9_.:|+\-]{1,200}$/.test(identifier) || seen.has(identifier)) {
+        throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan FASTA contains an invalid or duplicate identifier.', 400);
+      }
+      seen.add(identifier);
+      records += 1;
+      currentBases = 0;
+      continue;
+    }
+    if (!records) throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan FASTA sequence must follow a header.', 400);
+    const sequence = line.replace(/\s+/g, '').toUpperCase();
+    if (!sequence || !/^[ACGTNRYWSKMBDHV]+$/.test(sequence)) {
+      throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan FASTA contains unsupported DNA bases.', 400);
+    }
+    bases += sequence.length;
+    currentBases += sequence.length;
+  }
+  if (!records || !currentBases || !Number.isSafeInteger(bases)) {
+    throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan FASTA contains no complete records.', 400);
+  }
+  return bases;
+}
+
 export async function POST(request: Request) {
   const localTest = localPredictionTestEnabled(request.headers, request.url, true);
   const auth = !localTest && predictionAccessMode() === 'email' ? await requirePredictionAuth(request) : null;
@@ -58,19 +94,31 @@ export async function POST(request: Request) {
       const source = 'ncbi_accession' in submission ? 'ncbi' : 'catalog';
       const referenceField = source === 'ncbi' ? 'ncbi_accession' : 'reference_accession';
       const accession = ncbiAccession(submission[referenceField]);
-      const allowed = new Set(['mode', 'sequence', referenceField, 'complete_genome', 'reverse_complementary']);
-      if (mode !== 'predict' || submission.complete_genome !== true
-        || typeof submission.sequence !== 'string' || !/^[ACGT]{100}$/i.test(submission.sequence)
-        || (submission.reverse_complementary !== undefined && typeof submission.reverse_complementary !== 'boolean')
-        || Object.keys(submission).some((key) => !allowed.has(key))) {
-        throw new NcbiReferenceError('INVALID_REQUEST', 'Reference selection requires a single 100 bp sequence and no other reference source.', 400);
+      let bases: number;
+      if (mode === 'predict') {
+        const allowed = new Set(['mode', 'sequence', referenceField, 'complete_genome', 'reverse_complementary']);
+        if (submission.complete_genome !== true
+          || typeof submission.sequence !== 'string' || !/^[ACGT]{100}$/i.test(submission.sequence)
+          || (submission.reverse_complementary !== undefined && typeof submission.reverse_complementary !== 'boolean')
+          || Object.keys(submission).some((key) => !allowed.has(key))) {
+          throw new NcbiReferenceError('INVALID_REQUEST', 'Reference selection requires a single 100 bp sequence and no other reference source.', 400);
+        }
+        bases = submission.sequence.length;
+      } else {
+        const allowed = new Set(['mode', 'fasta', referenceField, 'complete_genome', 'stride', 'score_cutoff', 'batch_size', 'reverse_complementary', 'output_formats']);
+        if (submission.complete_genome !== true
+          || (submission.reverse_complementary !== undefined && typeof submission.reverse_complementary !== 'boolean')
+          || Object.keys(submission).some((key) => !allowed.has(key))) {
+          throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan reference selection requires FASTA and one reference accession.', 400);
+        }
+        bases = scanFastaBases(submission.fasta);
       }
       const downloadDatabase = usageDatabase();
       if (!downloadDatabase || localTest) throw new NcbiReferenceError('UNAVAILABLE', 'Reference preparation requires the deployed prediction ticket database.', 503);
       let claimed: boolean;
       try {
         const settings = readPredictionTicketIssueSettings();
-        claimed = await claimPredictionReferenceDownload(downloadDatabase, authorization.slice(7), settings.modelVersion, accession);
+        claimed = await claimPredictionReferenceDownload(downloadDatabase, authorization.slice(7), settings.modelVersion, { accession, mode, bases });
       } catch {
         throw new NcbiReferenceError('UNAVAILABLE', 'Reference download authorization is unavailable. Please contact the site administrator.', 503);
       }
@@ -79,10 +127,8 @@ export async function POST(request: Request) {
       }
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(40_000)]);
       await preparePredictionReference(accession, source, signal);
-      submission = {
-        mode: 'predict', sequence: submission.sequence, complete_genome: true, reference_accession: accession,
-        ...(submission.reverse_complementary !== undefined ? { reverse_complementary: submission.reverse_complementary } : {}),
-      };
+      submission = { ...submission, reference_accession: accession };
+      delete submission.ncbi_accession;
       const encoded = new TextEncoder().encode(JSON.stringify(submission));
       body = encoded.buffer;
     } catch (cause) { return ncbiErrorResponse(cause); }

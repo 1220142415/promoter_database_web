@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, predictionMaxRequestBytes } from './capabilities';
 import { boundedBytes, downloadNcbiFasta, NcbiReferenceError } from './ncbi-reference';
-import { resolvePredictionReferenceSource } from './reference-source';
+import { resolvePredictionReferenceSource, type PredictionReferenceSource } from './reference-source';
 
 interface CacheState {
   accession: string;
@@ -34,8 +34,8 @@ async function cacheRequest(path: string, signal: AbortSignal, init: RequestInit
   return state;
 }
 
-async function catalogFasta(accession: string, signal: AbortSignal): Promise<string> {
-  const source = await resolvePredictionReferenceSource(accession);
+async function catalogFasta(accession: string, signal: AbortSignal, source?: PredictionReferenceSource | null): Promise<string> {
+  source ??= await resolvePredictionReferenceSource(accession);
   if (!source) throw new NcbiReferenceError('REFERENCE_CGR_NOT_FOUND', 'This exact reference version is unavailable. Choose another reference or upload its complete FASTA.', 404);
   let url = new URL(source.url);
   if (url.origin !== 'https://huggingface.co' || !url.pathname.startsWith('/datasets/')) {
@@ -87,7 +87,9 @@ export async function preparePredictionReference(accession: string, source: 'cat
   check();
   if (state.status === 'ready') return;
   if (state.status !== 'preparing') {
-    const fasta = source === 'ncbi' ? await downloadNcbiFasta(accession, signal) : await catalogFasta(accession, signal);
+    const published = await resolvePredictionReferenceSource(accession);
+    const fasta = published ? await catalogFasta(accession, signal, published)
+      : source === 'ncbi' ? await downloadNcbiFasta(accession, signal) : await catalogFasta(accession, signal);
     const bytes = new TextEncoder().encode(fasta);
     if (bytes.byteLength > Math.min(predictionMaxRequestBytes(), DEFAULT_PREDICTION_MAX_REQUEST_BYTES)) {
       throw new NcbiReferenceError('REFERENCE_TOO_LARGE', 'The reference exceeds the download limit.', 413);

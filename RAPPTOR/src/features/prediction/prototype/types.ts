@@ -39,7 +39,7 @@ export interface PrototypeContigMetadata {
 export type PrototypeGenomeContext =
   | {
       kind: 'catalog';
-      source?: 'ncbi';
+      source?: 'ncbi' | 'huggingface';
       accession: string;
       displayName: string;
       fileName: string | null;

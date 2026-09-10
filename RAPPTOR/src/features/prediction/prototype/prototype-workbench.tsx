@@ -75,7 +75,7 @@ interface ResolvedGenomeInput {
 
 type ReferenceSearchRow = Pick<GenomeCatalogRow, 'accession' | 'organismName'> & {
   genomeSizeBp?: number | null;
-  source?: 'ncbi';
+  source?: 'ncbi' | 'huggingface';
 };
 
 const EMPTY_UPLOAD: UploadedInputState = { file: null, parsed: null, loading: false, error: null };
@@ -160,7 +160,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
   if (selected) {
     return (
       <div className={styles.selection}>
-        <div><strong>{selected.displayName}</strong><span>{selected.kind === 'catalog' ? selected.accession : selected.fileName}</span>{selected.kind === 'catalog' && selected.source === 'ncbi' ? <span>NCBI · External reference</span> : null}</div>
+        <div><strong>{selected.displayName}</strong><span>{selected.kind === 'catalog' ? selected.accession : selected.fileName}</span>{selected.kind === 'catalog' && selected.source ? <span>{selected.source === 'ncbi' ? 'NCBI · External reference' : 'Hugging Face · Published reference'}</span> : null}</div>
         <button type="button" onClick={() => onSelect(null)}>Change</button>
       </div>
     );
@@ -187,7 +187,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
       {results.length ? (
         <ul id={`${idPrefix}-results`} role="listbox" className={styles.catalogResults} aria-label="Genome catalog results">
           {results.map((row) => (
-            <li key={row.accession} role="presentation"><button role="option" aria-selected="false" type="button" onClick={() => { onSelect(catalogContext(row)); setResults([]); setError(null); }}><strong>{row.organismName}</strong><span>{row.accession}{row.genomeSizeBp ? ` · ${row.genomeSizeBp.toLocaleString()} bp` : ''}</span>{row.source === 'ncbi' ? <span>NCBI · External reference</span> : null}</button></li>
+            <li key={row.accession} role="presentation"><button role="option" aria-selected="false" type="button" onClick={() => { onSelect(catalogContext(row)); setResults([]); setError(null); }}><strong>{row.organismName}</strong><span>{row.accession}{row.genomeSizeBp ? ` · ${row.genomeSizeBp.toLocaleString()} bp` : ''}</span>{row.source ? <span>{row.source === 'ncbi' ? 'NCBI · External reference' : 'Hugging Face · Published reference'}</span> : null}</button></li>
           ))}
         </ul>
       ) : null}

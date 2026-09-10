@@ -1,5 +1,4 @@
 import { findNcbiReference, ncbiErrorResponse } from '@/features/prediction/ncbi-reference';
-import { UPLOAD_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
 import { resolvePredictionReferenceSource } from '@/features/prediction/reference-source';
 
 export const dynamic = 'force-dynamic';
@@ -7,11 +6,6 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const accession = new URL(request.url).searchParams.get('accession')?.trim().toUpperCase();
-    if (accession === UPLOAD_PREDICTION_REFERENCE.accession) {
-      return Response.json({ items: [{ accession, organismName: UPLOAD_PREDICTION_REFERENCE.organism, source: 'huggingface' }] }, {
-        headers: { 'Cache-Control': 'public, max-age=60, s-maxage=300' },
-      });
-    }
     if (accession && await resolvePredictionReferenceSource(accession)) {
       return Response.json({ items: [{ accession, organismName: `Published reference ${accession}`, source: 'huggingface' }] }, {
         headers: { 'Cache-Control': 'public, max-age=60, s-maxage=300' },

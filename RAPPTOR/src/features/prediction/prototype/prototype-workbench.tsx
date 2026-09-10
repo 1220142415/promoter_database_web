@@ -31,7 +31,7 @@ import {
   type PrototypeStrandMode,
   type PrototypeStrideBases,
 } from '.';
-import { REAL_PREDICTION_REFERENCE, UPLOAD_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
+import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
 import type { QueuedPredictionCapabilities } from '../service-capabilities';
 import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
@@ -442,9 +442,9 @@ export default function PrototypePredictionWorkbench({
     setContextKind('upload'); setContextCatalog(null);
     setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true }); setFormError(null);
     try {
-      const reference = UPLOAD_PREDICTION_REFERENCE;
+      const reference = REAL_PREDICTION_REFERENCE;
       const response = await fetch(`/api/prediction-reference/${reference.accession}`);
-      if (!response.ok) throw new Error('The NCBI example is temporarily unavailable. Upload a FASTA file instead.');
+      if (!response.ok) throw new Error('The published example is temporarily unavailable. Upload a FASTA file instead.');
       const verified = await validateReferenceExample(await response.text(), reference);
       const file = new File([verified.fasta], reference.fileName, { type: 'text/plain' });
       validatePrototypeGenomeFile(file, maxGenomeBytes);
@@ -792,8 +792,8 @@ export default function PrototypePredictionWorkbench({
                 </div> : <div className={styles.contextUploadSource} role="group" aria-label="FASTA genome context">
                   <p className={styles.sourceHeading}>Upload a complete genome FASTA</p>
                   <div className={styles.expectedContextPrompt}>
-                    <div><span>NCBI FASTA example</span><strong>E. coli K-12 MG1655</strong><small>{UPLOAD_PREDICTION_REFERENCE.accession} · {UPLOAD_PREDICTION_REFERENCE.length.toLocaleString()} bp</small></div>
-                    <button type="button" disabled={contextUpload.loading} onClick={() => void loadUploadExample()}>Load NCBI .2 FASTA example</button>
+                    <div><span>Published FASTA example</span><strong>E. coli K-12 MG1655</strong><small>{REAL_PREDICTION_REFERENCE.accession} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp</small></div>
+                    <button type="button" disabled={contextUpload.loading} onClick={() => void loadUploadExample()}>Load published FASTA example</button>
                   </div>
                   {contextUpload.loading ? <p role="status">Loading and checking genome FASTA…</p> : null}
                   <div className={styles.fileAction}>

@@ -46,7 +46,7 @@ export function referenceSourceFromMatch(
 export async function resolvePredictionReferenceSource(accession: string) {
   if (!ACCESSION.test(accession)) return null;
   const example = predictionReferenceExample(accession);
-  if (example) {
+  if (example && new URL(example.sourceUrl).hostname === 'huggingface.co') {
     return {
       url: example.sourceUrl,
       sha256: example.sourceSha256,

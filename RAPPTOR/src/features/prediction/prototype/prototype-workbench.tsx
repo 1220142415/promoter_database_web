@@ -31,7 +31,7 @@ import {
   type PrototypeStrandMode,
   type PrototypeStrideBases,
 } from '.';
-import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
+import { REAL_PREDICTION_REFERENCE, UPLOAD_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
 import type { QueuedPredictionCapabilities } from '../service-capabilities';
 import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
@@ -132,8 +132,13 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
         return;
       }
       if (!payload.items.length && allowNcbi && /^GC[AF]_\d{9}\.[1-9]\d{0,3}$/i.test(term)) {
-        const external = await fetch(`/api/prediction-references/ncbi?accession=${encodeURIComponent(term.toUpperCase())}`, { signal: AbortSignal.timeout(12_000) });
-        if (!external.ok) throw new Error('NCBI lookup unavailable.');
+        setError('No local catalog match. Searching NCBI for this exact assembly…');
+        const external = await fetch(`/api/prediction-references/ncbi?accession=${encodeURIComponent(term.toUpperCase())}`);
+        if (!external.ok) {
+          setResults([]);
+          setError('NCBI search is temporarily unavailable. Upload the complete genome FASTA instead.');
+          return;
+        }
         const fallback = await external.json() as { items: ReferenceSearchRow[] };
         if (revision !== searchRevision.current) return;
         // External references require explicit selection, with provenance visible first.
@@ -142,7 +147,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
         return;
       }
       setResults(payload.items.slice(0, 8));
-      if (!payload.items.length) setError(allowNcbi ? 'No catalog match. Enter a versioned GCF or GCA assembly ID to search NCBI.' : PORTAL_COPY.noAssemblies);
+      if (!payload.items.length) setError(allowNcbi ? 'No local match. Enter a versioned GCF or GCA assembly ID to search NCBI.' : PORTAL_COPY.noAssemblies);
     } catch {
       if (revision !== searchRevision.current) return;
       setResults([]);
@@ -429,6 +434,23 @@ export default function PrototypePredictionWorkbench({
       if (revision === contextRevision.current) setContextUpload({ file, totalLength: metadata.totalLength, contigs: valid, loading: false, error: null });
     } catch (cause) {
       if (revision === contextRevision.current) setContextUpload({ file, totalLength: null, contigs: [], loading: false, error: cause instanceof Error ? cause.message : 'Genome context could not be read.' });
+    }
+  }
+
+  async function loadUploadExample() {
+    const revision = ++contextRevision.current;
+    setContextKind('upload'); setContextCatalog(null);
+    setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true }); setFormError(null);
+    try {
+      const reference = UPLOAD_PREDICTION_REFERENCE;
+      const response = await fetch(`/api/prediction-reference/${reference.accession}`);
+      if (!response.ok) throw new Error('The NCBI example is temporarily unavailable. Upload a FASTA file instead.');
+      const verified = await validateReferenceExample(await response.text(), reference);
+      const file = new File([verified.fasta], reference.fileName, { type: 'text/plain' });
+      validatePrototypeGenomeFile(file, maxGenomeBytes);
+      if (revision === contextRevision.current) setContextUpload({ file, totalLength: verified.length, contigs: [{ sequenceId: verified.sequenceId, length: verified.length }], loading: false, error: null });
+    } catch (cause) {
+      if (revision === contextRevision.current) setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, error: cause instanceof Error ? cause.message : 'The NCBI example is temporarily unavailable. Upload a FASTA file instead.' });
     }
   }
 
@@ -765,10 +787,14 @@ export default function PrototypePredictionWorkbench({
                       <button type="button" aria-pressed={contextCatalog?.kind === 'catalog' && contextCatalog.accession === expectedExampleGenome.accession} onClick={() => selectContextCatalog(expectedExampleGenome)}>Use this genome</button>
                     </div>
                   ) : null}
-                  <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => { selectContextKind('upload'); requestAnimationFrame(() => contextFileRef.current?.click()); }} />
+                  <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => { selectContextKind('upload'); requestAnimationFrame(() => contextFileRef.current?.click()); }} allowNcbi={!preview} />
                   {usesCachedCgr || usesNcbiContext ? <p className={styles.localNote}>{contextPrivacyCopy}</p> : null}
                 </div> : <div className={styles.contextUploadSource} role="group" aria-label="FASTA genome context">
                   <p className={styles.sourceHeading}>Upload a complete genome FASTA</p>
+                  <div className={styles.expectedContextPrompt}>
+                    <div><span>NCBI FASTA example</span><strong>E. coli K-12 MG1655</strong><small>{UPLOAD_PREDICTION_REFERENCE.accession} · {UPLOAD_PREDICTION_REFERENCE.length.toLocaleString()} bp</small></div>
+                    <button type="button" disabled={contextUpload.loading} onClick={() => void loadUploadExample()}>Load NCBI .2 FASTA example</button>
+                  </div>
                   {contextUpload.loading ? <p role="status">Loading and checking genome FASTA…</p> : null}
                   <div className={styles.fileAction}>
                     <div><strong>{contextUpload.file?.name || 'Choose genome FASTA'}</strong><span>{contextUpload.loading ? 'Reading metadata…' : contextUpload.file ? formatPrototypeBytes(contextUpload.file.size) : `.fa, .fasta, or .fna, optionally .gz · max ${genomeLimitLabel}`}</span></div>

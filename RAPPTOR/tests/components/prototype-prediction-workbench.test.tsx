@@ -49,18 +49,18 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('prototype prediction workbench', () => {
-  it('keeps an exact catalog miss local and offers upload instead of NCBI', async () => {
-    const fetchMock = vi.fn(async () => Response.json({ items: [] }));
+  it('falls back to NCBI for an exact accession and labels the external result', async () => {
+    const fetchMock = vi.fn(async (url: string) => url.includes('/api/genomes')
+      ? Response.json({ items: [] })
+      : Response.json({ items: [{ accession: 'GCF_000005845.2', organismName: 'NCBI test genome', source: 'ncbi' }] }));
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench />);
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'A'.repeat(100) } });
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.2');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
-    expect(await screen.findByText('No assemblies found. Try accession, organism, or strain.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Upload FASTA instead' })).toBeInTheDocument();
-    expect(screen.queryByText(/NCBI/)).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(await screen.findByText('NCBI · External reference')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue('A'.repeat(100));
   });
 
@@ -71,7 +71,7 @@ describe('prototype prediction workbench', () => {
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'A'.repeat(100) } });
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'Unknown species');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
-    expect(await screen.findByText('No assemblies found. Try accession, organism, or strain.')).toBeInTheDocument();
+    expect(await screen.findByText('No local match. Enter a versioned GCF or GCA assembly ID to search NCBI.')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue('A'.repeat(100));
   });

@@ -70,6 +70,21 @@ async function metadataJson(path: string, signal: AbortSignal) {
   return JSON.parse(new TextDecoder().decode(await fetchBytes(`${EUTILS}${path}`, signal, MAX_METADATA_BYTES)));
 }
 
+export function withTimeout(signal: AbortSignal | undefined, timeoutMs: number) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  const timer = setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), timeoutMs);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener('abort', onAbort, { once: true });
+  return {
+    signal: controller.signal,
+    cleanup() {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    },
+  };
+}
+
 function assemblyParent(accession: string) {
   const match = /^GC([AF])_(\d{3})(\d{3})(\d{3})\.(\d+)$/.exec(accession)!;
   return `https://ftp.ncbi.nlm.nih.gov/genomes/all/GC${match[1]}/${match[2]}/${match[3]}/${match[4]}/`;
@@ -113,19 +128,19 @@ function safeDirectory(value: unknown, accession: string) {
   return directory;
 }
 
-export async function findNcbiReference(input: unknown, signal = AbortSignal.timeout(10_000)): Promise<NcbiReference | null> {
+export async function findNcbiReference(input: unknown, signal?: AbortSignal): Promise<NcbiReference | null> {
   const accession = ncbiAccession(input);
   const cached = metadataCache.get(accession);
   if (cached && cached.expires > Date.now()) return cached.value;
   let value: NcbiReference | null = null;
-  const metadataSignal = AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
+  const metadataTimeout = withTimeout(signal, 10_000);
   try {
-    const search = await metadataJson(`esearch.fcgi?db=assembly&retmode=json&retmax=5&term=${encodeURIComponent(`${accession}[Assembly Accession]`)}`, metadataSignal);
+    const search = await metadataJson(`esearch.fcgi?db=assembly&retmode=json&retmax=5&term=${encodeURIComponent(`${accession}[Assembly Accession]`)}`, metadataTimeout.signal);
     if (!Array.isArray(search?.esearchresult?.idlist) || search.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search is unavailable.');
     const ids = search.esearchresult.idlist as unknown[];
     if (ids.length) {
       if (ids.length > 5 || ids.some((id) => typeof id !== 'string' || !/^\d+$/.test(id))) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI search returned invalid identifiers.');
-      const summary = await metadataJson(`esummary.fcgi?db=assembly&retmode=json&id=${ids.join(',')}`, metadataSignal);
+      const summary = await metadataJson(`esummary.fcgi?db=assembly&retmode=json&id=${ids.join(',')}`, metadataTimeout.signal);
       if (!summary?.result || summary.error) throw new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI assembly metadata is unavailable.');
       for (const id of ids as string[]) {
         const record = summary.result[id];
@@ -141,11 +156,12 @@ export async function findNcbiReference(input: unknown, signal = AbortSignal.tim
     }
   } catch (cause) {
     if (cause instanceof NcbiReferenceError && cause.code !== 'NCBI_UNAVAILABLE') throw cause;
-    if (signal.aborted && signal.reason?.name !== 'TimeoutError') throw cause;
-    const fallbackSignal = signal.aborted && signal.reason?.name === 'TimeoutError'
-      ? AbortSignal.timeout(8_000)
-      : AbortSignal.any([signal, AbortSignal.timeout(8_000)]);
-    value = await findNcbiReferenceFromFtp(accession, fallbackSignal);
+    if (signal?.aborted && signal.reason?.name !== 'TimeoutError') throw cause;
+    const fallbackTimeout = withTimeout(signal?.reason?.name === 'TimeoutError' ? undefined : signal, 8_000);
+    try { value = await findNcbiReferenceFromFtp(accession, fallbackTimeout.signal); }
+    finally { fallbackTimeout.cleanup(); }
+  } finally {
+    metadataTimeout.cleanup();
   }
   if (metadataCache.size >= 128) metadataCache.delete(metadataCache.keys().next().value!);
   metadataCache.set(accession, { value, expires: Date.now() + (value ? 300_000 : 60_000) });
@@ -177,6 +193,7 @@ export async function downloadNcbiFasta(accession: string, signal: AbortSignal) 
 
 export function ncbiErrorResponse(cause: unknown) {
   const error = cause instanceof NcbiReferenceError ? cause
-    : new NcbiReferenceError('NCBI_UNAVAILABLE', 'The NCBI reference could not be loaded in time. Your input is unchanged. Please try again later.', 503);
+    : new NcbiReferenceError('NCBI_UNAVAILABLE', 'NCBI lookup is temporarily unavailable. Upload the complete genome FASTA or try again later.', 503);
+  if (!(cause instanceof NcbiReferenceError)) console.error('NCBI reference lookup failed', cause);
   return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status, headers: { 'Cache-Control': 'no-store' } });
 }

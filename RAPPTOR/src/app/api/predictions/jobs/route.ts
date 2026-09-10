@@ -4,7 +4,7 @@ import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
 import { claimPredictionReferenceDownload, readGenomeScansPerDay, readPredictionTicketIssueSettings, releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
-import { ncbiAccession, ncbiErrorResponse, NcbiReferenceError } from '@/features/prediction/ncbi-reference';
+import { ncbiAccession, ncbiErrorResponse, NcbiReferenceError, withTimeout } from '@/features/prediction/ncbi-reference';
 import { preparePredictionReference } from '@/features/prediction/reference-cache';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 import { localPredictionTestEnabled, readLocalPredictionTestSettings } from '@/features/prediction/local-test';
@@ -125,8 +125,9 @@ export async function POST(request: Request) {
       if (!claimed) {
         throw new NcbiReferenceError('INVALID_TICKET', 'This ticket is invalid, too close to expiry, or already used for a download. Verify again and resubmit.', 401);
       }
-      const signal = AbortSignal.any([request.signal, AbortSignal.timeout(40_000)]);
-      await preparePredictionReference(accession, source, signal);
+      const timeout = withTimeout(request.signal, 40_000);
+      try { await preparePredictionReference(accession, source, timeout.signal); }
+      finally { timeout.cleanup(); }
       submission = { ...submission, reference_accession: accession };
       delete submission.ncbi_accession;
       const encoded = new TextEncoder().encode(JSON.stringify(submission));

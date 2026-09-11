@@ -115,6 +115,14 @@ async function serve(request: Request, context: RouteContext, headOnly: boolean)
   const match = await genomeCatalogRepository.getByAccession(accession);
   if (!match) return NextResponse.json({ error: 'Unknown remote release asset.' }, { status: 404 });
   if (match.resourceStatus === 'staged' || !match.storage) {
+    // A staged release can still expose its verified reference URL. Allow the
+    // browser prediction fallback to fetch only that planned reference asset;
+    // indexes and prediction tracks remain unavailable until activation.
+    if (file === 'reference.fa.gz' && match.plannedAssets?.reference) {
+      const response = await serveIndividual(request, match.plannedAssets.reference, file, headOnly);
+      response.headers.set('X-RAPPTOR-Cache', 'BYPASS');
+      return response;
+    }
     return NextResponse.json({ error: 'Genome release assets are still being prepared.' }, { status: 503 });
   }
   const completeRelease = Boolean(process.env.HF_STORAGE_BASE_URL || process.env.NODE_ENV === 'production' || process.env.RAPPTOR_CATALOG_BACKEND === 'd1');

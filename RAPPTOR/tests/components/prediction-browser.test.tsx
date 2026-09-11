@@ -59,29 +59,30 @@ describe('prediction browser tracks', () => {
     }
   });
 
-  it('does not show a peak-status notice for sparse scans', () => {
+  it('does not show a promoter-status notice for sparse scans', () => {
     render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{ stride: 20 }} />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByTestId('mock-unified-browser')).toHaveAttribute('data-peaks', '');
   });
 
-  it('distinguishes missing peak output from a completed zero-peak result', () => {
+  it('distinguishes missing promoter output from a completed zero-promoter result', () => {
     const { rerender } = render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{ stride: 1 }} />);
-    expect(screen.getByRole('status')).toHaveTextContent('Peak results were not generated');
+    expect(screen.getByRole('status')).toHaveTextContent('Promoter predictions were not generated');
     rerender(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={[...browserFiles, { filename: 'peaks.gff3' }]} summary={{ stride: 1, peak_count: 0 }} />);
-    expect(screen.getByRole('status')).toHaveTextContent('No peaks passed the calling cutoff');
+    expect(screen.getByRole('status')).toHaveTextContent('No promoter predictions passed the selected cutoff');
+    expect(document.body).not.toHaveTextContent(/peak/i);
     expect(screen.getByTestId('mock-unified-browser')).toHaveAttribute('data-peaks', '/api/predictions/jobs/a/artifacts/peaks.gff3');
   });
 
-  it('does not invent a stride for legacy results or show missing-output copy when peaks exist', () => {
+  it('does not invent a stride for legacy results or show missing-output copy when promoters exist', () => {
     const { rerender } = render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{}} />);
-    expect(screen.getByRole('status')).toHaveTextContent('Peak results were not generated');
+    expect(screen.getByRole('status')).toHaveTextContent('Promoter predictions were not generated');
     expect(screen.getByRole('status')).not.toHaveTextContent('20 bp');
     rerender(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={[...browserFiles, { filename: 'peaks.gff3' }]} summary={{ peak_count: 3 }} />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('adds the unindexed peak track only when returned, with service metadata', () => {
+  it('adds the unindexed promoter track only when returned, with service metadata', () => {
     const artifacts = ['input.fasta', 'input.fasta.fai', 'scores.plus.bw', 'peaks.gff3'].map(filename => ({ filename }));
     const { rerender } = render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={artifacts} summary={{ smoothing: { method: 'gaussian', sigma: 1, mode: 'reflect' }, peak_calling: { distance: 10, cutoff: .9, operator: '>' } }} />);
     const browser = screen.getByTestId('mock-unified-browser');

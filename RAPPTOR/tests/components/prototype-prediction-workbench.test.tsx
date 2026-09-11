@@ -45,6 +45,7 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
   })));
   await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
   await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+  await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
   await waitFor(() => expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument());
 }
 
@@ -60,8 +61,35 @@ describe('prototype prediction workbench', () => {
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.2');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     expect(await screen.findByText('NCBI · External reference')).toBeInTheDocument();
+    expect(screen.queryByText('No local catalog match. Searching NCBI for this exact assembly…')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Accession, organism, or strain' })).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: /GCF_000005845\.2/ }));
+    expect(screen.queryByRole('combobox', { name: 'Accession, organism, or strain' })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText('Raw DNA or FASTA')).toHaveValue('A'.repeat(100));
+  });
+
+  it('keeps the local miss hidden while NCBI is still being checked', async () => {
+    let resolveNcbi!: (response: Response) => void;
+    const ncbiResponse = new Promise<Response>((resolve) => { resolveNcbi = resolve; });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/api/genomes')) return Response.json({ items: [] });
+      if (url.startsWith('https://api.ncbi.nlm.nih.gov/')) return ncbiResponse;
+      return Response.json({ items: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench />);
+    fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'A'.repeat(100) } });
+    await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000005845.2');
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: 'Searching…' })).toBeDisabled();
+    expect(screen.queryByText('No local catalog match. Searching NCBI for this exact assembly…')).not.toBeInTheDocument();
+    expect(screen.queryByText('No matching assembly found at NCBI. Check the exact versioned accession or upload FASTA.')).not.toBeInTheDocument();
+
+    resolveNcbi(Response.json({ reports: [] }));
+    expect(await screen.findByText('No matching assembly found at NCBI. Check the exact versioned accession or upload FASTA.')).toBeInTheDocument();
   });
 
   it('does not query NCBI for a species name with no local match and preserves input', async () => {
@@ -323,6 +351,7 @@ describe('prototype prediction workbench', () => {
       if (source === 'cached catalog') {
         await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
         await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+        await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
       } else {
         await user.click(screen.getByRole('button', { name: 'Upload complete genome FASTA' }));
         const file = new File([fasta], 'genome.fna', { type: 'text/plain' });
@@ -360,6 +389,39 @@ describe('prototype prediction workbench', () => {
     expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).toMatchObject({ cutoff: .72, strideBases: 37 });
   });
 
+  it('falls back to the same-origin prediction asset when a Hugging Face reference is blocked', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/genomes?')) return Response.json({ items: [{
+        accession: 'GCA_000011465.1', predictionAccession: 'GCF_000011465.1',
+        organismName: 'Prochlorococcus_A pastoris', genomeSizeBp: 1_657_990,
+        referenceUrl: 'https://huggingface.co/datasets/example/resolve/main/GCF_000011465.1_genomic.fna.gz',
+      }] });
+      if (url.startsWith('https://huggingface.co/')) throw new TypeError('Failed to fetch');
+      if (url.endsWith('/api/remote-data/GCF_000011465.1/reference.fa.gz')) return new Response(`>chromosome\n${'ACGT'.repeat(50)}\n`, { headers: { 'content-type': 'text/plain' } });
+      if (url === '/api/prediction-tickets') return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      if (url === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'h'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
+    fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: 'A'.repeat(100) } });
+    await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCA_000011465.1');
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+    await user.click(await screen.findByRole('option', { name: /GCA_000011465\.1/ }));
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'h'.repeat(32)}`));
+    expect(jobRequest).toMatchObject({ mode: 'predict', genome_context: 'ACGT'.repeat(50), sequence: 'A'.repeat(100) });
+    expect(jobRequest).not.toHaveProperty('ncbi_accession');
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/remote-data/GCF_000011465.1/reference.fa.gz'))).toBe(true);
+  });
+
   it('submits every pasted sequence over 100 bp through genome_scan for browser artifacts', async () => {
     let jobRequest: Record<string, unknown> | null = null;
     let ticketRequest: Record<string, unknown> | null = null;
@@ -384,6 +446,7 @@ describe('prototype prediction workbench', () => {
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: scanSequence } });
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+    await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
     const stride = screen.getByRole('spinbutton', { name: 'Stride' });
     await user.clear(stride);
     await user.type(stride, '37');
@@ -435,10 +498,10 @@ describe('prototype prediction workbench', () => {
     const stride = screen.getByRole('spinbutton', { name: 'Stride' });
     await user.clear(stride);
     await user.type(stride, String(selectedStride));
-    const cutoff = screen.getByRole('spinbutton', { name: peaks ? /^Peak cutoff/ : /^Export cutoff/ });
+    const cutoff = screen.getByRole('spinbutton', { name: peaks ? /^Promoter cutoff/ : /^Export cutoff/ });
     if (peaks) {
       expect(cutoff).toBeEnabled();
-      expect(screen.getByText(`Local maxima above this cutoff are called as peaks at ${selectedStride} bp sampling resolution.`)).toBeInTheDocument();
+      expect(screen.getByText(`Local maxima above this cutoff are reported as promoter predictions at ${selectedStride} bp sampling resolution.`)).toBeInTheDocument();
       await user.clear(cutoff);
       await user.type(cutoff, '0.73');
     } else {
@@ -491,6 +554,7 @@ describe('prototype prediction workbench', () => {
     await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0], scanFile);
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+    await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'c'.repeat(32)}`));
@@ -523,6 +587,7 @@ describe('prototype prediction workbench', () => {
     fireEvent.change(screen.getByLabelText('Raw DNA or FASTA'), { target: { value: scanSequence } });
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
+    await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'e'.repeat(32)}`));

@@ -70,15 +70,15 @@ function gff3Text(fixture: PrototypePredictionFixture, records: readonly Browser
     .map((peak, index) => [
       peak.sequenceId,
       'RAPPTOR_prototype',
-      'called_peak',
+      'promoter',
       peak.anchor,
       peak.anchor,
       peak.smoothedScore.toFixed(3),
       peak.strand,
       '.',
       [
-        `ID=illustrative_called_peak_${index + 1}`,
-        'Name=Illustrative+called+peak',
+        `ID=illustrative_promoter_${index + 1}`,
+        'Name=Illustrative+promoter',
         `raw_score=${gff3Value(peak.rawScore.toFixed(3))}`,
         `smoothed_score=${gff3Value(peak.smoothedScore.toFixed(3))}`,
         `anchor=${gff3Value(peak.anchor)}`,

@@ -21,8 +21,7 @@ SMOOTHING_SIGMA = 1.0
 PEAK_DISTANCE = 10
 PEAK_CUTOFF = 0.9
 PROMOTER_WINDOW_LENGTH = 100
-# The model still scores the historical 80/20 window. Peak display intervals
-# are anchored independently so changing their box never moves a model score.
+# The model scores a 100 bp promoter window with the historical 80/20 anchor.
 MODEL_UPSTREAM_LENGTH = 80
 MODEL_DOWNSTREAM_LENGTH = 20
 PROMOTER_DISPLAY_UPSTREAM_LENGTH = 79
@@ -111,30 +110,9 @@ class ScanArtifactWriter:
                     handle.write(f"##RAPPtor-score-smoothing gaussian sigma={SMOOTHING_SIGMA:g} mode=reflect\n")
                     cutoff = "none" if self.score_cutoff is None else f">{self.score_cutoff:g}"
                     handle.write(f"##RAPPtor-score-cutoff {cutoff}\n")
-                    self._open_text("peaks.gff3", "peaks")
-                    peak_handle = self._handles["peaks"]
-                    peak_handle.write("##gff-version 3\n")
-                    peak_handle.write(f"##RAPPtor-model-version {model_version}\n")
-                    peak_handle.write(f"##RAPPtor-checkpoint-sha256 {checkpoint_sha256}\n")
-                    peak_handle.write(f"##RAPPtor-scan-stride {self.stride}\n")
-                    peak_handle.write(f"##RAPPtor-score-smoothing gaussian sigma={SMOOTHING_SIGMA:g} mode=reflect\n")
-                    peak_handle.write(f"##RAPPtor-peak-distance {PEAK_DISTANCE}\n")
-                    peak_handle.write("##RAPPtor-peak-distance-unit bp\n")
-                    peak_handle.write(f"##RAPPtor-peak-distance-samples {self.peak_distance_samples}\n")
-                    peak_handle.write(f"##RAPPtor-peak-coordinate-resolution-bp {self.stride}\n")
-                    peak_handle.write(f"##RAPPtor-peak-cutoff >{self.peak_cutoff:g}\n")
-                    peak_handle.write(
-                        "##RAPPtor-promoter-display-interval "
-                        f"length={PROMOTER_WINDOW_LENGTH} upstream={PROMOTER_DISPLAY_UPSTREAM_LENGTH} "
-                        f"anchor=1 downstream={PROMOTER_DISPLAY_DOWNSTREAM_LENGTH} "
-                        "coordinate_system=1-based_closed\n"
-                    )
-                    peak_handle.write(
-                        "##RAPPtor-scoring-window "
-                        f"length={PROMOTER_WINDOW_LENGTH} upstream={MODEL_UPSTREAM_LENGTH} "
-                        f"downstream={MODEL_DOWNSTREAM_LENGTH} "
-                        "coordinate_system=reference_0based_half_open\n"
-                    )
+                    self._open_text("promoters.gff3", "promoters")
+                    promoter_handle = self._handles["promoters"]
+                    promoter_handle.write("##gff-version 3\n")
                 elif fmt == "json":
                     self._open_text("scores.json", "json")
                     self._handles["json"].write("[\n")
@@ -312,7 +290,7 @@ class ScanArtifactWriter:
                         )
                     if int(score_indices[index]) in peak_indices:
                         self._peak_counter += 1
-                        peak_id = f"promoter_peak_{self._peak_counter:09d}"
+                        promoter_id = f"rapptor_promoter_{self._peak_counter:09d}"
                         anchor_1based = anchor + 1
                         if strand == "+":
                             display_start = anchor_1based - PROMOTER_DISPLAY_UPSTREAM_LENGTH
@@ -324,20 +302,10 @@ class ScanArtifactWriter:
                         if not display_available:
                             display_start = anchor_1based
                             display_end = anchor_1based
-                        self._handles["peaks"].write(
-                            f"{sequence_id}\tRAPPtor\tpromoter_peak\t{display_start}\t"
+                        self._handles["promoters"].write(
+                            f"{sequence_id}\tRAPPtor\tpromoter\t{display_start}\t"
                             f"{display_end}\t"
-                            f"{smoothed_score:.8f}\t{strand}\t.\tID={peak_id};Name={peak_id};"
-                            f"prediction_score={smoothed_score:.8f};anchor_position_0based={anchor};"
-                            f"peak_position={anchor_1based};upstream_length={PROMOTER_DISPLAY_UPSTREAM_LENGTH};"
-                            f"downstream_length={PROMOTER_DISPLAY_DOWNSTREAM_LENGTH};stride={self.stride};"
-                            f"display_coordinate_system=1-based_closed;"
-                            f"display_interval={'available' if display_available else 'unavailable'};"
-                            f"sequence_length={sequence_length};"
-                            f"scoring_window_start_0based={window_start};"
-                            f"scoring_window_end_0based={window_start + window_length};"
-                            f"scoring_window_coordinate_system=reference_0based_half_open;"
-                            f"sampled_anchor=true;resolution_bp={self.stride}\n"
+                            f"{smoothed_score:.8f}\t{strand}\t.\tID={promoter_id};Name=Predicted+promoter\n"
                         )
                 cutoff_score = (
                     float(smoothed_scores[score_indices[index]])

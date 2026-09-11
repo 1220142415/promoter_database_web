@@ -295,6 +295,16 @@ function predictionRowFromMatch(match: Awaited<ReturnType<GenomeCatalogRepositor
     contigCount: genome.contigCount,
     predictedPromoterCount: genome.predictedPromoterCount,
     annotationStatus: genome.annotationStatus,
+    referenceUrl: match.plannedAssets?.reference || (match.assetBase && match.storage?.layout === 'individual-v1' && match.storage.baseUrl
+      ? (() => {
+          try {
+            const url = new URL(genome.assets.fasta, match.storage.baseUrl.replace(/\/+$/, '') + '/');
+            return url.protocol === 'https:' ? url.toString() : null;
+          } catch {
+            return null;
+          }
+        })()
+      : null),
   };
 }
 
@@ -336,6 +346,7 @@ function compositeRow(
     genomeSource: predictionRow?.genomeSource || (experimentalGenome ? 'NCBI RefSeq' : null),
     genomeSizeBp: predictionRow?.genomeSizeBp ?? experimentalGenome?.genomeSizeBp ?? null,
     contigCount: predictionRow?.contigCount ?? experimentalGenome?.contigCount ?? null,
+    referenceUrl: predictionRow?.referenceUrl || null,
     predictedPromoterCount: experimentalGenome?.assets.predictedPromoters
       ? experimentalGenome.predictedPromoterCount ?? 0
       : predictionRow?.predictedPromoterCount ?? 0,

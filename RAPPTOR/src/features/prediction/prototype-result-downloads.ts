@@ -53,7 +53,7 @@ export function prototypeResultGff3(run: PrototypePredictionRun, fixture: Protot
     '# RAPPTOR prototype fixture. No model was run.',
     ...features.map((feature, index) => {
       const isPeak = 'smoothedScore' in feature;
-      const featureName = isPeak ? 'called_peak' : 'focused_window';
+      const featureName = isPeak ? 'promoter' : 'focused_window';
       const attributes = [
         `ID=prototype_${featureName}_${index + 1}`,
         `Name=${safeGffAttribute(`Illustrative ${featureName.replace('_', ' ')}`)}`,

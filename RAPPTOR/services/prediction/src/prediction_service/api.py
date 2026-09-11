@@ -408,7 +408,7 @@ def current_model():
                 "minimum": 0.0,
                 "maximum": 1.0,
                 "operator": ">",
-                "applies_to": ["gff3", "json", "peaks.gff3"],
+                "applies_to": ["gff3", "json", "promoters.gff3"],
                 "unfiltered_formats": ["bigwig", "parquet"],
             },
             "gff3_postprocessing": {
@@ -424,7 +424,7 @@ def current_model():
                     "default_cutoff": 0.9,
                     "configurable_cutoff": True,
                     "operator": ">",
-                    "filename": "peaks.gff3",
+                    "filename": "promoters.gff3",
                     "display_interval": {
                         "coordinate_system": "1-based closed",
                         "upstream_bp": 79,

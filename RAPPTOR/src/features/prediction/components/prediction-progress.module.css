@@ -45,6 +45,10 @@
 .queueMetrics dt { color: var(--muted); font-size: 11px; }
 .queueMetrics dd { margin: 7px 0 0; color: var(--ink); font-size: clamp(16px, 3vw, 22px); font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
+.timing { margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 6px; background: #fafcfb; }
+.timingHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--ink); font-size: 13px; }
+.timingHeading > span { color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+
 .status { min-height: 24px; display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--ink-soft); }
 .status svg { width: 19px; color: #9b3932; }
 .status > div { display: grid; gap: 3px; }

@@ -330,7 +330,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         "max_score": float(max(scores.max() for _, scores in scores_by_strand if len(scores))),
         "score_filename": "scores.json",
         "smoothed_score_filename": "scores.gff3",
-        "peak_filename": "peaks.gff3",
+        "promoter_filename": "promoters.gff3",
         "smoothing": {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"},
         "peak_calling": {
             "distance": PEAK_DISTANCE,
@@ -472,9 +472,9 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "output_semantics": (
             "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
             "scores.gff3 contains Gaussian-smoothed scores; "
-            "peaks.gff3 contains cutoff-filtered sampled peaks as strand-aware 100 bp "
-            "display intervals spanning 79 bp upstream, the anchor base, and 20 bp downstream; "
-            "the original 80/20 model scoring window remains recorded separately"
+            "promoters.gff3 contains cutoff-filtered strand-aware 100 bp promoter "
+            "prediction intervals; the GFF3 records contain only standard coordinates, "
+            "strand, score, and promoter identifiers"
             if "gff3" in output_formats
             else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
         ),

@@ -117,13 +117,13 @@ describe('strand feature geometry', () => {
     expect(promoterDisplayCoordinates(interval)).toEqual({ start: 191, end: 291 });
     expect(promoterDisplayCoordinates(legacyPlus)).toEqual({ start: 191, end: 291 });
     expect(promoterDisplayCoordinates(legacyMinus)).toEqual({ start: 250, end: 350 });
-    expect(promoterDisplayCoordinates(feature('experimental', 'promoter_peak', -1, 270, 271)))
-      .toEqual({ start: 270, end: 271 });
+    expect(promoterDisplayCoordinates(feature('legacy-minus-no-anchor', 'promoter_peak', -1, 270, 271)))
+      .toEqual({ start: 250, end: 350 });
     expect(promoterDisplayCoordinates(feature('boundary', 'promoter_peak', -1, 0, 100, { peak_position: 20 })))
-      .toEqual({ start: 19, end: 20 });
+      .toEqual({ start: -1, end: 99 });
     expect(promoterDisplayCoordinates(feature('right-boundary', 'promoter_peak', 1, 10, 110, {
       peak_position: 91,
-    }), 100)).toEqual({ start: 90, end: 91 });
+    }))).toEqual({ start: 11, end: 111 });
   });
 
   it('switches from flag-only to flag-plus-body at twelve pixels', () => {

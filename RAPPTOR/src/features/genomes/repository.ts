@@ -74,6 +74,18 @@ export interface GenomeCatalogRepository {
   getActiveRelease(): Promise<ActiveReleaseSummary>;
 }
 
+function publicReferenceUrl(genome: ReleaseGenome) {
+  const base = genome.storage?.baseUrl?.replace(/\/+$/, '');
+  const path = genome.assets.fasta;
+  if (!base || !path || !/^https:\/\//i.test(base)) return null;
+  try {
+    const url = new URL(path, base + '/');
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function toCatalogRow(genome: ReleaseGenome): GenomeCatalogRow {
   return {
     accession: genome.accession,
@@ -93,6 +105,7 @@ function toCatalogRow(genome: ReleaseGenome): GenomeCatalogRow {
     experimentalTssCount: genome.experimentalTssCount || 0,
     experimentalDatasetCount: genome.experimentalDatasetCount || 0,
     annotationStatus: genome.annotationStatus,
+    referenceUrl: publicReferenceUrl(genome),
   };
 }
 
@@ -506,7 +519,7 @@ function d1AnnotationStatus(value: unknown): ReleaseGenome['annotationStatus'] {
   return value === 'failed' ? 'incompatible' : 'missing';
 }
 
-function d1RowToCatalogRow(row: D1GenomeRow): GenomeCatalogRow {
+function d1RowToCatalogRow(row: D1GenomeRow, referenceUrl: string | null = null): GenomeCatalogRow {
   const experimentalEvidence = parseJsonRecord(row.experimental_evidence_json);
   return {
     accession: String(row.accession),
@@ -526,6 +539,7 @@ function d1RowToCatalogRow(row: D1GenomeRow): GenomeCatalogRow {
     experimentalTssCount: Number(experimentalEvidence.experimentalTss || 0),
     experimentalDatasetCount: Number(experimentalEvidence.datasets || 0),
     annotationStatus: d1AnnotationStatus(row.annotation_status),
+    referenceUrl,
   };
 }
 
@@ -1041,7 +1055,10 @@ export class D1GenomeCatalogRepository implements GenomeCatalogRepository {
         ? d1FilteredTotal(this.database, releaseId, query, where)
         : Promise.resolve(Number(release.total_genomes || 0)),
     ]);
-    const rows = pageResult.results.map(d1RowToCatalogRow);
+    const rows = pageResult.results.map((row) => d1RowToCatalogRow(
+      row,
+      plannedHfBatchAssets(release.feature_summary_json, String(row.accession), false)?.reference || null,
+    ));
     const hasNext = rows.length > query.limit;
     const page = rows.slice(0, query.limit);
     return {

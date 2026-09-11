@@ -41,12 +41,16 @@ export type PrototypeGenomeContext =
       kind: 'catalog';
       source?: 'ncbi' | 'huggingface';
       accession: string;
+      /** Prediction/catalog accession used by the published reference asset. */
+      predictionAccession?: string | null;
       displayName: string;
       fileName: string | null;
       fileSize: number | null;
       checksum: string | null;
       totalLength: number | null;
       contigs: PrototypeContigMetadata[];
+      /** Optional public URL downloaded directly by the browser. */
+      downloadUrl?: string;
     }
   | {
       kind: 'inline';

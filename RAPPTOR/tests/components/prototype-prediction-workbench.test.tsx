@@ -522,10 +522,10 @@ describe('prototype prediction workbench', () => {
     const stride = screen.getByRole('spinbutton', { name: 'Stride' });
     await user.clear(stride);
     await user.type(stride, String(selectedStride));
-    const cutoff = screen.getByRole('spinbutton', { name: peaks ? /^Peak cutoff/ : /^Export cutoff/ });
+    const cutoff = screen.getByRole('spinbutton', { name: peaks ? /^Promoter cutoff/ : /^Export cutoff/ });
     if (peaks) {
       expect(cutoff).toBeEnabled();
-      expect(screen.getByText(`Local maxima above this cutoff are called as peaks at ${selectedStride} bp sampling resolution.`)).toBeInTheDocument();
+      expect(screen.getByText(`Local maxima above this cutoff are reported as promoter predictions at ${selectedStride} bp sampling resolution.`)).toBeInTheDocument();
       await user.clear(cutoff);
       await user.type(cutoff, '0.73');
     } else {

@@ -237,30 +237,29 @@ even when a client requests only BigWig/Parquet. Clients can also request GFF3
 at every configured stride. Each contig and strand is ordered by reference
 coordinate, smoothed with Gaussian sigma 1 on the sampled-score grid (`reflect`),
 then passed to `scipy.signal.find_peaks`. The 10 bp minimum separation is converted
-to `ceil(10 / stride)` sampled scores. Peaks with smoothed model score strictly
-greater than `score_cutoff` (or 0.9 when no cutoff is supplied) are written to
-`peaks.gff3`; a zero-peak scan still produces a valid GFF3 header. SciPy 1.15.3
+to `ceil(10 / stride)` sampled scores. Promoter predictions with smoothed model score
+strictly greater than `score_cutoff` (or 0.9 when no cutoff is supplied) are written
+to `promoters.gff3`; a scan with no predictions still produces a valid GFF3 header.
+SciPy 1.15.3
 is required.
 
-Peak GFF3 records use strand-aware 100 bp display intervals in 1-based closed
+Promoter GFF3 records use strand-aware 100 bp display intervals in 1-based closed
 reference coordinates: `anchor-79 ... anchor+20` on `+` and
 `anchor-20 ... anchor+79` on `-`. The peak anchor and the historical 80/20
 model scoring window do not move: each record retains the scoring-window start
 and end separately. A display interval that would cross a contig boundary is
-emitted as the single anchor base with `display_interval=unavailable`; it is
-never clipped or padded. Records retain `anchor_position_0based`, add the
-1-based `peak_position`, and report `upstream_length=79`,
-`downstream_length=20`, `sampled_anchor=true`, and `resolution_bp=stride`; no
-unsupported interpolation is used between evaluated windows. New score
-artifacts use reference-oriented `window_start_0based`, recorded by
+emitted as the single anchor base; it is never clipped or padded. The promoter
+file contains only the GFF3 version declaration and standard coordinates, strand,
+score, and promoter identifiers. New score artifacts use reference-oriented
+`window_start_0based`, recorded by
 `window_start_coordinate_system: "reference_0based"` in the summary, a GFF3
 header, and Parquet metadata. Readers must preserve the older strand-oriented
 window-start convention for legacy tasks. The first smoothed-peaks release
 already used reference starts; its smoothing/peak-calling summary fields
 identify that schema before the explicit marker was introduced.
 
-The result page prefers `peaks.gff3`, displays **Called peaks**, and loads the
-peak track beside the already-smoothed BigWig tracks without smoothing them a
+The result page prefers `promoters.gff3`, displays **Predicted promoters**, and
+loads the promoter track beside the already-smoothed BigWig tracks without smoothing them a
 second time. The form requests the fixed peak settings automatically. Existing
 jobs are not rescanned and retain browser-side smoothing for their raw BigWigs.
 

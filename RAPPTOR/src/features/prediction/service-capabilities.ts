@@ -60,7 +60,8 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
         && processing.smoothing.sigma === 1 && processing.smoothing.mode === 'reflect'
         && processing.peaks?.distance === 10
         && (processing.peaks.configurable_cutoff === true || processing.peaks.cutoff === 0.9)
-        && processing.peaks.operator === '>' && processing.peaks.filename === 'peaks.gff3',
+        && processing.peaks.operator === '>'
+        && (processing.peaks.filename === 'promoters.gff3' || processing.peaks.filename === 'peaks.gff3'),
     };
   } catch {
     return { ...initial, reason: 'Prediction service is temporarily unavailable. Retry shortly.' };

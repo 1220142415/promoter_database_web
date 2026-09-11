@@ -289,7 +289,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>
-            {summary.peak_count != null ? <div><span>Called peaks</span><strong>{summary.peak_count.toLocaleString()}</strong><small>Predicted peak anchors</small></div> : <div><span>Exported windows</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>{summary.score_cutoff === null ? 'No export filtering' : summary.score_cutoff === undefined ? 'Export cutoff not recorded' : 'Above export cutoff'}</small></div>}
+            {summary.peak_count != null ? <div><span>Predicted promoters</span><strong>{summary.peak_count.toLocaleString()}</strong><small>Promoter prediction anchors</small></div> : <div><span>Exported windows</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>{summary.score_cutoff === null ? 'No export filtering' : summary.score_cutoff === undefined ? 'Export cutoff not recorded' : 'Above export cutoff'}</small></div>}
           </section>
           {!hasReference ? <p role="alert">Required browser artifacts are missing: {missingBrowserFiles.join(', ')}.</p> : null}
           {hasReference && refName ? <section className={styles.panel} aria-labelledby="genome-browser-heading">
@@ -303,7 +303,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
 
         <aside className={styles.interpret} aria-labelledby="interpret-heading">
           <h2 id="interpret-heading">How to interpret this result</h2>
-          <p>{mode === 'predict' ? 'Scores are shown for the strands returned by the service. Missing strands are reported explicitly.' : 'Higher scores identify stronger promoter-like windows; browser peaks remain model predictions.'} This result does not establish experimental support or a transcription start site.</p>
+          <p>{mode === 'predict' ? 'Scores are shown for the strands returned by the service. Missing strands are reported explicitly.' : 'Higher scores identify stronger promoter-like windows; browser promoter predictions remain model predictions.'} This result does not establish experimental support or a transcription start site.</p>
           <Link href="/predict">Start a new prediction</Link>
         </aside>
       </> : null}

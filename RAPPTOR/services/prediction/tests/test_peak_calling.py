@@ -55,19 +55,18 @@ class PeakCallingTests(unittest.TestCase):
                         )
                     raw_expected.extend((seqid, int(a), strand, float(v)) for a, v in zip(anchors, ordered))
             writer.close(success=True)
-            peaks = rows(path/'peaks.gff3')
-            self.assertGreater(len(peaks), 0)
+            promoters = rows(path/'promoters.gff3')
+            self.assertGreater(len(promoters), 0)
             self.assertEqual(writer.peak_count, len(expected))
-            self.assertEqual(len(peaks), len(expected))
-            for row, (seqid, start, end, anchor, strand, score) in zip(peaks, expected):
+            self.assertEqual(len(promoters), len(expected))
+            promoter_text = (path/'promoters.gff3').read_text()
+            self.assertNotIn('peak', promoter_text)
+            self.assertNotRegex(promoter_text, r'upstream_length|downstream_length|stride|sampled_anchor|resolution_bp')
+            for row, (seqid, start, end, anchor, strand, score) in zip(promoters, expected):
                 self.assertEqual((row[0], int(row[3]), int(row[4]), row[6]), (seqid, start, end, strand))
                 self.assertEqual(end - start + 1, 100)
-                self.assertIn(f'peak_position={anchor}', row[8])
-                self.assertIn(f'anchor_position_0based={anchor - 1}', row[8])
-                self.assertIn('upstream_length=79', row[8])
-                self.assertIn('downstream_length=20', row[8])
-                self.assertIn('display_interval=available', row[8])
-                self.assertIn('scoring_window_start_0based=', row[8])
+                self.assertEqual(row[2], 'promoter')
+                self.assertRegex(row[8], r'^ID=rapptor_promoter_\d{9};Name=Predicted\+promoter$')
                 self.assertAlmostEqual(float(row[5]), score, places=7)
             raw_rows = json.loads((path/'scores.json').read_text())
             self.assertEqual([(r['sequence_id'], r['anchor_position_0based'], r['strand'], r['score']) for r in raw_rows], raw_expected)
@@ -84,7 +83,7 @@ class PeakCallingTests(unittest.TestCase):
             self.assertEqual(len(rows(path/'scores.gff3')), 0)
             self.assertEqual(json.loads((path/'scores.json').read_text()), [])
             self.assertEqual(writer.peak_count, 0)
-            self.assertIn('##RAPPtor-peak-cutoff >1', (path/'peaks.gff3').read_text())
+            self.assertEqual((path/'promoters.gff3').read_text(), '##gff-version 3\n')
 
         with TemporaryDirectory() as folder:
             path = Path(folder)
@@ -93,7 +92,7 @@ class PeakCallingTests(unittest.TestCase):
             writer.add_scores('a', 140, '+', np.r_[np.zeros(10), np.full(12, .9), np.zeros(19)], upstream_len=80, window_length=100)
             writer.close(success=True)
             self.assertEqual(writer.peak_count, 0)
-            self.assertEqual(rows(path/'peaks.gff3'), [])
+            self.assertEqual(rows(path/'promoters.gff3'), [])
 
     def test_bigwig_is_smoothed_while_parquet_retains_raw_scores(self):
         import pyBigWig
@@ -144,7 +143,7 @@ class PeakCallingTests(unittest.TestCase):
                         'model-score-tracks/scores.plus.bw',
                         'model-score-tracks/scores.minus.bw',
                     ])
-                self.assertEqual('peaks.gff3' in files, stride == 1)
+                self.assertEqual('promoters.gff3' in files, stride == 1)
                 self.assertEqual(summary['peak_count'], 0 if stride == 1 else None)
                 self.assertEqual(summary['window_count'], 82 if stride == 1 else 6)
                 self.assertEqual(summary['window_start_coordinate_system'], 'reference_0based')
@@ -162,23 +161,17 @@ class PeakCallingTests(unittest.TestCase):
             )
             writer.add_scores('a', 160, '+', scores, upstream_len=80, window_length=100)
             writer.close(success=True)
-            peak_text = (path/'peaks.gff3').read_text()
-            peak_rows = rows(path/'peaks.gff3')
+            promoter_text = (path/'promoters.gff3').read_text()
+            promoter_rows = rows(path/'promoters.gff3')
             self.assertEqual(peak_distance_samples(stride), 4)
-            self.assertIn('##RAPPtor-peak-distance 10', peak_text)
-            self.assertIn('##RAPPtor-peak-distance-unit bp', peak_text)
-            self.assertIn('##RAPPtor-peak-distance-samples 4', peak_text)
-            self.assertIn('##RAPPtor-peak-coordinate-resolution-bp 3', peak_text)
-            self.assertIn('##RAPPtor-promoter-display-interval length=100 upstream=79 anchor=1 downstream=20', peak_text)
-            self.assertIn('##RAPPtor-scoring-window length=100 upstream=80 downstream=20', peak_text)
-            self.assertEqual(len(peak_rows), 1)
-            self.assertEqual((int(peak_rows[0][3]), int(peak_rows[0][4])), (32, 131))
-            self.assertIn('anchor_position_0based=110', peak_rows[0][8])
-            self.assertIn('peak_position=111', peak_rows[0][8])
-            self.assertIn('upstream_length=79', peak_rows[0][8])
-            self.assertIn('downstream_length=20', peak_rows[0][8])
-            self.assertIn('sampled_anchor=true', peak_rows[0][8])
-            self.assertIn('resolution_bp=3', peak_rows[0][8])
+            self.assertEqual(promoter_text.splitlines()[0], '##gff-version 3')
+            self.assertEqual(sum(line.startswith('#') for line in promoter_text.splitlines()), 1)
+            self.assertNotIn('peak', promoter_text)
+            self.assertNotRegex(promoter_text, r'upstream_length|downstream_length|stride|sampled_anchor|resolution_bp')
+            self.assertEqual(len(promoter_rows), 1)
+            self.assertEqual((int(promoter_rows[0][3]), int(promoter_rows[0][4])), (32, 131))
+            self.assertEqual(promoter_rows[0][2], 'promoter')
+            self.assertRegex(promoter_rows[0][8], r'^ID=rapptor_promoter_\d{9};Name=Predicted\+promoter$')
 
     def test_boundary_peaks_remain_single_anchor_points_without_clipping(self):
         for strand, sampled_index, expected_anchor in (('+', 2, 83), ('-', 0, 20)):
@@ -192,10 +185,10 @@ class PeakCallingTests(unittest.TestCase):
                 with patch('scipy.signal.find_peaks', return_value=(np.array([sampled_index]), {})):
                     writer.add_scores('a', 102, strand, scores, upstream_len=80, window_length=100)
                 writer.close(success=True)
-                peak = rows(path / 'peaks.gff3')[0]
-                self.assertEqual((int(peak[3]), int(peak[4])), (expected_anchor, expected_anchor))
-                self.assertIn('display_interval=unavailable', peak[8])
-                self.assertIn('scoring_window_start_0based=', peak[8])
+                promoter = rows(path / 'promoters.gff3')[0]
+                self.assertEqual((int(promoter[3]), int(promoter[4])), (expected_anchor, expected_anchor))
+                self.assertEqual(promoter[2], 'promoter')
+                self.assertRegex(promoter[8], r'^ID=rapptor_promoter_\d{9};Name=Predicted\+promoter$')
 
     def test_non_dense_gff_is_supported_without_changing_default_formats(self):
         self.assertIn('gff3', scan_output_formats(['bigwig'], 1))
@@ -203,7 +196,7 @@ class PeakCallingTests(unittest.TestCase):
         with TemporaryDirectory() as folder:
             writer = ScanArtifactWriter(Path(folder), ['gff3'], [('a', 140)], model_version='test', checkpoint_sha256='test', stride=20)
             writer.close(success=True)
-            self.assertTrue((Path(folder)/'peaks.gff3').exists())
+            self.assertTrue((Path(folder)/'promoters.gff3').exists())
 
 
 if __name__ == '__main__':

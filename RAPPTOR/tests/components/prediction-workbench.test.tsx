@@ -97,8 +97,9 @@ describe('live prediction result layout', () => {
     sessionStorage.clear();
     window.history.replaceState(null, '', `/predict/task/${saved.jobId}#access=shared_access_token_1234567890abcdef`);
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
-    expect(await screen.findByText('Called peaks')).toBeInTheDocument();
-    expect(screen.getByText('Called peaks').parentElement).toHaveTextContent('0');
+    expect(await screen.findByText('Predicted promoters')).toBeInTheDocument();
+    expect(screen.getByText('Predicted promoters').parentElement).toHaveTextContent('0');
+    expect(document.body).not.toHaveTextContent(/peak/i);
     expect(screen.queryByText('Exported windows')).not.toBeInTheDocument();
   });
   beforeEach(() => {
@@ -407,7 +408,7 @@ describe('live prediction result layout', () => {
     render(<PredictionWorkbench initialJobId={saved.jobId} />);
     const downloads = await screen.findByRole('region', { name: 'Download result' });
     expect(within(downloads).getByRole('link', { name: /Prediction results TSV/ })).toBeInTheDocument();
-    expect(within(downloads).getByRole('link', { name: /Predicted peaks GFF3/ })).toBeInTheDocument();
+    expect(within(downloads).getByRole('link', { name: /Predicted promoters GFF3/ })).toBeInTheDocument();
     expect(screen.getByText('Cutoff: > 0.9')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Short-sequence result' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Download scores (TSV)' })).not.toBeInTheDocument();

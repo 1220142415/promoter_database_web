@@ -56,11 +56,11 @@ describe('prototype result downloads', () => {
     expect(prototypeResultBedGraph(fixture)).toContain('model scores (-)');
   });
 
-  it('exports scan called peaks as 1 bp GFF3 features and raw scores as zero-based bedGraph intervals', () => {
+  it('exports scan promoter predictions as 1 bp GFF3 features and raw scores as zero-based bedGraph intervals', () => {
     const fixture = createPrototypeFixture(genomeRun);
     expect(fixture.calledPeaks.length).toBeGreaterThan(0);
     const first = fixture.calledPeaks[0];
-    const gffLine = prototypeResultGff3(genomeRun, fixture).split('\n').find((line) => line.includes('\tcalled_peak\t'))!;
+    const gffLine = prototypeResultGff3(genomeRun, fixture).split('\n').find((line) => line.includes('\tpromoter\t'))!;
     const gffColumns = gffLine.split('\t');
     expect(gffColumns[3]).toBe(String(first.anchor));
     expect(gffColumns[4]).toBe(String(first.anchor));

@@ -66,6 +66,20 @@ describe('prediction prototype core', () => {
     expect(callPrototypePeaks(clustered, 0.85)).toHaveLength(1);
   });
 
+  it('returns every raw sampled window above cutoff without smoothing', () => {
+    const sampled = [0.95, 0.94, 0.9, 0.91].map((score, index) => ({
+      ...scoreWindow(score),
+      anchor: 80 + index * 50,
+      windowStart: 1 + index * 50,
+      windowEnd: 100 + index * 50,
+      parameters: { ...scoreWindow(score).parameters, strideBases: 50 },
+    }));
+    const results = callPrototypePeaks(sampled, 0.9);
+    expect(results).toHaveLength(3);
+    expect(results.map((result) => result.rawScore)).toEqual([0.95, 0.94, 0.91]);
+    expect(results.map((result) => result.smoothedScore)).toEqual([0.95, 0.94, 0.91]);
+  });
+
   it('keeps deterministic raw scores independent of cutoff', () => {
     const lower = createPrototypeFixture({ ...baseRun, parameters: prototypeParameters('candidate', 'both', 0.5) });
     const higher = createPrototypeFixture({ ...baseRun, parameters: prototypeParameters('candidate', 'both', 0.95) });

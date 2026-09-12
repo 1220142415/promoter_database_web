@@ -26,7 +26,6 @@ from .formats import (
     PROMOTER_DISPLAY_UPSTREAM_LENGTH,
     SMOOTHING_SIGMA,
     ScanArtifactWriter,
-    peak_distance_samples,
     scan_output_formats,
 )
 from .queue_eta import process_heartbeat_key, record_progress, save_completed_profile
@@ -444,6 +443,8 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
     except Exception:
         artifact_writer.close(success=False)
         raise
+    uses_smoothed_outputs = stride == 1 and bool({"bigwig", "gff3"}.intersection(output_formats))
+    promoter_cutoff = score_cutoff if score_cutoff is not None else PEAK_CUTOFF
     payload = {
         "mode": "genome_scan",
         "window_start_coordinate_system": "reference_0based",
@@ -467,40 +468,62 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "score_cutoff": score_cutoff,
         "score_cutoff_operator": ">" if score_cutoff is not None else None,
         "passing_window_count": artifact_writer.passing_score_count,
+        "promoter_count": artifact_writer.peak_count if "gff3" in output_formats else None,
+        # Keep the legacy field for clients that have not migrated to promoter_count.
         "peak_count": artifact_writer.peak_count if "gff3" in output_formats else None,
         "output_formats": list(output_formats),
         "output_semantics": (
             "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores; "
-            "scores.gff3 contains Gaussian-smoothed scores; "
-            "promoters.gff3 contains cutoff-filtered strand-aware 100 bp promoter "
+            "scores.gff3 contains Gaussian-smoothed scores; promoters.gff3 contains "
+            "cutoff-filtered strand-aware 100 bp promoter "
             "prediction intervals; the GFF3 records contain only standard coordinates, "
             "strand, score, and promoter identifiers"
+            if uses_smoothed_outputs
+            else "BigWig, GFF3, Parquet, and JSON contain raw scores; promoters.gff3 contains "
+            "every sampled 100 bp promoter window above the cutoff"
             if "gff3" in output_formats
-            else "BigWig contains all Gaussian-smoothed scores; Parquet/JSON contain raw scores"
+            else "BigWig and Parquet contain raw scores"
         ),
         "bigwig_smoothing": (
             {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
-            if "bigwig" in output_formats else None
+            if uses_smoothed_outputs and "bigwig" in output_formats else None
         ),
         "smoothing": (
             {"method": "gaussian", "sigma": SMOOTHING_SIGMA, "mode": "reflect"}
-            if {"bigwig", "gff3"}.intersection(output_formats) else None
+            if uses_smoothed_outputs else None
         ),
-        "peak_calling": (
+        "promoter_selection": (
             {
-                "distance": PEAK_DISTANCE,
-                "distance_unit": "bp",
-                "sample_distance": peak_distance_samples(stride),
-                "resolution_bp": stride,
+                "method": "local_maxima",
+                "distance_bp": PEAK_DISTANCE,
                 "window_length_bp": runtime.seq_length,
                 "upstream_bp": PROMOTER_DISPLAY_UPSTREAM_LENGTH,
                 "anchor_bp": 1,
                 "downstream_bp": PROMOTER_DISPLAY_DOWNSTREAM_LENGTH,
                 "coordinate_system": "1-based closed",
-                "cutoff": score_cutoff if score_cutoff is not None else PEAK_CUTOFF,
+                "cutoff": promoter_cutoff,
                 "operator": ">",
             }
-            if "gff3" in output_formats else None
+            if uses_smoothed_outputs and "gff3" in output_formats else (
+                {
+                    "method": "all_windows_above_cutoff",
+                    "cutoff": promoter_cutoff,
+                    "operator": ">",
+                    "score": "raw",
+                    "window_length_bp": runtime.seq_length,
+                    "coordinate_system": "1-based closed",
+                }
+                if "gff3" in output_formats else None
+            )
+        ),
+        # Legacy clients use this field to decide whether a promoter track exists.
+        "peak_calling": (
+            {
+                "distance": PEAK_DISTANCE,
+                "cutoff": promoter_cutoff,
+                "operator": ">",
+            }
+            if uses_smoothed_outputs and "gff3" in output_formats else None
         ),
         "scoring_window": {
             "window_length_bp": runtime.seq_length,

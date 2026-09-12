@@ -18,10 +18,11 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
     && summary.bigwig_smoothing.mode === 'reflect' ? summary.bigwig_smoothing.sigma : undefined;
   const smoothLegacyScores = precomputedScoreSigma === undefined && summary?.stride === 1;
   const smoothedScoreTrack = precomputedScoreSigma !== undefined || smoothLegacyScores;
-  const promoterStatus = !artifacts || (summary?.stride !== undefined && summary.stride > 1)
+  const promoterCount = summary?.promoter_count ?? summary?.peak_count;
+  const promoterStatus = !artifacts
     ? null
     : hasPromoters
-      ? summary?.peak_count === 0 ? 'No promoter predictions passed the selected cutoff for this task.' : null
+      ? promoterCount === 0 ? 'No promoter predictions passed the selected cutoff for this task.' : null
       : 'Promoter predictions were not generated for this task.';
 
   useEffect(() => () => {

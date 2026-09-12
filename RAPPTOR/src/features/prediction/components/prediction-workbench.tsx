@@ -289,7 +289,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>
-            {summary.peak_count != null ? <div><span>Predicted promoters</span><strong>{summary.peak_count.toLocaleString()}</strong><small>Promoter prediction anchors</small></div> : <div><span>Exported windows</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>{summary.score_cutoff === null ? 'No export filtering' : summary.score_cutoff === undefined ? 'Export cutoff not recorded' : 'Above export cutoff'}</small></div>}
+            {(summary.promoter_count ?? summary.peak_count) != null ? <div><span>Predicted promoters</span><strong>{(summary.promoter_count ?? summary.peak_count)!.toLocaleString()}</strong><small>Promoter prediction windows</small></div> : <div><span>Exported windows</span><strong>{summary.passing_window_count?.toLocaleString() ?? '—'}</strong><small>{summary.score_cutoff === null ? 'No export filtering' : summary.score_cutoff === undefined ? 'Export cutoff not recorded' : 'Above export cutoff'}</small></div>}
           </section>
           {!hasReference ? <p role="alert">Required browser artifacts are missing: {missingBrowserFiles.join(', ')}.</p> : null}
           {hasReference && refName ? <section className={styles.panel} aria-labelledby="genome-browser-heading">

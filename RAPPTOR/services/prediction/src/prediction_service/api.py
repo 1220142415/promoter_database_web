@@ -415,7 +415,21 @@ def current_model():
                 "required_stride": None,
                 "supported_stride": {"minimum": SETTINGS.min_scan_stride, "maximum": SETTINGS.max_scan_stride},
                 "automatic": True,
-                "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                "smoothing": {
+                    "stride_1": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                    "stride_gt_1": {"method": "none"},
+                },
+                "promoter_selection": {
+                    "stride_1": {
+                        "method": "local_maxima",
+                        "distance_bp": 10,
+                        "score": "smoothed",
+                    },
+                    "stride_gt_1": {
+                        "method": "all_windows_above_cutoff",
+                        "score": "raw",
+                    },
+                },
                 "peaks": {
                     "distance": 10,
                     "distance_unit": "bp",
@@ -440,11 +454,14 @@ def current_model():
                 },
             },
             "bigwig_processing": {
-                "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                "smoothing": {
+                    "stride_1": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+                    "stride_gt_1": {"method": "none"},
+                },
                 "retains_all_scores": True,
             },
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
-            "default_output_formats": ["bigwig", "parquet"],
+            "default_output_formats": ["bigwig", "gff3"],
             "reverse_complementary": {"default": True},
             "batch_size": {
                 "default": SETTINGS.default_batch_size,

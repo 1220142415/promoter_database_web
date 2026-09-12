@@ -63,8 +63,8 @@ export function prototypeResultGff3(run: PrototypePredictionRun, fixture: Protot
         ...(!isPeak ? [`cutoff=${score(run.parameters.cutoff)}`, `cutoff_state=${feature.score > run.parameters.cutoff ? 'above-cutoff' : 'at-or-below-cutoff'}`] : []),
         'prototype=true',
       ].join(';');
-      const featureStart = isPeak ? feature.anchor : feature.windowStart;
-      const featureEnd = isPeak ? feature.anchor : feature.windowEnd;
+      const featureStart = feature.windowStart;
+      const featureEnd = feature.windowEnd;
       const featureScore = isPeak ? feature.smoothedScore : feature.score;
       return [feature.sequenceId, 'RAPPTOR_prototype', featureName, featureStart, featureEnd, score(featureScore), feature.strand, '.', `${attributes};window_start_1based=${feature.windowStart};window_end_1based=${feature.windowEnd}`].join('\t');
     }),

@@ -7,12 +7,17 @@ export type JobSummary = {
   stride?: number;
   window_count?: number;
   passing_window_count?: number;
+  promoter_count?: number | null;
   peak_count?: number | null;
   smoothing?: { method: string; sigma: number; mode: string } | null;
   bigwig_smoothing?: { method: string; sigma: number; mode: string } | null;
   peak_calling?: {
     distance: number; distance_unit?: string; sample_distance?: number; resolution_bp?: number;
     window_length_bp?: number; upstream_bp?: number; downstream_bp?: number;
+    cutoff: number; operator: string;
+  } | null;
+  promoter_selection?: {
+    method: string; score?: string; distance_bp?: number;
     cutoff: number; operator: string;
   } | null;
   window_start_coordinate_system?: 'reference_0based';

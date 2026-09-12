@@ -56,14 +56,14 @@ describe('prototype result downloads', () => {
     expect(prototypeResultBedGraph(fixture)).toContain('model scores (-)');
   });
 
-  it('exports scan promoter predictions as 1 bp GFF3 features and raw scores as zero-based bedGraph intervals', () => {
+  it('exports scan promoter predictions as 100 bp intervals and raw scores as zero-based bedGraph intervals', () => {
     const fixture = createPrototypeFixture(genomeRun);
     expect(fixture.calledPeaks.length).toBeGreaterThan(0);
     const first = fixture.calledPeaks[0];
     const gffLine = prototypeResultGff3(genomeRun, fixture).split('\n').find((line) => line.includes('\tpromoter\t'))!;
     const gffColumns = gffLine.split('\t');
-    expect(gffColumns[3]).toBe(String(first.anchor));
-    expect(gffColumns[4]).toBe(String(first.anchor));
+    expect(gffColumns[3]).toBe(String(first.windowStart));
+    expect(gffColumns[4]).toBe(String(first.windowEnd));
     expect(gffColumns[5]).toBe(first.smoothedScore.toFixed(6));
     expect(gffColumns[8]).toContain(`window_start_1based=${first.windowStart}`);
 

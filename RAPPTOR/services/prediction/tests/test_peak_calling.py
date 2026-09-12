@@ -11,7 +11,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 
-from prediction_service.formats import ScanArtifactWriter, scan_output_formats, peak_distance_samples
+from prediction_service.formats import ScanArtifactWriter, scan_output_formats
 
 
 def rows(path):
@@ -94,31 +94,36 @@ class PeakCallingTests(unittest.TestCase):
             self.assertEqual(writer.peak_count, 0)
             self.assertEqual(rows(path/'promoters.gff3'), [])
 
-    def test_bigwig_is_smoothed_while_parquet_retains_raw_scores(self):
+    def test_stride_one_is_smoothed_but_sampled_outputs_are_raw(self):
         import pyBigWig
         import pyarrow.parquet as pq
-        with TemporaryDirectory() as folder:
-            path = Path(folder)
-            writer = ScanArtifactWriter(
-                path, ('bigwig', 'parquet'), [('a', 900)],
-                model_version='test', checkpoint_sha256='test', stride=20,
-            )
-            scores = np.linspace(0, 1, 41, dtype=np.float32)
-            for strand in ('+', '-'):
-                writer.add_scores('a', 900, strand, scores, upstream_len=80, window_length=100)
-            writer.close(success=True)
-            for strand, suffix in (('+', 'plus'), ('-', 'minus')):
-                with pyBigWig.open(str(path/f'scores.{suffix}.bw')) as bw:
-                    actual = [r[2] for r in bw.intervals('a')]
-                    ordered = scores if strand == '+' else scores[::-1]
-                    expected = gaussian_filter1d(ordered.astype(float), 1, mode='reflect')
-                    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
-            table = pq.read_table(path/'scores.parquet')
-            self.assertEqual(table.num_rows, 82)
-            self.assertEqual(table.schema.metadata[b'rapptor_window_start_coordinate_system'], b'reference_0based')
-            np.testing.assert_array_equal(table.column('score').to_numpy()[:41], scores)
+        scores = np.linspace(0, 1, 41, dtype=np.float32)
+        for stride in (1, 10, 50, 100):
+            with self.subTest(stride=stride), TemporaryDirectory() as folder:
+                path = Path(folder)
+                sequence_length = (len(scores) - 1) * stride + 100
+                writer = ScanArtifactWriter(
+                    path, ('bigwig', 'parquet'), [('a', sequence_length)],
+                    model_version='test', checkpoint_sha256='test', stride=stride,
+                )
+                for strand in ('+', '-'):
+                    writer.add_scores(
+                        'a', sequence_length, strand, scores,
+                        upstream_len=80, window_length=100,
+                    )
+                writer.close(success=True)
+                for strand, suffix in (('+', 'plus'), ('-', 'minus')):
+                    with pyBigWig.open(str(path/f'scores.{suffix}.bw')) as bw:
+                        actual = [r[2] for r in bw.intervals('a')]
+                        ordered = scores if strand == '+' else scores[::-1]
+                        expected = gaussian_filter1d(ordered.astype(float), 1, mode='reflect') if stride == 1 else ordered
+                        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
+                table = pq.read_table(path/'scores.parquet')
+                self.assertEqual(table.num_rows, 82)
+                self.assertEqual(table.schema.metadata[b'rapptor_window_start_coordinate_system'], b'reference_0based')
+                np.testing.assert_array_equal(table.column('score').to_numpy()[:41], scores)
 
-    def test_dense_scan_automatically_calls_peaks_even_with_default_formats(self):
+    def test_scan_automatically_emits_promoters_with_stride_specific_summary(self):
         from prediction_service import jobs
         from prediction_service.storage import JobStorage
         fake = SimpleNamespace(seq_length=100, upstream_len=80, checkpoint_sha256='test', model_config_sha256='test',
@@ -143,35 +148,94 @@ class PeakCallingTests(unittest.TestCase):
                         'model-score-tracks/scores.plus.bw',
                         'model-score-tracks/scores.minus.bw',
                     ])
-                self.assertEqual('promoters.gff3' in files, stride == 1)
-                self.assertEqual(summary['peak_count'], 0 if stride == 1 else None)
+                self.assertIn('promoters.gff3', files)
+                self.assertEqual(summary['promoter_count'], 0)
+                self.assertEqual(summary['peak_count'], 0)
                 self.assertEqual(summary['window_count'], 82 if stride == 1 else 6)
                 self.assertEqual(summary['window_start_coordinate_system'], 'reference_0based')
-                self.assertEqual(summary['bigwig_smoothing'], {'method': 'gaussian', 'sigma': 1.0, 'mode': 'reflect'})
+                self.assertEqual(
+                    summary['bigwig_smoothing'],
+                    {'method': 'gaussian', 'sigma': 1.0, 'mode': 'reflect'} if stride == 1 else None,
+                )
+                self.assertEqual(
+                    summary['smoothing'],
+                    {'method': 'gaussian', 'sigma': 1.0, 'mode': 'reflect'} if stride == 1 else None,
+                )
+                self.assertEqual(
+                    summary['promoter_selection']['method'],
+                    'local_maxima' if stride == 1 else 'all_windows_above_cutoff',
+                )
+                self.assertEqual(summary['peak_calling'] is not None, stride == 1)
+                self.assertEqual(
+                    summary['promoter_count'],
+                    len(rows(storage.job_dir(jobid) / 'promoters.gff3')),
+                )
 
-    def test_stride_aware_peaks_use_bp_distance_and_sampled_anchor_coordinates(self):
+    def test_sampled_stride_outputs_every_raw_window_above_cutoff(self):
+        scores = np.array([.1, .75, .74, .5], dtype=np.float32)
+        for stride in (10, 50, 100):
+            with self.subTest(stride=stride), TemporaryDirectory() as folder:
+                path = Path(folder)
+                sequence_length = (len(scores) - 1) * stride + 100
+                writer = ScanArtifactWriter(
+                    path, ['gff3'], [('a', sequence_length)],
+                    model_version='test', checkpoint_sha256='test',
+                    stride=stride, score_cutoff=.5,
+                )
+                with patch(
+                    'scipy.ndimage.gaussian_filter1d',
+                    side_effect=AssertionError('sampled scans must not be smoothed'),
+                ):
+                    for strand in ('+', '-'):
+                        writer.add_scores(
+                            'a', sequence_length, strand, scores,
+                            upstream_len=80, window_length=100,
+                        )
+                writer.close(success=True)
+                promoter_text = (path/'promoters.gff3').read_text()
+                promoter_rows = rows(path/'promoters.gff3')
+                self.assertEqual(promoter_text.splitlines()[0], '##gff-version 3')
+                self.assertEqual(sum(line.startswith('#') for line in promoter_text.splitlines()), 1)
+                self.assertNotIn('peak', promoter_text)
+                self.assertNotRegex(
+                    promoter_text,
+                    r'upstream_length|downstream_length|stride|sampled_anchor|resolution_bp',
+                )
+                self.assertEqual(len(promoter_rows), 4)
+                self.assertEqual(
+                    [(row[6], int(row[3]), int(row[4])) for row in promoter_rows],
+                    [
+                        ('+', stride + 2, stride + 101),
+                        ('+', 2 * stride + 2, 2 * stride + 101),
+                        ('-', stride, stride + 99),
+                        ('-', 2 * stride, 2 * stride + 99),
+                    ],
+                )
+                np.testing.assert_allclose(
+                    [float(row[5]) for row in promoter_rows],
+                    [.75, .74, .74, .75],
+                    rtol=1e-7,
+                    atol=1e-7,
+                )
+                self.assertTrue(all(row[2] == 'promoter' for row in promoter_rows))
+                self.assertTrue(all(row[8].startswith('ID=rapptor_promoter_') for row in promoter_rows))
+                self.assertIn('##RAPPtor-score-smoothing none', (path/'scores.gff3').read_text())
+
+    def test_sampled_stride_does_not_promote_a_raw_low_score_via_neighbor_smoothing(self):
+        scores = np.array([1.0, 0.0, 1.0, 0.5], dtype=np.float32)
+        cutoff = .4
+        self.assertGreater(gaussian_filter1d(scores.astype(float), 1, mode='reflect')[1], cutoff)
         with TemporaryDirectory() as folder:
             path = Path(folder)
-            stride = 3
-            scores = np.zeros(21, dtype=np.float32)
-            scores[10] = 1
             writer = ScanArtifactWriter(
-                path, ['gff3'], [('a', 160)], model_version='test', checkpoint_sha256='test',
-                stride=stride, score_cutoff=.2,
+                path, ['gff3'], [('a', 250)], model_version='test', checkpoint_sha256='test',
+                stride=50, score_cutoff=cutoff,
             )
-            writer.add_scores('a', 160, '+', scores, upstream_len=80, window_length=100)
+            writer.add_scores('a', 250, '+', scores, upstream_len=80, window_length=100)
             writer.close(success=True)
-            promoter_text = (path/'promoters.gff3').read_text()
             promoter_rows = rows(path/'promoters.gff3')
-            self.assertEqual(peak_distance_samples(stride), 4)
-            self.assertEqual(promoter_text.splitlines()[0], '##gff-version 3')
-            self.assertEqual(sum(line.startswith('#') for line in promoter_text.splitlines()), 1)
-            self.assertNotIn('peak', promoter_text)
-            self.assertNotRegex(promoter_text, r'upstream_length|downstream_length|stride|sampled_anchor|resolution_bp')
-            self.assertEqual(len(promoter_rows), 1)
-            self.assertEqual((int(promoter_rows[0][3]), int(promoter_rows[0][4])), (32, 131))
-            self.assertEqual(promoter_rows[0][2], 'promoter')
-            self.assertRegex(promoter_rows[0][8], r'^ID=rapptor_promoter_\d{9};Name=Predicted\+promoter$')
+            np.testing.assert_allclose([float(row[5]) for row in promoter_rows], [1.0, 1.0, .5])
+            self.assertNotIn(0.0, [float(row[5]) for row in promoter_rows])
 
     def test_boundary_peaks_remain_single_anchor_points_without_clipping(self):
         for strand, sampled_index, expected_anchor in (('+', 2, 83), ('-', 0, 20)):
@@ -191,8 +255,9 @@ class PeakCallingTests(unittest.TestCase):
                 self.assertRegex(promoter[8], r'^ID=rapptor_promoter_\d{9};Name=Predicted\+promoter$')
 
     def test_non_dense_gff_is_supported_without_changing_default_formats(self):
+        self.assertEqual(scan_output_formats(None, 50), ('bigwig', 'gff3'))
         self.assertIn('gff3', scan_output_formats(['bigwig'], 1))
-        self.assertEqual(scan_output_formats(['bigwig'], 20), ('bigwig',))
+        self.assertEqual(scan_output_formats(['bigwig'], 20), ('bigwig', 'gff3'))
         with TemporaryDirectory() as folder:
             writer = ScanArtifactWriter(Path(folder), ['gff3'], [('a', 140)], model_version='test', checkpoint_sha256='test', stride=20)
             writer.close(success=True)

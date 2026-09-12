@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
 from typing import Iterable
@@ -28,15 +27,10 @@ PROMOTER_DISPLAY_UPSTREAM_LENGTH = 79
 PROMOTER_DISPLAY_DOWNSTREAM_LENGTH = 20
 
 
-def peak_distance_samples(stride: int) -> int:
-    """Convert the 10 bp separation rule to the sampled score grid."""
-    return max(1, math.ceil(PEAK_DISTANCE / stride))
-
-
 def scan_output_formats(formats: Iterable[str] | None, stride: int) -> tuple[str, ...]:
-    """Every dense genome scan calls peaks, including requests from older clients."""
-    selected = tuple(dict.fromkeys(formats or ("bigwig", "parquet")))
-    if stride == 1 and "gff3" not in selected:
+    """Every genome scan emits promoter intervals, using stride-specific selection."""
+    selected = tuple(dict.fromkeys(formats or ("bigwig", "gff3")))
+    if "gff3" not in selected:
         selected += ("gff3",)
     return selected
 
@@ -78,9 +72,8 @@ class ScanArtifactWriter:
         self.stride = int(stride)
         if self.stride < 1:
             raise ArtifactFormatError("stride must be at least 1")
-        self.peak_distance_samples = peak_distance_samples(self.stride)
         self.score_cutoff = float(score_cutoff) if score_cutoff is not None else None
-        self.peak_cutoff = self.score_cutoff if self.score_cutoff is not None else PEAK_CUTOFF
+        self.promoter_cutoff = self.score_cutoff if self.score_cutoff is not None else PEAK_CUTOFF
         self._counter = 0
         self._gff_counter = 0
         self._json_counter = 0
@@ -107,7 +100,8 @@ class ScanArtifactWriter:
                     handle.write(f"##RAPPtor-checkpoint-sha256 {checkpoint_sha256}\n")
                     handle.write(f"##RAPPtor-scan-stride {self.stride}\n")
                     handle.write("##RAPPtor-window-start-coordinate-system reference_0based\n")
-                    handle.write(f"##RAPPtor-score-smoothing gaussian sigma={SMOOTHING_SIGMA:g} mode=reflect\n")
+                    smoothing = f"gaussian sigma={SMOOTHING_SIGMA:g} mode=reflect" if self.stride == 1 else "none"
+                    handle.write(f"##RAPPtor-score-smoothing {smoothing}\n")
                     cutoff = "none" if self.score_cutoff is None else f">{self.score_cutoff:g}"
                     handle.write(f"##RAPPtor-score-cutoff {cutoff}\n")
                     self._open_text("promoters.gff3", "promoters")
@@ -225,9 +219,9 @@ class ScanArtifactWriter:
         raw_scores = np.asarray(scores, dtype=np.float32)
         if "bigwig" in self.formats and len(raw_scores) and strand not in self._bigwigs:
             self._open_bigwig(strand)
-        smoothed_scores = None
+        output_scores = raw_scores
         peak_indices: set[int] = set()
-        if ({"bigwig", "gff3"}.intersection(self.formats)) and len(raw_scores):
+        if self.stride == 1 and ({"bigwig", "gff3"}.intersection(self.formats)) and len(raw_scores):
             from scipy.ndimage import gaussian_filter1d
 
             ordered_scores = raw_scores if strand == "+" else raw_scores[::-1]
@@ -235,14 +229,14 @@ class ScanArtifactWriter:
                 ordered_scores.astype(float), SMOOTHING_SIGMA, mode="reflect"
             )
             if strand == "+":
-                smoothed_scores = ordered_smoothed
+                output_scores = ordered_smoothed
             else:
-                smoothed_scores = ordered_smoothed[::-1]
+                output_scores = ordered_smoothed[::-1]
             if "gff3" in self.formats:
                 from scipy.signal import find_peaks
 
-                indices, _ = find_peaks(ordered_smoothed, distance=self.peak_distance_samples)
-                ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > self.peak_cutoff}
+                indices, _ = find_peaks(ordered_smoothed, distance=PEAK_DISTANCE)
+                ordered_peaks = {int(index) for index in indices if ordered_smoothed[index] > self.promoter_cutoff}
                 peak_indices = ordered_peaks if strand == "+" else {
                     len(raw_scores) - index - 1 for index in ordered_peaks
                 }
@@ -254,7 +248,7 @@ class ScanArtifactWriter:
                 continue
             if "bigwig" in self.formats:
                 bigwig = self._bigwigs[strand]
-                bigwig_values = np.asarray(smoothed_scores[score_indices], dtype=np.float32)
+                bigwig_values = np.asarray(output_scores[score_indices], dtype=np.float32)
                 bigwig.addEntries(
                     [sequence_id] * count,
                     anchor_positions.tolist(),
@@ -280,15 +274,19 @@ class ScanArtifactWriter:
                 anchor = int(anchor_positions[index])
                 score = float(values[index])
                 if "gff3" in self.formats:
-                    smoothed_score = float(smoothed_scores[score_indices[index]])
-                    if self.score_cutoff is None or smoothed_score > self.score_cutoff:
+                    output_score = float(output_scores[score_indices[index]])
+                    passes_export_cutoff = self.score_cutoff is None or output_score > self.score_cutoff
+                    passes_promoter_cutoff = output_score > self.promoter_cutoff
+                    if passes_export_cutoff:
                         self._gff_counter += 1
                         self._handles["gff3"].write(
                             f"{sequence_id}\tRAPPtor\tpromoter_candidate\t{anchor + 1}\t{anchor + 1}\t"
-                            f"{smoothed_score:.8f}\t{strand}\t.\tID=rapptor_hit_{self._gff_counter:012d};"
+                            f"{output_score:.8f}\t{strand}\t.\tID=rapptor_hit_{self._gff_counter:012d};"
                             f"window_start_0based={window_start};stride={self.stride}\n"
                         )
-                    if int(score_indices[index]) in peak_indices:
+                    if (self.stride == 1 and int(score_indices[index]) in peak_indices) or (
+                        self.stride > 1 and passes_promoter_cutoff
+                    ):
                         self._peak_counter += 1
                         promoter_id = f"rapptor_promoter_{self._peak_counter:09d}"
                         anchor_1based = anchor + 1
@@ -305,14 +303,14 @@ class ScanArtifactWriter:
                         self._handles["promoters"].write(
                             f"{sequence_id}\tRAPPtor\tpromoter\t{display_start}\t"
                             f"{display_end}\t"
-                            f"{smoothed_score:.8f}\t{strand}\t.\tID={promoter_id};Name=Predicted+promoter\n"
+                            f"{output_score:.8f}\t{strand}\t.\tID={promoter_id};Name=Predicted+promoter\n"
                         )
                 cutoff_score = (
-                    float(smoothed_scores[score_indices[index]])
-                    if "gff3" in self.formats else score
+                    float(output_scores[score_indices[index]])
+                    if {"bigwig", "gff3"}.intersection(self.formats) else score
                 )
-                passes_cutoff = self.score_cutoff is None or cutoff_score > self.score_cutoff
-                if passes_cutoff:
+                passes_export_cutoff = self.score_cutoff is None or cutoff_score > self.score_cutoff
+                if passes_export_cutoff:
                     self._counter += 1
                 if "json" in self.formats and (self.score_cutoff is None or score > self.score_cutoff):
                     self._json_counter += 1

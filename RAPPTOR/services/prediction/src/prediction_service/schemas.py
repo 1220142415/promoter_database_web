@@ -53,7 +53,7 @@ class JobSubmission(BaseModel):
     reverse_complementary: bool = Field(default=True, description="Also scan the reverse-complement strand.")
     output_formats: list[OutputFormat] | None = Field(
         default=None,
-        description="Sequence-scan artifacts. Defaults: BigWig and Parquet.",
+        description="Sequence-scan artifacts. Defaults: BigWig and promoter GFF3.",
     )
 
     @model_validator(mode="after")

@@ -8,6 +8,7 @@ export type QueuedPredictionCapabilities = {
   available: boolean;
   modelVersion: string;
   supportsScoreCutoff: boolean;
+  supportsPromoterOutput?: boolean;
   supportsPeakCalling?: boolean;
   gff3RequiresStride1?: boolean;
   siteKey: string;
@@ -44,24 +45,45 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     if (!metadata.ok || !readiness.ok) throw new Error();
     const model = await metadata.json() as { model_version?: string; genome_scan?: {
       score_cutoff?: { operator?: string };
-      gff3_postprocessing?: { required_stride?: number | null; smoothing?: { method?: string; sigma?: number; mode?: string }; peaks?: { distance?: number; distance_unit?: string; sample_distance_rule?: string; coordinate_resolution?: string; cutoff?: number; default_cutoff?: number; configurable_cutoff?: boolean; operator?: string; filename?: string } };
+      gff3_postprocessing?: {
+        required_stride?: number | null;
+        smoothing?: { method?: string; sigma?: number; mode?: string; stride_1?: { method?: string; sigma?: number; mode?: string }; stride_gt_1?: { method?: string } };
+        promoter_selection?: {
+          stride_1?: { method?: string; distance_bp?: number; score?: string };
+          stride_gt_1?: { method?: string; score?: string };
+        };
+        peaks?: { distance?: number; distance_unit?: string; sample_distance_rule?: string; coordinate_resolution?: string; cutoff?: number; default_cutoff?: number; configurable_cutoff?: boolean; operator?: string; filename?: string };
+      };
     } };
     const ready = await readiness.json() as { status?: string };
     if (model.model_version !== modelVersion) return { ...initial, reason: 'The active model does not match this deployment.' };
     if (ready.status !== 'ready') throw new Error();
     const processing = model.genome_scan?.gff3_postprocessing;
-    const strideAwarePeaks = processing?.required_stride === null
-      && processing.peaks?.distance_unit === 'bp'
-      && processing.peaks.sample_distance_rule === 'ceil(distance_bp/stride)'
-      && processing.peaks.coordinate_resolution === 'stride';
+    const promoterSelection = processing?.promoter_selection;
+    const supportsPromoterOutput = promoterSelection?.stride_1?.method === 'local_maxima'
+      && promoterSelection.stride_1.distance_bp === 10
+      && promoterSelection.stride_1.score === 'smoothed'
+      && promoterSelection.stride_gt_1?.method === 'all_windows_above_cutoff'
+      && promoterSelection.stride_gt_1.score === 'raw';
+    const strideOneSmoothing = processing?.smoothing?.stride_1;
+    const legacySmoothing = processing?.smoothing;
+    const legacyPeakCalling = processing?.required_stride === 1
+      && legacySmoothing?.method === 'gaussian'
+      && legacySmoothing.sigma === 1
+      && legacySmoothing.mode === 'reflect'
+      && processing?.peaks?.distance === 10
+      && (processing?.peaks?.configurable_cutoff === true || processing?.peaks?.cutoff === 0.9)
+      && processing?.peaks?.operator === '>'
+      && (processing?.peaks?.filename === 'promoters.gff3' || processing?.peaks?.filename === 'peaks.gff3');
     return { ...initial, available: true, supportsScoreCutoff: model.genome_scan?.score_cutoff?.operator === '>',
+      supportsPromoterOutput,
       gff3RequiresStride1: processing?.required_stride === 1,
-      supportsPeakCalling: (processing?.required_stride === 1 || strideAwarePeaks) && processing.smoothing?.method === 'gaussian'
-        && processing.smoothing.sigma === 1 && processing.smoothing.mode === 'reflect'
-        && processing.peaks?.distance === 10
-        && (processing.peaks.configurable_cutoff === true || processing.peaks.cutoff === 0.9)
-        && processing.peaks.operator === '>'
-        && (processing.peaks.filename === 'promoters.gff3' || processing.peaks.filename === 'peaks.gff3'),
+      supportsPeakCalling: Boolean(legacyPeakCalling || (supportsPromoterOutput && strideOneSmoothing?.method === 'gaussian'
+        && strideOneSmoothing.sigma === 1 && strideOneSmoothing.mode === 'reflect'
+        && processing?.peaks?.distance === 10
+        && (processing?.peaks?.configurable_cutoff === true || processing?.peaks?.cutoff === 0.9)
+        && processing?.peaks?.operator === '>'
+        && (processing?.peaks?.filename === 'promoters.gff3' || processing?.peaks?.filename === 'peaks.gff3'))),
     };
   } catch {
     return { ...initial, reason: 'Prediction service is temporarily unavailable. Retry shortly.' };

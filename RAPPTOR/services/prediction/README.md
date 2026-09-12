@@ -222,32 +222,33 @@ backward compatibility. Catalog requests must omit this field and use the
 protected cache import flow.
 
 `genome_scan` accepts a configured-range `stride` and an optional
-`score_cutoff` in `[0, 1]`. JSON exports raw scores strictly above this cutoff;
-`scores.gff3` exports Gaussian-smoothed scores strictly above it. BigWig retains
-every Gaussian-smoothed score; Parquet retains every raw scanned score. `top_k`
-remains unsupported.
+`score_cutoff` in `[0, 1]`. The promoter cutoff is strict (`>`) and defaults to
+0.9 when the field is omitted. JSON and `scores.gff3` apply an explicitly
+provided export cutoff; BigWig and Parquet retain every scanned score.
+The score used by BigWig and `scores.gff3` is Gaussian-smoothed only at
+`stride=1`; at larger strides it is the raw model score. `top_k` remains
+unsupported.
 
 When a scan produces BigWig tracks, the worker also atomically writes
 `model-score-tracks.zip` with `ZIP_STORED`. It contains the existing tracks
 under `model-score-tracks/` and is included in the artifact manifest; a
 single-strand task includes only its plus track.
 
-At **stride 1**, the API and worker automatically include GFF3 postprocessing,
-even when a client requests only BigWig/Parquet. Clients can also request GFF3
-at every configured stride. Each contig and strand is ordered by reference
-coordinate, smoothed with Gaussian sigma 1 on the sampled-score grid (`reflect`),
-then passed to `scipy.signal.find_peaks`. The 10 bp minimum separation is converted
-to `ceil(10 / stride)` sampled scores. Promoter predictions with smoothed model score
-strictly greater than `score_cutoff` (or 0.9 when no cutoff is supplied) are written
-to `promoters.gff3`; a scan with no predictions still produces a valid GFF3 header.
+The API and worker automatically include promoter GFF3 postprocessing, even when
+a client requests only BigWig/Parquet. At **stride 1**, each contig and strand is
+ordered by reference coordinate, smoothed with Gaussian sigma 1 in `reflect` mode,
+then passed to `scipy.signal.find_peaks` with a 10 bp minimum separation. Only
+smoothed local maxima above the promoter cutoff are written to `promoters.gff3`.
+At **stride > 1**, no Gaussian smoothing or local-maximum selection is performed:
+every raw model window above the promoter cutoff is written as one promoter
+interval. Adjacent 100 bp intervals may therefore overlap. A scan with no
+promoters still produces a valid GFF3 header.
 SciPy 1.15.3
 is required.
 
 Promoter GFF3 records use strand-aware 100 bp display intervals in 1-based closed
 reference coordinates: `anchor-79 ... anchor+20` on `+` and
-`anchor-20 ... anchor+79` on `-`. The peak anchor and the historical 80/20
-model scoring window do not move: each record retains the scoring-window start
-and end separately. A display interval that would cross a contig boundary is
+`anchor-20 ... anchor+79` on `-`. A display interval that would cross a contig boundary is
 emitted as the single anchor base; it is never clipped or padded. The promoter
 file contains only the GFF3 version declaration and standard coordinates, strand,
 score, and promoter identifiers. New score artifacts use reference-oriented
@@ -259,9 +260,9 @@ already used reference starts; its smoothing/peak-calling summary fields
 identify that schema before the explicit marker was introduced.
 
 The result page prefers `promoters.gff3`, displays **Predicted promoters**, and
-loads the promoter track beside the already-smoothed BigWig tracks without smoothing them a
-second time. The form requests the fixed peak settings automatically. Existing
-jobs are not rescanned and retain browser-side smoothing for their raw BigWigs.
+loads the promoter track beside the precomputed score tracks without smoothing
+them a second time. Existing jobs are not rescanned; legacy score tracks retain
+their historical browser-side handling.
 
 ```json
 {
@@ -271,7 +272,7 @@ jobs are not rescanned and retain browser-side smoothing for their raw BigWigs.
   "reference_accession": "GCF_000005845.1",
   "stride": 1,
   "score_cutoff": 0.9,
-  "output_formats": ["bigwig", "parquet", "gff3"]
+  "output_formats": ["bigwig", "gff3"]
 }
 ```
 

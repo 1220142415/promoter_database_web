@@ -150,6 +150,14 @@ export function callPrototypePeaks(
   windows: PrototypeScoreWindow[],
   cutoff: number,
 ): PrototypeCalledPeak[] {
+  const stride = windows[0]?.parameters.strideBases ?? 1;
+  if (stride > 1) {
+    return windows
+      .filter((window) => window.score > cutoff)
+      .map((window) => ({ ...window, rawScore: window.score, smoothedScore: window.score }))
+      .sort((left, right) => left.sequenceId.localeCompare(right.sequenceId) || left.anchor - right.anchor || left.strand.localeCompare(right.strand));
+  }
+
   const { bySeries, smoothed } = smoothSeries(windows);
   const candidates: PrototypeCalledPeak[] = [];
 

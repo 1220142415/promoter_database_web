@@ -59,9 +59,9 @@ describe('prediction browser tracks', () => {
     }
   });
 
-  it('does not show a promoter-status notice for sparse scans', () => {
+  it('reports missing promoter output for sparse scans from legacy services', () => {
     render(<PredictionBrowser jobId="a" refName="chr1" accessToken="shared_access_token_1234567890abcdef" artifacts={browserFiles} summary={{ stride: 20 }} />);
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Promoter predictions were not generated');
     expect(screen.getByTestId('mock-unified-browser')).toHaveAttribute('data-peaks', '');
   });
 

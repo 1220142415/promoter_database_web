@@ -60,6 +60,10 @@ def test_healthz(tmp_path, monkeypatch):
     postprocessing = model["genome_scan"]["gff3_postprocessing"]
     assert postprocessing["required_stride"] is None
     assert postprocessing["supported_stride"] == {"minimum": 1, "maximum": api.SETTINGS.max_scan_stride}
+    assert postprocessing["promoter_selection"] == {
+        "stride_1": {"method": "local_maxima", "distance_bp": 10, "score": "smoothed"},
+        "stride_gt_1": {"method": "all_windows_above_cutoff", "score": "raw"},
+    }
     assert postprocessing["peaks"]["distance_unit"] == "bp"
     assert postprocessing["peaks"]["sample_distance_rule"] == "ceil(distance_bp/stride)"
     assert postprocessing["peaks"]["coordinate_resolution"] == "stride"
@@ -320,7 +324,10 @@ def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
     assert capabilities["score_cutoff"]["operator"] == ">"
     assert capabilities["score_cutoff"]["applies_to"] == ["gff3", "json", "promoters.gff3"]
     assert capabilities["bigwig_processing"] == {
-        "smoothing": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+        "smoothing": {
+            "stride_1": {"method": "gaussian", "sigma": 1, "mode": "reflect"},
+            "stride_gt_1": {"method": "none"},
+        },
         "retains_all_scores": True,
     }
     assert capabilities["gff3_postprocessing"]["peaks"]["configurable_cutoff"] is True
@@ -328,16 +335,17 @@ def test_genome_scan_accepts_stride_one(tmp_path, monkeypatch):
     assert "top_k" in capabilities["unsupported_filters"]
 
 
-@pytest.mark.parametrize("stride", [1, 20])
-def test_genome_scan_automatically_selects_peak_outputs_only_at_stride_one(tmp_path, monkeypatch, stride):
+@pytest.mark.parametrize("stride", [1, 10, 50, 100])
+def test_genome_scan_automatically_selects_promoter_outputs_for_all_strides(tmp_path, monkeypatch, stride):
     api, _ = load_api(tmp_path, monkeypatch)
     request, _ = api._validate_submission(api.JobSubmission(
         mode="genome_scan", complete_genome=True, fasta=">contig\n" + "ACGT" * 100, stride=stride,
     ))
-    assert ("gff3" in request["output_formats"]) == (stride == 1)
+    assert "gff3" in request["output_formats"]
+    assert request["output_formats"] == ["bigwig", "gff3"]
 
 
-def test_sampled_scan_accepts_smoothed_gff3_and_peaks(tmp_path, monkeypatch):
+def test_sampled_scan_accepts_raw_score_promoter_gff3(tmp_path, monkeypatch):
     api, _ = load_api(tmp_path, monkeypatch)
     request, _ = api._validate_submission(api.JobSubmission(
         mode="genome_scan", complete_genome=True, fasta=">contig\n" + "ACGT" * 100,

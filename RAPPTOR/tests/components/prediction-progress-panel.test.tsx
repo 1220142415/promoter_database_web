@@ -86,6 +86,21 @@ describe('prediction progress panel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('4,000 windows processed');
   });
 
+  it('shows final queue, processing, and total durations when timestamps are available', () => {
+    render(<PredictionProgressPanel mode="focused" snapshot={{
+      state: 'succeeded', stage: 'complete', percent: 100, message: 'Result ready.',
+      submittedAt: '2026-01-01T00:00:00.000Z',
+      startedAt: '2026-01-01T00:01:30.000Z',
+      endedAt: '2026-01-01T00:03:45.000Z',
+    }} />);
+    const timing = screen.getByRole('region', { name: 'Task timing' });
+    expect(timing).toHaveTextContent('Queue time');
+    expect(within(timing).getByText('1m 30s')).toBeInTheDocument();
+    expect(within(timing).getByText('2m 15s')).toBeInTheDocument();
+    expect(within(timing).getByText('3m 45s')).toBeInTheDocument();
+    expect(timing).toHaveTextContent('Final');
+  });
+
   it('marks an interrupted scan as stopped and retains the last processed count', () => {
     render(<PredictionProgressPanel mode="scan" snapshot={{ state: 'failed', stage: 'scanning', percent: 45, windows: 400, totalWindows: 1000, message: 'Worker stopped.' }} />);
     expect(screen.getByRole('region', { name: 'Genome scan progress' })).toHaveTextContent('Scan stopped');

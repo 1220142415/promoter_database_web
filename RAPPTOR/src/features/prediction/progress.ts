@@ -16,6 +16,9 @@ export interface PredictionProgressSnapshot {
   stage: string;
   percent: number | null;
   message: string;
+  submittedAt?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
   contig?: string;
   strand?: '+' | '-';
   windows?: number;

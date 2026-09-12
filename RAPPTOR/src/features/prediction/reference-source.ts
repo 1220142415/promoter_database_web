@@ -45,10 +45,11 @@ export function referenceSourceFromMatch(
 
 export async function resolvePredictionReferenceSource(accession: string) {
   if (!ACCESSION.test(accession)) return null;
-  if (accession === REAL_PREDICTION_REFERENCE.accession) {
+  const example = predictionReferenceExample(accession);
+  if (example && new URL(example.sourceUrl).hostname === 'huggingface.co') {
     return {
-      url: REAL_PREDICTION_REFERENCE.sourceUrl,
-      sha256: REAL_PREDICTION_REFERENCE.sourceSha256,
+      url: example.sourceUrl,
+      sha256: example.sourceSha256,
     };
   }
   const catalogSource = referenceSourceFromMatch(

@@ -1,4 +1,4 @@
-# Prediction: NCBI fallback through the Worker
+# Prediction: browser-managed NCBI/Hugging Face references
 
 ## Scope and user experience
 
@@ -10,37 +10,22 @@ This fallback supplies the complete-genome **CGR context** for either a single
 100 bp prediction or a sequence scan. In scan mode, the NCBI assembly is not
 silently substituted as the target: the browser still supplies the FASTA
 region or assembly to evaluate, while the selected accession supplies only its
-complete-reference CGR. Preview mode does not offer this fallback. Preparation
-runs on the deployed Worker with its ticket database; the loopback development
-proxy only passes through already-cached catalog references.
+complete-reference CGR. Preview mode does not offer this fallback. The browser
+downloads, decompresses, and validates the selected FASTA before it requests a
+ticketed prediction; the Worker receives only the resulting sequence payload.
 
 ## Data flow
 
 ```text
 Browser: existing genome search
   → Worker /api/genomes → local catalog
-  → if empty + versioned ID: Worker /api/prediction-references/ncbi
-      → NCBI Assembly esearch + esummary (metadata only)
-      → Browser receives accession, organismName, source — no FASTA or URL
+  → if empty + versioned ID: browser requests NCBI Datasets metadata
+      → browser derives the exact NCBI FTP genomic FASTA URL
+      → browser downloads/decompresses and validates the FASTA
 
-Browser: verify, obtain ticket, submit 100 bp + ncbi_accession
+Browser: verify, obtain ticket, submit 100 bp + genome_context
   → Worker /api/predictions/jobs
-      → D1: atomically claim preparation and bind the exact accession to the ticket
-      → Docker GET /v1/reference-cache/{accession} (service Bearer secret)
-          ready → skip download/import
-          preparing → wait for the existing import
-          missing/invalid → Worker downloads the exact reference:
-              catalog: Hugging Face source + published source SHA-256
-              external: NCBI md5checksums.txt + *_genomic.fna.gz + official MD5
-              → bounded decompression in the Worker
-              → POST /v1/reference-cache/{accession}/imports
-                  Content-Type: text/x-fasta
-                  X-Source-SHA256: SHA-256 of the uncompressed request bytes
-                  X-CGR-Version: cgr-128-v1
-              → Docker asynchronously validates FASTA and generates/persists CGR
-              → Worker polls the import every 3 seconds until ready
-      → Docker /v1/jobs: mode=predict + sequence + reference_accession
-          → Docker consumes the original ticket normally
+      → Docker /v1/jobs: mode=predict + sequence + genome_context
           → existing job ID, token, status and artifact flow
 ```
 

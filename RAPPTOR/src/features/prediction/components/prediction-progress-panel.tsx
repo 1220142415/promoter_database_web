@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import {
   normalizePredictionProgress,
@@ -15,6 +16,31 @@ function queueCount(value: unknown) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
+function timestamp(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function elapsed(start: number | null, end: number | null) {
+  if (start === null || end === null || end < start) return null;
+  return end - start;
+}
+
+function formatDuration(value: number | null) {
+  if (value === null) return '—';
+  const seconds = Math.floor(value / 1_000);
+  if (seconds < 1) return '<1s';
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainder}s`;
+  const hours = Math.floor(minutes / 60);
+  const minuteRemainder = minutes % 60;
+  if (hours < 24) return `${hours}h ${minuteRemainder}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
 export default function PredictionProgressPanel({
   mode,
   snapshot,
@@ -25,6 +51,7 @@ export default function PredictionProgressPanel({
   onRetry?: () => void;
 }) {
   const progress = normalizePredictionProgress(snapshot);
+  const [now, setNow] = useState<number | null>(null);
   const steps = predictionProgressSteps(mode);
   const currentStep = predictionProgressStepIndex(progress);
   const failed = progress.state === 'failed';
@@ -40,6 +67,17 @@ export default function PredictionProgressPanel({
   const waitLabel = estimateAvailable
     ? waitSeconds < 60 ? '<1 min' : `~${Math.ceil(waitSeconds / 60).toLocaleString()} min`
     : '—';
+  const submittedAt = timestamp(progress.submittedAt);
+  const startedAt = timestamp(progress.startedAt);
+  const endedAt = timestamp(progress.endedAt);
+  const active = progress.state === 'queued' || progress.state === 'running';
+  const timingNow = now === null ? null : Math.max(now, submittedAt ?? now, startedAt ?? now);
+  const hasTiming = submittedAt !== null || startedAt !== null || endedAt !== null;
+  const timing = hasTiming ? {
+    queue: elapsed(submittedAt, startedAt ?? (active ? timingNow : null)),
+    processing: elapsed(startedAt, endedAt ?? (active ? timingNow : null)),
+    total: elapsed(submittedAt, endedAt ?? (active ? timingNow : null)),
+  } : null;
   const showScan = mode === 'scan' && progress.state !== 'succeeded' && currentStep >= 2
     && (progress.stage === 'scanning' || progress.windows !== undefined || progress.totalWindows !== undefined);
   const scanPercent = progress.scanPercent;
@@ -52,6 +90,16 @@ export default function PredictionProgressPanel({
     !showScan && progress.strand ? `${progress.strand} strand` : null,
     !showScan && typeof progress.windows === 'number' ? `${progress.windows.toLocaleString()} windows processed` : null,
   ].filter(Boolean);
+
+  useEffect(() => {
+    if (!active || !hasTiming) {
+      setNow(null);
+      return;
+    }
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [active, hasTiming, progress.submittedAt, progress.startedAt, progress.endedAt]);
 
   return (
     <section className={`${styles.panel} ${failed ? styles.failed : ''}`} aria-label="Prediction progress" data-state={progress.state}>
@@ -100,6 +148,14 @@ export default function PredictionProgressPanel({
         </div>
         {scanDetails.length && currentStep === 2 ? <p>{scanDetails.join(' · ')}</p> : null}
         {progress.totalWindows === undefined ? <p>Total window count is not available from this service.</p> : null}
+      </section> : null}
+      {timing ? <section className={styles.timing} aria-label="Task timing">
+        <div className={styles.timingHeading}><strong>Task timing</strong><span>{active ? 'Live' : 'Final'}</span></div>
+        <dl className={styles.queueMetrics}>
+          <div><dt>Queue time</dt><dd>{formatDuration(timing.queue)}</dd></div>
+          <div><dt>Processing time</dt><dd>{formatDuration(timing.processing)}</dd></div>
+          <div><dt>Total time</dt><dd>{formatDuration(timing.total)}</dd></div>
+        </dl>
       </section> : null}
       {!queued && <div className={styles.status} role="status" aria-live="polite">
         {failed ? <ErrorOutlineRoundedIcon aria-hidden="true" /> : null}

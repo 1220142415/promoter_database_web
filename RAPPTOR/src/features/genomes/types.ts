@@ -30,6 +30,8 @@ export interface GenomeCatalogRow {
   experimentalTssCount?: number;
   experimentalDatasetCount?: number;
   annotationStatus: ReleaseGenome['annotationStatus'];
+  /** Public browser URL for the compressed reference FASTA, when published. */
+  referenceUrl?: string | null;
 }
 
 export interface GenomeSearchQuery {

@@ -31,13 +31,14 @@ import {
   type PrototypeStrandMode,
   type PrototypeStrideBases,
 } from '.';
-import { REAL_PREDICTION_REFERENCE, UPLOAD_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
+import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from '../reference-example';
 import type { QueuedPredictionCapabilities } from '../service-capabilities';
 import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '@/components/portal-terminology';
 import styles from './prototype-workbench.module.css';
+import { downloadBrowserFasta, findBrowserNcbiReference } from './browser-references';
 
 type PrimarySourceKind = 'inline' | 'upload' | 'catalog';
 type ContextSourceKind = 'catalog' | 'upload';
@@ -75,7 +76,9 @@ interface ResolvedGenomeInput {
 
 type ReferenceSearchRow = Pick<GenomeCatalogRow, 'accession' | 'organismName'> & {
   genomeSizeBp?: number | null;
-  source?: 'ncbi';
+  source?: 'ncbi' | 'huggingface';
+  referenceUrl?: string | null;
+  predictionAccession?: string | null;
 };
 
 const EMPTY_UPLOAD: UploadedInputState = { file: null, parsed: null, loading: false, error: null };
@@ -83,16 +86,19 @@ const EMPTY_CONTEXT_UPLOAD: ContextUploadState = { file: null, totalLength: null
 
 function catalogContext(row: ReferenceSearchRow): PrototypeGenomeContext {
   if (!row.source && row.accession === REAL_PREDICTION_REFERENCE.accession) return PROTOTYPE_CANDIDATE_GENOME_EXAMPLE;
+  const source = row.source || (row.referenceUrl ? 'huggingface' : undefined);
   return {
     kind: 'catalog',
     accession: row.accession,
-    ...(row.source ? { source: row.source } : {}),
+    ...(source ? { source } : {}),
+    ...(row.predictionAccession ? { predictionAccession: row.predictionAccession } : {}),
     displayName: row.organismName || row.accession,
     fileName: `${row.accession}.reference.fna.gz`,
     fileSize: null,
     checksum: null,
     totalLength: row.genomeSizeBp ?? null,
     contigs: [],
+    ...(row.referenceUrl ? { downloadUrl: row.referenceUrl } : {}),
   };
 }
 
@@ -125,24 +131,33 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
       if (!response.ok) throw new Error('Catalog request failed.');
       const payload = await response.json() as GenomeSearchResponse;
       if (revision !== searchRevision.current) return;
-      const exactMatch = payload.items.find((item) => item.accession.toUpperCase() === query.trim().toUpperCase());
-      if (exactMatch) {
-        onSelect(catalogContext(exactMatch));
-        setResults([]);
-        return;
-      }
       if (!payload.items.length && allowNcbi && /^GC[AF]_\d{9}\.[1-9]\d{0,3}$/i.test(term)) {
-        const external = await fetch(`/api/prediction-references/ncbi?accession=${encodeURIComponent(term.toUpperCase())}`, { signal: AbortSignal.timeout(12_000) });
-        if (!external.ok) throw new Error('NCBI lookup unavailable.');
-        const fallback = await external.json() as { items: ReferenceSearchRow[] };
+        let fallback: ReferenceSearchRow[] = [];
+        let ncbiNotFound = false;
+        try {
+          fallback = [await findBrowserNcbiReference(term)];
+        } catch (directError) {
+          ncbiNotFound = directError instanceof Error && directError.message === 'This exact assembly version was not found at NCBI.';
+          // Keep the old metadata-only endpoint as a short-lived compatibility fallback.
+          try {
+            const legacy = await fetch(`/api/prediction-references/ncbi?accession=${encodeURIComponent(term.toUpperCase())}`);
+            if (legacy.ok) {
+              const payload = await legacy.json() as { items?: ReferenceSearchRow[] };
+              fallback = Array.isArray(payload.items) ? payload.items : [];
+            }
+          } catch {
+            if (!ncbiNotFound) throw directError;
+          }
+          if (!fallback.length && !ncbiNotFound) throw directError;
+        }
         if (revision !== searchRevision.current) return;
         // External references require explicit selection, with provenance visible first.
-        setResults(fallback.items);
-        if (!fallback.items.length) setError('This exact assembly version was not found in the catalog or at NCBI.');
+        setError(fallback.length ? null : 'No matching assembly found at NCBI. Check the exact versioned accession or upload FASTA.');
+        setResults(fallback);
         return;
       }
       setResults(payload.items.slice(0, 8));
-      if (!payload.items.length) setError(allowNcbi ? 'No catalog match. Enter a versioned GCF or GCA assembly ID to search NCBI.' : PORTAL_COPY.noAssemblies);
+      if (!payload.items.length) setError(allowNcbi ? 'No local match. Enter a versioned GCF or GCA assembly ID to search NCBI.' : PORTAL_COPY.noAssemblies);
     } catch {
       if (revision !== searchRevision.current) return;
       setResults([]);
@@ -155,7 +170,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
   if (selected) {
     return (
       <div className={styles.selection}>
-        <div><strong>{selected.displayName}</strong><span>{selected.kind === 'catalog' ? selected.accession : selected.fileName}</span>{selected.kind === 'catalog' && selected.source === 'ncbi' ? <span>NCBI · External reference</span> : null}</div>
+        <div><strong>{selected.displayName}</strong><span>{selected.kind === 'catalog' ? selected.accession : selected.fileName}</span>{selected.kind === 'catalog' && selected.source ? <span>{selected.source === 'ncbi' ? 'NCBI · External reference' : 'Hugging Face · Published reference'}</span> : null}</div>
         <button type="button" onClick={() => onSelect(null)}>Change</button>
       </div>
     );
@@ -182,7 +197,7 @@ function CatalogPicker({ idPrefix, selected, onSelect, onUploadInstead, allowNcb
       {results.length ? (
         <ul id={`${idPrefix}-results`} role="listbox" className={styles.catalogResults} aria-label="Genome catalog results">
           {results.map((row) => (
-            <li key={row.accession} role="presentation"><button role="option" aria-selected="false" type="button" onClick={() => { onSelect(catalogContext(row)); setResults([]); setError(null); }}><strong>{row.organismName}</strong><span>{row.accession}{row.genomeSizeBp ? ` · ${row.genomeSizeBp.toLocaleString()} bp` : ''}</span>{row.source === 'ncbi' ? <span>NCBI · External reference</span> : null}</button></li>
+            <li key={row.accession} role="presentation"><button role="option" aria-selected="false" type="button" onClick={() => { onSelect(catalogContext(row)); setResults([]); setError(null); }}><strong>{row.organismName}</strong><span>{row.accession}{row.genomeSizeBp ? ` · ${row.genomeSizeBp.toLocaleString()} bp` : ''}</span>{row.source ? <span>{row.source === 'ncbi' ? 'NCBI · External reference' : 'Hugging Face · Published reference'}</span> : null}</button></li>
           ))}
         </ul>
       ) : null}
@@ -204,9 +219,47 @@ function parsedGenomeInput(parsed: PrototypeParsedSequenceInput, label: string):
   };
 }
 
-async function catalogGenomeInput(context: PrototypeGenomeContext): Promise<ResolvedGenomeInput> {
+type BrowserDownloadProgress = (loaded: number, total: number | null) => void;
+
+async function catalogGenomeInput(context: PrototypeGenomeContext, onProgress?: BrowserDownloadProgress): Promise<ResolvedGenomeInput> {
   if (context.kind !== 'catalog' || !context.accession) throw new Error('Select a catalog genome.');
-  if (context.source === 'ncbi') throw new Error('NCBI genome context is downloaded by the Worker for 100 bp scoring only.');
+  const predictionAccession = context.predictionAccession || context.accession;
+  const directUrl = context.downloadUrl
+    || (context.accession === REAL_PREDICTION_REFERENCE.accession ? REAL_PREDICTION_REFERENCE.sourceUrl : null);
+  if (directUrl) {
+    let text: string;
+    try {
+      text = await downloadBrowserFasta(directUrl, onProgress);
+    } catch (directError) {
+      if (context.accession !== REAL_PREDICTION_REFERENCE.accession && context.source !== 'ncbi') {
+        try {
+          text = await downloadBrowserFasta(`/api/remote-data/${encodeURIComponent(predictionAccession)}/reference.fa.gz`, onProgress);
+        } catch {
+          throw new Error('Selected Hugging Face reference is unavailable. Retry or upload the complete genome FASTA.');
+        }
+      } else if (context.accession === REAL_PREDICTION_REFERENCE.accession) {
+        try {
+          const legacy = await fetch(`/api/prediction-reference/${encodeURIComponent(context.accession)}`, { cache: 'no-store' });
+          if (!legacy.ok) throw directError;
+          text = await legacy.text();
+        } catch {
+          throw directError;
+        }
+      } else {
+        throw directError;
+      }
+    }
+    return parsedGenomeInput(parsePrototypeSequenceInput(text), context.displayName);
+  }
+  if (context.source === 'ncbi') throw new Error('NCBI reference download URL is unavailable. Upload the complete genome FASTA instead.');
+  if (context.source === 'huggingface' || context.predictionAccession) {
+    try {
+      const text = await downloadBrowserFasta(`/api/remote-data/${encodeURIComponent(predictionAccession)}/reference.fa.gz`, onProgress);
+      return parsedGenomeInput(parsePrototypeSequenceInput(text), context.displayName);
+    } catch {
+      // Continue through the normal same-origin release routes below.
+    }
+  }
   const accession = encodeURIComponent(context.accession);
   if (context.accession === REAL_PREDICTION_REFERENCE.accession) {
     const response = await fetch(`/api/prediction-reference/${accession}`, { cache: 'no-store' });
@@ -214,8 +267,8 @@ async function catalogGenomeInput(context: PrototypeGenomeContext): Promise<Reso
     const verified = await validateReferenceExample(await response.text());
     return parsedGenomeInput(parsePrototypeSequenceInput(verified.fasta), context.displayName);
   }
-  let response = await fetch(`/api/remote-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
-  if (!response.ok) response = await fetch(`/api/experimental-data/${accession}/reference.fa.gz`, { cache: 'no-store' });
+  let response = await fetch(`/api/remote-data/${encodeURIComponent(predictionAccession)}/reference.fa.gz`, { cache: 'no-store' });
+  if (!response.ok) response = await fetch(`/api/experimental-data/${encodeURIComponent(predictionAccession)}/reference.fa.gz`, { cache: 'no-store' });
   if (!response.ok && context.accession === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession) {
     response = await fetch(`/api/prediction-reference/${accession}`, { cache: 'no-store' });
   }
@@ -270,14 +323,23 @@ export default function PrototypePredictionWorkbench({
   const [strideBases, setStrideBases] = useState<PrototypeStrideBases>(PROTOTYPE_STRIDE_BASES);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [verificationRevision, setVerificationRevision] = useState(0);
   const [exampleLoading, setExampleLoading] = useState(false);
   const [exampleError, setExampleError] = useState<string | null>(null);
+  const [browserDownload, setBrowserDownload] = useState<{ loaded: number; total: number | null } | null>(null);
   const verifiedExample = useRef<ResolvedGenomeInput | null>(null);
+  async function loadCatalogGenome(context: PrototypeGenomeContext) {
+    try {
+      return await catalogGenomeInput(context, (loaded, total) => setBrowserDownload({ loaded, total }));
+    } finally {
+      setBrowserDownload(null);
+    }
+  }
   async function prepareExampleReference() {
     setExampleLoading(true); setExampleError(null);
-    try { verifiedExample.current = await catalogGenomeInput(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE); }
+    try { verifiedExample.current = await loadCatalogGenome(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE); }
     catch (cause) { setExampleError(cause instanceof Error ? cause.message : 'Example reference unavailable.'); }
     finally { setExampleLoading(false); }
   }
@@ -298,9 +360,11 @@ export default function PrototypePredictionWorkbench({
     ? (inputCatalog ? 'genome-scan' : null)
     : parsedInput?.mode || null;
   const usesExampleReference = (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession)
-    || (contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
+    || (primaryKind !== 'inline' && contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = contextKind === 'catalog'
-    && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi';
+    && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi'
+    && !contextCatalog.downloadUrl
+    && (localTest || contextCatalog.accession !== REAL_PREDICTION_REFERENCE.accession);
   const usesNcbiContext = contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.source === 'ncbi';
   const needsExampleReference = usesExampleReference && !usesCachedCgr;
@@ -331,6 +395,7 @@ export default function PrototypePredictionWorkbench({
     setContextKind(nextKind);
     setContextCatalog(null);
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
+    setReferenceError(null);
   }
 
   function clearPrimaryInput() {
@@ -341,6 +406,7 @@ export default function PrototypePredictionWorkbench({
     setPrimaryKind('inline');
     clearGenomeContext();
     setFormError(null);
+    setReferenceError(null);
   }
 
   function removeContextFile() {
@@ -348,6 +414,7 @@ export default function PrototypePredictionWorkbench({
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
     setContextKind('catalog');
     setFormError(null);
+    setReferenceError(null);
   }
 
   function selectContextCatalog(context: PrototypeGenomeContext | null) {
@@ -358,6 +425,7 @@ export default function PrototypePredictionWorkbench({
       setContextUpload(EMPTY_CONTEXT_UPLOAD);
     }
     setFormError(null);
+    setReferenceError(null);
   }
 
   function selectContextKind(kind: ContextSourceKind) {
@@ -366,6 +434,7 @@ export default function PrototypePredictionWorkbench({
     setContextCatalog(null);
     setContextUpload(EMPTY_CONTEXT_UPLOAD);
     setFormError(null);
+    setReferenceError(null);
   }
 
   function loadFocusedExample() {
@@ -377,6 +446,7 @@ export default function PrototypePredictionWorkbench({
     clearGenomeContext('catalog');
     if (!preview) setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
     setFormError(null);
+    setReferenceError(null);
   }
 
   function loadGenomeExample() {
@@ -389,6 +459,7 @@ export default function PrototypePredictionWorkbench({
     setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
     if (!preview) void prepareExampleReference();
     setFormError(null);
+    setReferenceError(null);
   }
 
   async function handlePrimaryFile(event: ChangeEvent<HTMLInputElement>) {
@@ -435,27 +506,26 @@ export default function PrototypePredictionWorkbench({
 
   async function loadUploadExample() {
     const revision = ++contextRevision.current;
-    setContextKind('upload');
-    setContextCatalog(null);
-    setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true });
-    setFormError(null);
+    setContextKind('upload'); setContextCatalog(null);
+    setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, loading: true }); setFormError(null); setReferenceError(null);
     try {
-      const reference = UPLOAD_PREDICTION_REFERENCE;
-      const response = await fetch(`/api/prediction-reference/${reference.accession}`, { signal: AbortSignal.timeout(120_000) });
-      if (!response.ok) throw new Error('The NCBI example could not be loaded. Retry or choose a FASTA file.');
-      const verified = await validateReferenceExample(await response.text(), reference);
+      const reference = REAL_PREDICTION_REFERENCE;
+      let downloaded: string;
+      try {
+        downloaded = await downloadBrowserFasta(reference.sourceUrl, (loaded, total) => setBrowserDownload({ loaded, total }));
+      } catch (directError) {
+        const legacy = await fetch(`/api/prediction-reference/${reference.accession}`, { cache: 'no-store' });
+        if (!legacy.ok) throw directError;
+        downloaded = await legacy.text();
+      }
+      const verified = await validateReferenceExample(downloaded, reference);
       const file = new File([verified.fasta], reference.fileName, { type: 'text/plain' });
       validatePrototypeGenomeFile(file, maxGenomeBytes);
-      if (revision === contextRevision.current) setContextUpload({
-        file, totalLength: verified.length,
-        contigs: [{ sequenceId: verified.sequenceId, length: verified.length }],
-        loading: false, error: null,
-      });
+      if (revision === contextRevision.current) setContextUpload({ file, totalLength: verified.length, contigs: [{ sequenceId: verified.sequenceId, length: verified.length }], loading: false, error: null });
     } catch (cause) {
-      if (revision === contextRevision.current) setContextUpload({
-        ...EMPTY_CONTEXT_UPLOAD,
-        error: cause instanceof Error ? cause.message : 'The NCBI example could not be loaded.',
-      });
+      if (revision === contextRevision.current) setContextUpload({ ...EMPTY_CONTEXT_UPLOAD, error: cause instanceof Error ? cause.message : 'The NCBI example is temporarily unavailable. Upload a FASTA file instead.' });
+    } finally {
+      setBrowserDownload(null);
     }
   }
 
@@ -476,7 +546,7 @@ export default function PrototypePredictionWorkbench({
     if (contextKind === 'catalog') {
       if (!contextCatalog) throw new Error('Select the matching genome context.');
       if (contextCatalog.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession && verifiedExample.current) return verifiedExample.current;
-      return catalogGenomeInput(contextCatalog);
+      return loadCatalogGenome(contextCatalog);
     }
     if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid matching genome FASTA.');
     return parsedGenomeInput(await readPrototypeSequenceFile(contextUpload.file), contextUpload.file.name);
@@ -507,7 +577,7 @@ export default function PrototypePredictionWorkbench({
     if (primaryKind === 'catalog') {
       if (!inputCatalog) throw new Error('Select a catalog genome.');
       if (inputCatalog.kind === 'catalog' && inputCatalog.accession === REAL_PREDICTION_REFERENCE.accession && verifiedExample.current) return verifiedExample.current;
-      return catalogGenomeInput(inputCatalog);
+      return loadCatalogGenome(inputCatalog);
     }
     if (!parsedInput) throw new Error('Provide valid sequence input.');
     return parsedGenomeInput(parsedInput, primaryKind === 'upload' ? uploadedInput.file?.name || 'Uploaded FASTA' : 'Pasted sequence');
@@ -541,6 +611,7 @@ export default function PrototypePredictionWorkbench({
     if (!preview && needsExampleReference && (exampleLoading || exampleError)) { setFormError('Load and verify the example reference before submitting.'); return; }
     setSubmitting(true);
     setFormError(null);
+    setReferenceError(null);
     try {
       if (preview) {
         const runId = createPrototypeRunId();
@@ -590,7 +661,18 @@ export default function PrototypePredictionWorkbench({
       if (inferredMode === 'candidate') {
         if (!parsedInput || parsedInput.records.length !== 1 || parsedInput.records[0].length !== 100 || primaryKind === 'catalog') throw new Error('100 bp scoring requires exactly one 100 bp sequence.');
         const sequence = parsedInput.records[0].normalizedSequence;
-        if (usesNcbiContext && contextCatalog?.kind === 'catalog') {
+        const browserContext = contextCatalog?.kind === 'catalog'
+          && Boolean(contextCatalog.downloadUrl || (!localTest && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession));
+        if (browserContext) {
+          const context = await resolveGenomeContextSequence();
+          request = {
+            mode: 'predict', complete_genome: true, sequence,
+            genome_context: context.sequence,
+            reverse_complementary: strandMode === 'both',
+          };
+          bases = sequence.length;
+          referenceName = context.referenceName;
+        } else if (usesNcbiContext && contextCatalog?.kind === 'catalog') {
           request = {
             mode: 'predict', complete_genome: true, sequence,
             ncbi_accession: contextCatalog.accession,
@@ -599,12 +681,15 @@ export default function PrototypePredictionWorkbench({
           bases = sequence.length;
           referenceName = contextCatalog.accession;
         } else if (usesCachedCgr) {
-          if (contextCatalog?.kind !== 'catalog' || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(contextCatalog.accession)) {
+          const referenceAccession = contextCatalog?.kind === 'catalog'
+            ? contextCatalog.predictionAccession || contextCatalog.accession
+            : '';
+          if (!/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(referenceAccession)) {
             throw new Error('Select a versioned GCF or GCA accession.');
           }
           request = {
             mode: 'predict', complete_genome: true, sequence,
-            reference_accession: contextCatalog.accession,
+            reference_accession: referenceAccession,
             reverse_complementary: strandMode === 'both',
           };
           bases = sequence.length;
@@ -631,7 +716,12 @@ export default function PrototypePredictionWorkbench({
           if (!contextCatalog || contextCatalog.kind !== 'catalog' || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(contextCatalog.accession)) {
             throw new Error('Select a versioned GCF or GCA accession.');
           }
-          request[contextCatalog.source === 'ncbi' ? 'ncbi_accession' : 'reference_accession'] = contextCatalog.accession;
+          if (contextCatalog.downloadUrl || (!localTest && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession)) {
+            request.genome_context = (await resolveGenomeContextSequence()).sequence;
+          } else {
+            const referenceAccession = contextCatalog.predictionAccession || contextCatalog.accession;
+            request[contextCatalog.source === 'ncbi' ? 'ncbi_accession' : 'reference_accession'] = referenceAccession;
+          }
         } else {
           request.genome_context = (await resolveGenomeContextSequence()).sequence;
         }
@@ -670,7 +760,17 @@ export default function PrototypePredictionWorkbench({
       sessionStorage.setItem('rapptor-prediction-job', JSON.stringify(entry));
       router.push(`/predict/task/${encodeURIComponent(created.job_id)}`);
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : !preview ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
+      const errorCode = cause instanceof Error && typeof (cause as { code?: unknown }).code === 'string'
+        ? (cause as unknown as { code: string }).code
+        : null;
+      const referencePreparationFailed = usesNcbiContext
+        && Boolean(errorCode && /^(NCBI_|REFERENCE_|CACHE_)/.test(errorCode));
+      if (referencePreparationFailed) {
+        setReferenceError('This NCBI reference is temporarily unavailable. Upload the complete genome FASTA to continue.');
+        setFormError(null);
+      } else {
+        setFormError(cause instanceof Error ? cause.message : !preview ? 'Prediction could not be queued.' : 'The prototype run could not be prepared.');
+      }
       setSubmitting(false);
       if (!preview) { setTurnstileToken(''); setVerificationRevision((value) => value + 1); }
     }
@@ -707,16 +807,18 @@ export default function PrototypePredictionWorkbench({
         : !preview
           ? { title: 'Ready to queue', detail: 'The validated input and matching CGR genome will be sent to the configured RAPPTOR prediction service.' }
           : { title: 'Ready to preview', detail: PORTAL_COPY.demoNotice };
-  const submitLabel = submitting ? (!preview ? 'Queuing…' : 'Preparing…') : (!preview ? 'Queue prediction' : 'Preview illustrative result');
+  const submitLabel = submitting
+    ? browserDownload ? 'Downloading…' : (!preview ? 'Queuing…' : 'Preparing…')
+    : (!preview ? 'Queue prediction' : 'Preview illustrative result');
   const inputPrivacyCopy = !preview
     ? 'The selected input is sent to the configured prediction service only after you queue the task.'
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
   const contextPrivacyCopy = !preview
     ? usesNcbiContext
-      ? 'NCBI · External reference. A cached reference is reused when available. Preparing a new reference may take longer.'
+      ? 'NCBI · External reference. The browser downloads and checks the reference before submission.'
       : usesCachedCgr
-      ? 'Only the exact accession version is submitted. A matching cached reference is reused; first use may take longer.'
-      : 'The complete reference genome is sent to the prediction service to calculate its CGR.'
+        ? 'Only the exact accession version is submitted. A matching cached reference is reused; first use may take longer.'
+      : 'The browser downloads the complete reference genome and sends its sequence to the prediction service for CGR.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 
   return (
@@ -739,6 +841,12 @@ export default function PrototypePredictionWorkbench({
                   <div><strong>{inputCatalog.displayName}</strong><span>{inputCatalog.kind === 'catalog' ? inputCatalog.accession : inputCatalog.fileName}{inputCatalog.totalLength ? ` · ${inputCatalog.totalLength.toLocaleString()} bp` : ''}</span><span>Complete genome FASTA · {PORTAL_TERMS.sequenceScan}</span></div>
                   <button type="button" onClick={clearPrimaryInput}>Remove input</button>
                 </div>
+              ) : primaryKind === 'upload' && uploadedInput.file ? (
+                <div className={styles.selection} aria-label="Selected uploaded FASTA">
+                  <div><strong>{uploadedInput.file.name}</strong><span>{formatPrototypeBytes(uploadedInput.file.size)} · {uploadedInput.loading ? 'Reading file metadata…' : parsedDescription || 'FASTA could not be read'}</span><span>FASTA file{inferredMode ? ` · ${inferredLabel(inferredMode)}` : ''}</span></div>
+                  <button type="button" onClick={() => primaryFileRef.current?.click()}>Replace FASTA</button>
+                  <button type="button" onClick={clearPrimaryInput}>Remove input</button>
+                </div>
               ) : (
                 <>
                   <label className={styles.fieldLabel} htmlFor="prototype-sequence-input">Raw DNA or FASTA</label>
@@ -748,18 +856,17 @@ export default function PrototypePredictionWorkbench({
               )}
               <div className={styles.exampleRow} aria-label="Examples">
                 <span>Try an example</span>
-                <div><button type="button" onClick={loadFocusedExample} disabled={exampleLoading}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample} disabled={exampleLoading}>Use E. coli K-12 genome example</button></div>
+                <div><button type="button" onClick={loadFocusedExample} disabled={exampleLoading}>Use 100 bp example</button><button type="button" onClick={loadGenomeExample} disabled={exampleLoading}>{exampleLoading ? <span className={styles.downloadSpinner} aria-hidden="true" /> : null}Use E. coli K-12 genome example</button></div>
               </div>
               <p className={styles.localNote}>E. coli K-12 MG1655 · {REAL_PREDICTION_REFERENCE.accession} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp. The 100 bp example is {REAL_PREDICTION_REFERENCE.sequenceId}:100001–100100 (+), a reference-genome fragment.</p>
               {needsExampleReference && exampleLoading ? <p role="status">Loading and verifying the complete reference genome…</p> : null}
               {needsExampleReference && !exampleLoading && !exampleError && verifiedExample.current ? <p className={styles.localNote} role="status">Genome ready: {REAL_PREDICTION_REFERENCE.sequenceId} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp.</p> : null}
               {needsExampleReference && exampleError ? <div role="alert"><p>{exampleError}</p><button type="button" onClick={() => void prepareExampleReference()}>Retry reference download</button></div> : null}
-              <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
-                <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />{uploadedInput.file ? 'Replace FASTA' : 'Upload FASTA'}</button>
-                {uploadedInput.file ? <button type="button" onClick={clearPrimaryInput}>Remove input</button> : null}
-                <span className={styles.fileMeta}>{uploadedInput.loading ? 'Reading file metadata…' : uploadedInput.file ? `${uploadedInput.file.name} · ${formatPrototypeBytes(uploadedInput.file.size)}` : `FASTA (.fa, .fasta, .fna, optionally .gz) · max ${genomeLimitLabel}`}</span>
-                <input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} />
-              </div>
+              {primaryKind !== 'upload' || !uploadedInput.file ? <div className={`${styles.fileAction} ${styles.primaryFileAction}`}>
+                <button type="button" onClick={() => primaryFileRef.current?.click()}><UploadFileRoundedIcon aria-hidden="true" fontSize="small" />Upload FASTA</button>
+                <span className={styles.fileMeta}>FASTA (.fa, .fasta, .fna, optionally .gz) · max {genomeLimitLabel}</span>
+              </div> : null}
+              <input ref={primaryFileRef} className={styles.hiddenInput} hidden type="file" accept=".fa,.fasta,.fna,.fa.gz,.fasta.gz,.fna.gz" onChange={handlePrimaryFile} />
               {uploadedInput.error ? <p className={styles.fileError}>{uploadedInput.error}</p> : null}
             </div>
 
@@ -789,11 +896,12 @@ export default function PrototypePredictionWorkbench({
                   ) : null}
                   <CatalogPicker idPrefix="prototype-context-catalog" selected={contextCatalog} onSelect={selectContextCatalog} onUploadInstead={() => { selectContextKind('upload'); requestAnimationFrame(() => contextFileRef.current?.click()); }} allowNcbi={!preview} />
                   {usesCachedCgr || usesNcbiContext ? <p className={styles.localNote}>{contextPrivacyCopy}</p> : null}
+                  {referenceError ? <p className={styles.catalogError} role="alert">{referenceError}</p> : null}
                 </div> : <div className={styles.contextUploadSource} role="group" aria-label="FASTA genome context">
                   <p className={styles.sourceHeading}>Upload a complete genome FASTA</p>
                   <div className={styles.expectedContextPrompt}>
-                    <div><span>NCBI FASTA example</span><strong>E. coli K-12 MG1655</strong><small>{UPLOAD_PREDICTION_REFERENCE.accession} · {UPLOAD_PREDICTION_REFERENCE.length.toLocaleString()} bp</small></div>
-                    <button type="button" disabled={contextUpload.loading} onClick={() => void loadUploadExample()}>Load NCBI .2 FASTA example</button>
+                    <div><span>Published FASTA example</span><strong>E. coli K-12 MG1655</strong><small>{REAL_PREDICTION_REFERENCE.accession} · {REAL_PREDICTION_REFERENCE.length.toLocaleString()} bp</small></div>
+                    <button type="button" disabled={contextUpload.loading} onClick={() => void loadUploadExample()}>{contextUpload.loading ? <span className={styles.downloadSpinner} aria-hidden="true" /> : null}Load published FASTA example</button>
                   </div>
                   {contextUpload.loading ? <p role="status">Loading and checking genome FASTA…</p> : null}
                   <div className={styles.fileAction}>
@@ -828,7 +936,10 @@ export default function PrototypePredictionWorkbench({
           </div> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
-            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (needsExampleReference && exampleLoading) || Boolean(submissionBlock) || (!preview && !localTest && !turnstileToken)}>{submitLabel}</button>
+            <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (needsExampleReference && exampleLoading) || Boolean(submissionBlock) || (!preview && !localTest && !turnstileToken)}>
+              {browserDownload ? <span className={styles.downloadSpinner} aria-hidden="true" /> : null}
+              {submitLabel}
+            </button>
           </div>
         </form>
       </section>

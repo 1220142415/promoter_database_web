@@ -172,6 +172,32 @@ describe('remote pilot asset proxy', () => {
     lookup.mockRestore();
   });
 
+  it('proxies a planned staged reference for browser prediction fallback', async () => {
+    process.env.HF_STORAGE_BASE_URL = 'https://example.test/objects';
+    const repository = await import('@/features/genomes/repository');
+    const lookup = vi.spyOn(repository.genomeCatalogRepository, 'getByAccession').mockResolvedValue({
+      releaseId: 'gtdb-r214-2026-08-13',
+      assetBase: null,
+      genome: {} as never,
+      storage: null,
+      resourceStatus: 'staged',
+      plannedAssets: { reference: 'https://huggingface.co/datasets/example/resolve/main/GCA_000411415.1_genomic.fna.gz' } as never,
+    });
+    const fetchMock = vi.fn(async () => new Response('>chromosome\nACGT\n', {
+      headers: { 'Content-Type': 'text/plain', 'Content-Length': '19' },
+    }));
+    global.fetch = fetchMock;
+
+    const response = await GET(new Request('http://localhost/test'), context('reference.fa.gz'));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('>chromosome\nACGT\n');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://huggingface.co/datasets/example/resolve/main/GCA_000411415.1_genomic.fna.gz',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    lookup.mockRestore();
+  });
+
   it('translates packed logical ranges and rewrites response headers', async () => {
     process.env.HF_STORAGE_BASE_URL = 'https://example.test';
     const packed = {

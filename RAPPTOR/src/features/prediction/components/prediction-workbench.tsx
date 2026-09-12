@@ -39,6 +39,8 @@ type JobState = {
   model_version?: string;
   progress?: JobProgress;
   submitted_at?: string;
+  started_at?: string;
+  ended_at?: string;
   queue?: PredictionQueueStatus;
   artifacts_expires_at?: string | null;
   result?: { artifacts?: JobArtifact[] };
@@ -262,6 +264,9 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
     stage: job?.status === 'succeeded' ? 'complete' : reportedProgress?.stage || job?.status || 'queued',
     percent: reportedProgress?.percent ?? job?.progress?.percent ?? null,
     message: progressMessage(job),
+    submittedAt: job?.submitted_at,
+    startedAt: job?.started_at,
+    endedAt: job?.ended_at,
     contig: reportedProgress?.contig,
     strand: reportedProgress?.strand === '+' || reportedProgress?.strand === '-' ? reportedProgress.strand : undefined,
     windows: reportedProgress?.windows ?? summary?.window_count,

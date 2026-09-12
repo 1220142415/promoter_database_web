@@ -166,12 +166,11 @@ describe('prototype prediction workbench', () => {
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
     expect(screen.queryByText('How was this analysis selected?')).not.toBeInTheDocument();
     expect(screen.queryByText('Parameters and summary')).not.toBeInTheDocument();
-    const stride = screen.getByRole('spinbutton', { name: 'Stride' });
-    expect(stride).toHaveValue(1);
+    const stride = screen.getByRole('combobox', { name: 'Stride' });
+    expect(stride).toHaveValue('1');
     expect(stride).toBeEnabled();
     expect(screen.getByText(/A 100 bp input contains one window.*does not change this single score/)).toBeInTheDocument();
-    await user.clear(stride);
-    await user.type(stride, '37');
+    await user.selectOptions(stride, '50');
     expect(screen.getByText('Choose the complete reference genome used for CGR in Step 2.')).toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Preview illustrative result' });
     expect(submit).toBeEnabled();
@@ -193,7 +192,7 @@ describe('prototype prediction workbench', () => {
     expect(stored).not.toContain('"sequence"');
     expect(stored).not.toContain('focused_candidate_100bp');
     expect(stored).not.toContain('"topK"');
-    expect(JSON.parse(stored)).toMatchObject({ parameters: { strideBases: 37 }, modelSpec: { strideBases: 37 } });
+    expect(JSON.parse(stored)).toMatchObject({ parameters: { strideBases: 50 }, modelSpec: { strideBases: 50 } });
   });
 
   it('selects the E. coli reference for the genome example and replaces the editor with a compact card', async () => {
@@ -203,8 +202,8 @@ describe('prototype prediction workbench', () => {
     expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
     expect(screen.getAllByText(/Escherichia coli str\. K-12/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
-    expect(screen.getByRole('spinbutton', { name: 'Stride' })).toHaveValue(1);
-    expect(screen.getByText(/Bases between consecutive 100 bp windows\. Enter an integer from 1 to 100\./)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Stride' })).toHaveValue('1');
+    expect(screen.getByText('Bases between consecutive 100 bp windows. Choose 1, 10, 50, 100 bp.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Raw DNA or FASTA')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Selected genome example')).toHaveTextContent('GCF_000005845.1');
     expect(screen.getByRole('group', { name: 'Complete reference source' })).toHaveTextContent('Search reference genomeUpload complete genome FASTA');
@@ -307,17 +306,14 @@ describe('prototype prediction workbench', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it.each(['0', '101', '1.5'])('rejects invalid scan stride %s', async (value) => {
+  it('offers only the supported scan stride choices', async () => {
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    const stride = screen.getByRole('spinbutton', { name: 'Stride' });
-    await user.clear(stride);
-    await user.type(stride, value);
-    expect(screen.getByText('Enter an integer from 1 to 100.')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Preview illustrative result' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Stride must be an integer from 1 to 100');
-    expect(push).not.toHaveBeenCalled();
+    const stride = screen.getByRole('combobox', { name: 'Stride' });
+    expect([...stride.querySelectorAll('option')].map((option) => option.value)).toEqual(['1', '10', '50', '100']);
+    await user.selectOptions(stride, '50');
+    expect(stride).toHaveValue('50');
   });
 
   it.each(['cached catalog', 'example accession', 'uploaded genome'] as const)('submits short input with a %s context', async (source) => {
@@ -364,9 +360,8 @@ describe('prototype prediction workbench', () => {
     expect(threshold).toBeEnabled();
     await user.clear(threshold);
     await user.type(threshold, '0.72');
-    const stride = screen.getByRole('spinbutton', { name: 'Stride' });
-    await user.clear(stride);
-    await user.type(stride, '37');
+    const stride = screen.getByRole('combobox', { name: 'Stride' });
+    await user.selectOptions(stride, '50');
     await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'a'.repeat(32)}`));
@@ -386,7 +381,7 @@ describe('prototype prediction workbench', () => {
     expect(ticketRequest).toMatchObject({ bases: 100, mode: 'predict' });
     expect(jobRequest).not.toHaveProperty('score_cutoff');
     expect(jobRequest).not.toHaveProperty('stride');
-    expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).toMatchObject({ cutoff: .72, strideBases: 37 });
+    expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).toMatchObject({ cutoff: .72, strideBases: 50 });
   });
 
   it('falls back to the same-origin prediction asset when a Hugging Face reference is blocked', async () => {
@@ -447,9 +442,8 @@ describe('prototype prediction workbench', () => {
     await user.type(screen.getByRole('combobox', { name: 'Accession, organism, or strain' }), 'GCF_000012685.1');
     await user.click(screen.getByRole('button', { name: 'Search catalog' }));
     await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
-    const stride = screen.getByRole('spinbutton', { name: 'Stride' });
-    await user.clear(stride);
-    await user.type(stride, '37');
+    const stride = screen.getByRole('combobox', { name: 'Stride' });
+    await user.selectOptions(stride, '50');
     const cutoff = screen.getByRole('spinbutton', { name: /^Export cutoff/ });
     await user.clear(cutoff);
     await user.type(cutoff, '0.81');
@@ -457,7 +451,7 @@ describe('prototype prediction workbench', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'d'.repeat(32)}`));
     expect(jobRequest).toMatchObject({
       mode: 'genome_scan', fasta: `>inline_sequence\n${scanSequence}`,
-      stride: 37,
+      stride: 50,
       score_cutoff: .81, output_formats: ['bigwig', 'parquet', 'json'],
     });
     expect(jobRequest).not.toHaveProperty('sequence');
@@ -467,9 +461,9 @@ describe('prototype prediction workbench', () => {
   });
 
   it.each([
-    { label: 'unsupported peaks', supportsPeaks: false, requiresStride1: true, stride: 37, peaks: false },
+    { label: 'unsupported peaks', supportsPeaks: false, requiresStride1: true, stride: 50, peaks: false },
     { label: 'dense peaks', supportsPeaks: true, requiresStride1: true, stride: 1, peaks: true },
-    { label: 'sampled peaks', supportsPeaks: true, requiresStride1: false, stride: 37, peaks: true },
+    { label: 'sampled peaks', supportsPeaks: true, requiresStride1: false, stride: 50, peaks: true },
   ])('reuses the CGR input and submits the correct scan outputs ($label)', async ({ supportsPeaks, requiresStride1, stride: selectedStride, peaks }) => {
     let jobRequest: Record<string, unknown> | null = null;
     let ticketRequest: Record<string, unknown> | null = null;
@@ -495,9 +489,8 @@ describe('prototype prediction workbench', () => {
 
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
-    const stride = screen.getByRole('spinbutton', { name: 'Stride' });
-    await user.clear(stride);
-    await user.type(stride, String(selectedStride));
+    const stride = screen.getByRole('combobox', { name: 'Stride' });
+    await user.selectOptions(stride, String(selectedStride));
     const cutoff = screen.getByRole('spinbutton', { name: peaks ? /^Promoter cutoff/ : /^Export cutoff/ });
     if (peaks) {
       expect(cutoff).toBeEnabled();

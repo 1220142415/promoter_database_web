@@ -364,7 +364,6 @@ export default function PrototypePredictionWorkbench({
     || (primaryKind !== 'inline' && contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi'
-    && !contextCatalog.downloadUrl
     && (localTest || contextCatalog.accession !== REAL_PREDICTION_REFERENCE.accession);
   const usesNcbiContext = contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.source === 'ncbi';
@@ -717,7 +716,7 @@ export default function PrototypePredictionWorkbench({
           if (!contextCatalog || contextCatalog.kind !== 'catalog' || !/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(contextCatalog.accession)) {
             throw new Error('Select a versioned GCF or GCA accession.');
           }
-          if (contextCatalog.downloadUrl || (!localTest && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession)) {
+          if (!localTest && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession) {
             request.genome_context = (await resolveGenomeContextSequence()).sequence;
           } else {
             const referenceAccession = contextCatalog.predictionAccession || contextCatalog.accession;
@@ -809,17 +808,19 @@ export default function PrototypePredictionWorkbench({
           ? { title: 'Ready to queue', detail: 'The validated input and matching CGR genome will be sent to the configured RAPPTOR prediction service.' }
           : { title: 'Ready to preview', detail: PORTAL_COPY.demoNotice };
   const submitLabel = submitting
-    ? browserDownload ? 'Downloading…' : (!preview ? 'Queuing…' : 'Preparing…')
+    ? browserDownload ? 'Downloading…'
+      : !preview && usesNcbiContext ? 'Preparing NCBI reference…'
+        : (!preview ? 'Queuing…' : 'Preparing…')
     : (!preview ? 'Queue prediction' : 'Preview illustrative result');
   const inputPrivacyCopy = !preview
     ? 'The selected input is sent to the configured prediction service only after you queue the task.'
     : 'The session stores a checksum, lengths, and generic record IDs—not DNA or FASTA headers.';
   const contextPrivacyCopy = !preview
-    ? usesNcbiContext
-      ? 'NCBI · External reference. The browser downloads and checks the reference before submission.'
+      ? usesNcbiContext
+      ? 'NCBI · External reference. The server checks its CGR cache first and downloads this exact assembly only when it is missing.'
       : usesCachedCgr
         ? 'Only the exact accession version is submitted. A matching cached reference is reused; first use may take longer.'
-      : 'The browser downloads the complete reference genome and sends its sequence to the prediction service for CGR.'
+      : 'The server checks the exact reference cache first and downloads the genome only when it is missing.'
     : 'Genome FASTA stays in this browser; sessionStorage receives only metadata and a checksum.';
 
   return (

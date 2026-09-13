@@ -291,11 +291,11 @@ class ScanArtifactWriter:
                         promoter_id = f"rapptor_promoter_{self._peak_counter:09d}"
                         anchor_1based = anchor + 1
                         if strand == "+":
-                            display_start = anchor_1based - PROMOTER_DISPLAY_UPSTREAM_LENGTH
-                            display_end = anchor_1based + PROMOTER_DISPLAY_DOWNSTREAM_LENGTH
+                            display_start = anchor_1based - PROMOTER_DISPLAY_UPSTREAM_LENGTH + 1
+                            display_end = anchor_1based + PROMOTER_DISPLAY_DOWNSTREAM_LENGTH + 1
                         else:
-                            display_start = anchor_1based - PROMOTER_DISPLAY_DOWNSTREAM_LENGTH
-                            display_end = anchor_1based + PROMOTER_DISPLAY_UPSTREAM_LENGTH
+                            display_start = anchor_1based - PROMOTER_DISPLAY_DOWNSTREAM_LENGTH + 1
+                            display_end = anchor_1based + PROMOTER_DISPLAY_UPSTREAM_LENGTH + 1
                         display_available = display_start >= 1 and display_end <= sequence_length
                         if not display_available:
                             display_start = anchor_1based

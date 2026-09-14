@@ -204,3 +204,9 @@
   .expectedContextPrompt { align-items: stretch; flex-direction: column; }
   .expectedContextPrompt button { width: 100%; }
 }
+
+.helpLink { margin: 8px 0 0; font-size: 13px; }
+.helpLink a { color: var(--teal-dark); }
+.inlineHelp { margin: 10px 0; color: var(--ink-soft); font-size: 13px; }
+.inlineHelp summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.inlineHelp p { margin: 6px 0 0; line-height: 1.5; }

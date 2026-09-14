@@ -38,6 +38,8 @@ import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '@/components/portal-terminology';
+import Link from 'next/link';
+import HelpTip from '../components/help-tip';
 import styles from './prototype-workbench.module.css';
 import { downloadBrowserFasta, findBrowserNcbiReference } from './browser-references';
 
@@ -835,10 +837,10 @@ export default function PrototypePredictionWorkbench({
           </div>
 
           <fieldset ref={primaryStepRef} className={styles.stepCard} tabIndex={-1}>
-            <legend><span>1</span><div>Add a sequence or genome<small>Paste raw DNA or FASTA, or choose a FASTA file</small></div></legend>
+            <legend><span>1</span><div>Add a sequence or genome<HelpTip label="analysis type" text="Use a 100 bp sequence for one short-sequence prediction. Use a complete genome FASTA to scan many windows." /><small>Paste raw DNA or FASTA, or choose a FASTA file</small></div></legend>
             <div className={styles.pasteSource}>
               {primaryKind === 'catalog' && inputCatalog ? (
-                <div className={styles.selection} aria-label="Selected genome example">
+              <div className={styles.selection} aria-label="Selected genome example">
                   <div><strong>{inputCatalog.displayName}</strong><span>{inputCatalog.kind === 'catalog' ? inputCatalog.accession : inputCatalog.fileName}{inputCatalog.totalLength ? ` · ${inputCatalog.totalLength.toLocaleString()} bp` : ''}</span><span>Complete genome FASTA · {PORTAL_TERMS.sequenceScan}</span></div>
                   <button type="button" onClick={clearPrimaryInput}>Remove input</button>
                 </div>
@@ -878,7 +880,7 @@ export default function PrototypePredictionWorkbench({
 
           {inferredMode ? (
             <fieldset ref={contextStepRef} className={styles.stepCard} tabIndex={-1}>
-              <legend><span>2</span><div>{PORTAL_TERMS.genomeContextCgr}<small>Complete reference genome used to build the CGR</small></div></legend>
+              <legend><span>2</span><div>{PORTAL_TERMS.genomeContextCgr}<HelpTip label="genome context" text="Choose the complete reference genome that matches your sequence. RAPPTOR uses it as the model's genomic background." /><small>Complete reference genome used to build the CGR</small></div></legend>
               <p className={styles.localNote}>{inferredMode === 'candidate'
                 ? 'Select the reference assembly used to build the model\'s CGR context. The site does not verify that the 100 bp sequence belongs to this assembly.'
                 : 'Step 1 defines the sequence region to scan. Choose the complete reference genome used to build its CGR; the scanned region may be shorter than that genome.'}</p>
@@ -922,9 +924,9 @@ export default function PrototypePredictionWorkbench({
             <fieldset ref={parameterStepRef} className={styles.stepCard} tabIndex={-1}>
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
-                <label><span>Strands</span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
-                <label><span>{automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel}</span><input type="number" min="0" max="1" step="0.01" disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPromoters ? strideBases === 1 ? 'Smoothed local maxima above this cutoff are reported as promoter predictions.' : `All raw-score windows above this cutoff are reported as promoter predictions at ${strideBases} bp sampling resolution.` : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 promoter predictions with this cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
-                <label><span>{PORTAL_TERMS.stride}</span><select value={String(strideBases)} aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. Choose a stride from ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Choose ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp.` : `Choose a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES} bp.`}</small></label>
+                <label><span>Strands<HelpTip label="strands" text="Choose Both strands when the sequence direction is unknown. Choose Forward only when you want to score the entered direction." /></span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
+                <label><span>{automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel}<HelpTip label="cutoff" text="Sets which scan results are shown as promoter predictions. Lower values show more candidates; higher values show fewer." /></span><input type="number" min="0" max="1" step="0.01" aria-label={automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel} disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPromoters ? strideBases === 1 ? 'Smoothed local maxima above this cutoff are reported as promoter predictions.' : `All raw-score windows above this cutoff are reported as promoter predictions at ${strideBases} bp sampling resolution.` : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 promoter predictions with this cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
+                <label><span>{PORTAL_TERMS.stride}<HelpTip label="stride" text="Distance between sampled windows. A larger stride scans faster but can miss narrow signals." /></span><select value={String(strideBases)} aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. Choose a stride from ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Choose ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp.` : `Choose a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES} bp.`}</small></label>
               </div>
             </fieldset>
           ) : null}

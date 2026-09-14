@@ -1,0 +1,5 @@
+.root { position: relative; display: inline-flex; vertical-align: middle; margin-left: 6px; }
+.button { width: 17px; height: 17px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: transparent; color: var(--muted); font: 800 11px/15px Arial, sans-serif; cursor: help; }
+.button:hover, .button:focus-visible { border-color: var(--teal-dark); color: var(--teal-dark); outline: 2px solid color-mix(in srgb, var(--teal) 28%, transparent); outline-offset: 2px; }
+.tooltip { position: absolute; z-index: 20; left: 0; bottom: calc(100% + 8px); display: block; width: min(280px, calc(100vw - 32px)); transform: none; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--ink); color: white; padding: 9px 11px; font: 500 12px/1.45 Arial, sans-serif; letter-spacing: normal; text-transform: none; white-space: normal; text-align: left; box-shadow: 0 8px 24px rgb(0 0 0 / 16%); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .tooltip { transition: none; } }

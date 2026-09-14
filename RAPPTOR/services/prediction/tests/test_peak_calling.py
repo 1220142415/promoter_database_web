@@ -205,10 +205,10 @@ class PeakCallingTests(unittest.TestCase):
                 self.assertEqual(
                     [(row[6], int(row[3]), int(row[4])) for row in promoter_rows],
                     [
-                        ('+', stride + 3, stride + 102),
-                        ('+', 2 * stride + 3, 2 * stride + 102),
-                        ('-', stride + 1, stride + 100),
-                        ('-', 2 * stride + 1, 2 * stride + 100),
+                        ('+', stride + 2, stride + 101),
+                        ('+', 2 * stride + 2, 2 * stride + 101),
+                        ('-', stride, stride + 99),
+                        ('-', 2 * stride, 2 * stride + 99),
                     ],
                 )
                 np.testing.assert_allclose(

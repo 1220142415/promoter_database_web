@@ -374,7 +374,8 @@ export default function PrototypePredictionWorkbench({
     || (primaryKind !== 'inline' && contextKind === 'catalog' && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession);
   const usesCachedCgr = contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.source !== 'ncbi'
-    && (localTest || contextCatalog.accession !== REAL_PREDICTION_REFERENCE.accession);
+    && (!localTest || !contextCatalog.downloadUrl)
+    && Boolean(contextCatalog.predictionAccession || contextCatalog.accession);
   const usesNcbiContext = contextKind === 'catalog'
     && contextCatalog?.kind === 'catalog' && contextCatalog.source === 'ncbi';
   const needsExampleReference = usesExampleReference && !usesCachedCgr;
@@ -701,7 +702,22 @@ export default function PrototypePredictionWorkbench({
         const sequence = parsedInput.records[0].normalizedSequence;
         const browserContext = contextCatalog?.kind === 'catalog'
           && Boolean(contextCatalog.downloadUrl || (!localTest && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession));
-        if (browserContext) {
+        if (usesCachedCgr) {
+          const referenceAccession = contextCatalog?.kind === 'catalog'
+            ? contextCatalog.predictionAccession || contextCatalog.accession
+            : '';
+          if (!/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(referenceAccession)) {
+            throw new Error('Select a versioned GCF or GCA accession.');
+          }
+          request = {
+            mode: 'predict', complete_genome: true, sequence,
+            reference_accession: referenceAccession,
+            strand_mode: strandMode,
+            reverse_complementary: legacyReverseComplementary(strandMode),
+          };
+          bases = sequence.length;
+          referenceName = contextCatalog?.accession || referenceAccession;
+        } else if (browserContext) {
           const context = await resolveGenomeContextSequence();
           request = {
             mode: 'predict', complete_genome: true, sequence,
@@ -715,21 +731,6 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             ncbi_accession: contextCatalog.accession,
-            strand_mode: strandMode,
-            reverse_complementary: legacyReverseComplementary(strandMode),
-          };
-          bases = sequence.length;
-          referenceName = contextCatalog.accession;
-        } else if (usesCachedCgr) {
-          const referenceAccession = contextCatalog?.kind === 'catalog'
-            ? contextCatalog.predictionAccession || contextCatalog.accession
-            : '';
-          if (!/^GC[AF]_\d{9}\.[1-9]\d{0,3}$/.test(referenceAccession)) {
-            throw new Error('Select a versioned GCF or GCA accession.');
-          }
-          request = {
-            mode: 'predict', complete_genome: true, sequence,
-            reference_accession: referenceAccession,
             strand_mode: strandMode,
             reverse_complementary: legacyReverseComplementary(strandMode),
           };

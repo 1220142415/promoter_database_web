@@ -92,9 +92,10 @@ export async function POST(request: Request) {
   let submissionBases = 0;
 
   if ('ncbi_accession' in submission || ('reference_accession' in submission && !localTest)) {
+    let referenceSource: 'catalog' | 'ncbi' = 'catalog';
     try {
-      const source = 'ncbi_accession' in submission ? 'ncbi' : 'catalog';
-      const referenceField = source === 'ncbi' ? 'ncbi_accession' : 'reference_accession';
+      referenceSource = 'ncbi_accession' in submission ? 'ncbi' : 'catalog';
+      const referenceField = referenceSource === 'ncbi' ? 'ncbi_accession' : 'reference_accession';
       const accession = ncbiAccession(submission[referenceField]);
       let bases: number;
       if (mode === 'predict') {
@@ -131,13 +132,16 @@ export async function POST(request: Request) {
         throw new NcbiReferenceError('INVALID_TICKET', 'This ticket is invalid, too close to expiry, or already used for a download. Verify again and resubmit.', 401);
       }
       const timeout = withTimeout(request.signal, 40_000);
-      try { await preparePredictionReference(accession, source, timeout.signal); }
+      try { await preparePredictionReference(accession, referenceSource, timeout.signal); }
       finally { timeout.cleanup(); }
       submission = { ...submission, reference_accession: accession };
       delete submission.ncbi_accession;
       const encoded = new TextEncoder().encode(JSON.stringify(submission));
       body = encoded.buffer;
-    } catch (cause) { return ncbiErrorResponse(cause); }
+    } catch (cause) {
+      if (cause instanceof NcbiReferenceError || referenceSource === 'ncbi') return ncbiErrorResponse(cause);
+      return Response.json({ error: { code: 'CACHE_SERVICE_UNAVAILABLE', message: 'Reference cache is temporarily unavailable. Please try again.' } }, { status: 503 });
+    }
   }
   const now = new Date();
   const database = auth ? usageDatabase() : null;

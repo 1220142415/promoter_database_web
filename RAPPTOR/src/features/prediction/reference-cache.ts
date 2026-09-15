@@ -17,13 +17,24 @@ async function cacheRequest(path: string, signal: AbortSignal, init: RequestInit
   const base = process.env.RAPPTOR_PREDICTION_SERVICE_URL?.trim().replace(/\/+$/, '');
   const secret = process.env.RAPPTOR_PREDICTION_SERVICE_SECRET;
   if (!base || !secret) throw new NcbiReferenceError('CACHE_SERVICE_UNAVAILABLE', 'Reference preparation is not configured.', 503);
-  const response = await fetch(`${base}/v1/reference-cache/${path}`, {
-    ...init, signal, redirect: 'error', cache: 'no-store',
-    headers: { ...init.headers, Authorization: `Bearer ${secret}` },
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new NcbiReferenceError('CACHE_SERVICE_UNAVAILABLE', 'Reference preparation is temporarily unavailable. Please try again later.', 503);
+  const attempts = (init.method || 'GET').toUpperCase() === 'GET' ? 3 : 1;
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      response = await fetch(`${base}/v1/reference-cache/${path}`, {
+        ...init, signal, redirect: 'error', cache: 'no-store',
+        headers: { ...init.headers, Authorization: `Bearer ${secret}` },
+      });
+      if (response.ok || response.status < 500) break;
+      await response.body?.cancel();
+    } catch {
+      if (signal.aborted) break;
+    }
+    if (attempt + 1 < attempts) await wait(attempt ? 750 : 250, undefined, { signal });
+  }
+  if (!response?.ok) {
+    await response?.body?.cancel();
+    throw new NcbiReferenceError('CACHE_SERVICE_UNAVAILABLE', 'Reference cache is temporarily unavailable. Please try again.', 503);
   }
   const state = JSON.parse(new TextDecoder().decode(await boundedBytes(response.body, 8192))) as CacheState;
   if (!state || !['ready', 'missing', 'preparing', 'invalid', 'failed'].includes(state.status)

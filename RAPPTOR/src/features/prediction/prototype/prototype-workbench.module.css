@@ -36,6 +36,14 @@
 .formHeading > div { display: grid; gap: 4px; }
 .formHeading > div > span { color: var(--teal-dark); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .formHeading h2 { margin: 0; font: 600 27px/1.2 Georgia, "Times New Roman", serif; }
+.serverStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 7px; padding: 10px 13px; background: #f8faf9; color: var(--muted); }
+.serverStatus > span { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #9aa5a2; }
+.serverStatus strong { color: var(--ink); font-size: 12px; }
+.serverStatus small { font-size: 10px; }
+.serverStatus button { margin-left: auto; border: 0; background: transparent; color: var(--teal-dark); font-size: 10px; font-weight: 750; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.serverStatus[data-status="idle"] > span { background: #24815d; box-shadow: 0 0 0 3px rgba(36, 129, 93, .12); }
+.serverStatus[data-status="busy"] > span { background: #d18a23; box-shadow: 0 0 0 3px rgba(209, 138, 35, .14); }
+.serverStatus[data-status="offline"] > span { background: #b84b3e; box-shadow: 0 0 0 3px rgba(184, 75, 62, .12); }
 .inlineActions button,
 .searchRow button,
 .catalogError button,

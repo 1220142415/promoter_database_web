@@ -41,6 +41,7 @@ import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '
 import HelpTip from '../components/help-tip';
 import styles from './prototype-workbench.module.css';
 import { downloadBrowserFasta, findBrowserNcbiReference } from './browser-references';
+import type { PredictionServerStatus } from '../service-status';
 
 type PrimarySourceKind = 'inline' | 'upload' | 'catalog';
 type ContextSourceKind = 'catalog' | 'upload';
@@ -299,6 +300,7 @@ export default function PrototypePredictionWorkbench({
   maxGenomeBytes = DEFAULT_PREDICTION_MAX_REQUEST_BYTES,
   localTest = false,
   preview = false,
+  serverStatus,
   service = { available: false, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '', reason: 'Prediction service is not configured.' },
 }: {
   modelVersion?: string;
@@ -306,6 +308,7 @@ export default function PrototypePredictionWorkbench({
   maxGenomeBytes?: number;
   localTest?: boolean;
   preview?: boolean;
+  serverStatus?: PredictionServerStatus;
   service?: QueuedPredictionCapabilities;
 }) {
   const router = useRouter();
@@ -880,6 +883,12 @@ export default function PrototypePredictionWorkbench({
           <div className={styles.formHeading}>
             <div><span>Automatic analysis</span><h2>Sequence or genome input</h2></div>
           </div>
+          {!preview && serverStatus ? <div className={styles.serverStatus} data-status={serverStatus.status} role="status" aria-live="polite">
+            <span aria-hidden="true" />
+            <strong>Prediction server: {serverStatus.status === 'idle' ? 'Idle' : serverStatus.status === 'busy' ? 'Busy' : 'Offline'}</strong>
+            <small>{serverStatus.running.genomes + serverStatus.running.shortSequences} running · {serverStatus.waiting.genomes} genome{serverStatus.waiting.genomes === 1 ? '' : 's'} and {serverStatus.waiting.shortSequences} short sequence{serverStatus.waiting.shortSequences === 1 ? '' : 's'} waiting</small>
+            <button type="button" onClick={() => router.refresh()}>Refresh</button>
+          </div> : null}
 
           <fieldset ref={primaryStepRef} className={styles.stepCard} tabIndex={-1}>
             <legend><span>1</span><div>Add a sequence or genome<HelpTip label="analysis type" text="Use a 100 bp sequence for one short-sequence prediction. Use a complete genome FASTA to scan many windows." /><small>Paste raw DNA or FASTA, or choose a FASTA file</small></div></legend>

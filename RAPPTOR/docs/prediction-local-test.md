@@ -41,7 +41,7 @@ Wrangler OAuth 会自动追加 `offline_access`，用于保存可刷新的管理
 | `RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE` | 远端内部测试专用；当前部署为 `20` |
 | `RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY` | 远端内部测试专用；当前部署为 `20` |
 | `RAPPTOR_LOCAL_TEST_BASES_PER_DAY` | 远端内部测试专用；当前部署为 `100000000` |
-| `RAPPTOR_PREDICTION_SERVICE_URL` | `https://4090server.duolalab.qzz.io` |
+| `RAPPTOR_PREDICTION_SERVICE_URL` | `https://rapptor_server.duolalab.qzz.io` |
 | `RAPPTOR_PREDICTION_MODEL_VERSION` | `candidate-github-93cf` |
 | `RAPPTOR_LOCAL_TEST_SECRET` | 本机随机生成；不公开 |
 

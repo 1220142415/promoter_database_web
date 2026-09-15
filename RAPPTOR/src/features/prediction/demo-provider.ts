@@ -168,19 +168,27 @@ function resultSeries(length: number, strandMode: PredictionSubmission['strandMo
   const step = pointCount === 1 ? 0 : (windows - 1) / (pointCount - 1);
   return Array.from({ length: pointCount }, (_, index) => {
     const start = Math.round(index * step);
-    const plus = index === Math.floor(pointCount * 0.62)
-      ? 0.947
-      : Math.min(0.886, 0.18 + Math.abs(Math.sin(index * 0.71)) * 0.61);
-    const minus = strandMode === 'both'
-      ? Math.min(0.914, 0.12 + Math.abs(Math.cos(index * 0.53)) * 0.68)
-      : null;
-    return { windowStart: start + 1, plus: Number(plus.toFixed(3)), minus: minus === null ? null : Number(minus.toFixed(3)) };
+    const plus = strandMode === 'reverse'
+      ? null
+      : index === Math.floor(pointCount * 0.62)
+        ? 0.947
+        : Math.min(0.886, 0.18 + Math.abs(Math.sin(index * 0.71)) * 0.61);
+    const minus = strandMode === 'forward'
+      ? null
+      : strandMode === 'reverse'
+        ? Math.min(0.947, 0.12 + Math.abs(Math.cos(index * 0.53)) * 0.68)
+        : Math.min(0.914, 0.12 + Math.abs(Math.cos(index * 0.53)) * 0.68);
+    return {
+      windowStart: start + 1,
+      plus: plus === null ? null : Number(plus.toFixed(3)),
+      minus: minus === null ? null : Number(minus.toFixed(3)),
+    };
   });
 }
 
 export function topPromoterWindows(series: PredictionScorePoint[]): PredictionWindowResult[] {
   const candidates = series.flatMap((point) => [
-    { probability: point.plus, strand: '+' as const, promoterStart: point.windowStart, promoterEnd: point.windowStart + PREDICTION_WINDOW_BASES - 1 },
+    ...(point.plus === null ? [] : [{ probability: point.plus, strand: '+' as const, promoterStart: point.windowStart, promoterEnd: point.windowStart + PREDICTION_WINDOW_BASES - 1 }]),
     ...(point.minus === null ? [] : [{ probability: point.minus, strand: '-' as const, promoterStart: point.windowStart, promoterEnd: point.windowStart + PREDICTION_WINDOW_BASES - 1 }]),
   ]).sort((a, b) => b.probability - a.probability).slice(0, 5);
   return candidates.map((item, index) => ({ rank: index + 1, ...item }));

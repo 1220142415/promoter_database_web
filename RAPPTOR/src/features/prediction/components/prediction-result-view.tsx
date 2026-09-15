@@ -58,6 +58,14 @@ function validAssetUrl(value: string) {
   return !scheme || scheme === 'https' || scheme === 'http';
 }
 
+function strandModeLabel(mode: PredictionResult['input']['strandMode']) {
+  return mode === 'both' ? 'Both (+/−)' : mode === 'reverse' ? 'Reverse only' : 'Forward only';
+}
+
+function strandModeDetail(mode: PredictionResult['input']['strandMode']) {
+  return mode === 'both' ? 'Forward and reverse-complement' : mode === 'reverse' ? '− strand only' : '+ strand only';
+}
+
 export function predictionBrowserAssembly(assets: PredictionBrowserAssets | undefined, demo: boolean, now = Date.now()): JBrowseAssemblyConfig | null {
   if (!assets || demo || !nonEmpty(assets.assemblyName) || !nonEmpty(assets.defaultLocus)) return null;
   const expiresAt = Date.parse(assets.expiresAt);
@@ -66,11 +74,13 @@ export function predictionBrowserAssembly(assets: PredictionBrowserAssets | unde
     assets.reference.fastaUrl,
     assets.reference.faiUrl,
     assets.reference.gziUrl,
-    assets.scores.plusBigWigUrl,
     assets.promoters.gff3Url,
     assets.promoters.indexUrl,
   ];
-  if (!required.every(validAssetUrl) || (assets.scores.minusBigWigUrl !== null && !validAssetUrl(assets.scores.minusBigWigUrl))) return null;
+  if (!required.every(validAssetUrl)) return null;
+  const strandTracks = [assets.scores.plusBigWigUrl, assets.scores.minusBigWigUrl]
+    .filter((url): url is string => url !== null);
+  if (!strandTracks.length || !strandTracks.every(validAssetUrl)) return null;
   return {
     assemblyName: assets.assemblyName,
     defaultLocus: assets.defaultLocus,
@@ -88,9 +98,9 @@ export function predictionBrowserAssembly(assets: PredictionBrowserAssets | unde
       ncbiAnnotationsIndex: null,
     },
     trackLabels: {
-      scores: assets.scores.minusBigWigUrl
+      scores: assets.scores.plusBigWigUrl && assets.scores.minusBigWigUrl
         ? 'RAPPTOR model scores (+ / − strands)'
-        : 'RAPPTOR model scores (+ strand)',
+        : assets.scores.plusBigWigUrl ? 'RAPPTOR model scores (+ strand)' : 'RAPPTOR model scores (− strand)',
       promoters: `RAPPTOR ${PORTAL_TERMS.promoterPredictions.toLowerCase()}`,
     },
     predictionProcessing: { sigma: 1, distance: 10, cutoff: 0.9, positionBase: 0 },
@@ -144,18 +154,18 @@ function ScoreChart({ result }: { result: PredictionResult }) {
           height={height - padTop - padBottom}
         />
         <line className={styles.thresholdLine} x1={padLeft} x2={width - padRight} y1={y(result.probabilityThreshold)} y2={y(result.probabilityThreshold)} />
-        <path className={styles.chartPlus} data-testid="prediction-score-plus" d={path('plus')} />
-        {result.input.strandMode === 'both' ? <path className={styles.chartMinus} d={path('minus')} /> : null}
+        {result.input.strandMode !== 'reverse' ? <path className={styles.chartPlus} data-testid="prediction-score-plus" d={path('plus')} /> : null}
+        {result.input.strandMode !== 'forward' ? <path className={styles.chartMinus} d={path('minus')} /> : null}
         {result.scoreSeries.map((point) => <g key={point.windowStart}>
-          <circle className={styles.chartPointPlus} cx={x(predictionAnchorCoordinate(point.windowStart, '+'))} cy={y(point.plus)} r="2.5" />
+          {point.plus !== null ? <circle className={styles.chartPointPlus} cx={x(predictionAnchorCoordinate(point.windowStart, '+'))} cy={y(point.plus)} r="2.5" /> : null}
           {point.minus !== null ? <circle className={styles.chartPointMinus} cx={x(predictionAnchorCoordinate(point.windowStart, '-'))} cy={y(point.minus)} r="2.5" /> : null}
         </g>)}
         <circle className={styles.peakPoint} cx={bestAnchorX} cy={y(result.highestProbability)} r="5" />
         <text className={styles.peakLabel} x={Math.min(width - 176, bestAnchorX + 9)} y={Math.max(16, y(result.highestProbability) - 9)}>Anchor {bestAnchor} · {result.bestWindow.promoterStart}–{result.bestWindow.promoterEnd} ({result.bestWindow.strand}) · {formatScore(result.highestProbability)}</text>
       </svg>
       <figcaption>
-        <span><i className={styles.legendPlus} /> Forward strand</span>
-        {result.input.strandMode === 'both' ? <span><i className={styles.legendMinus} /> Reverse strand</span> : null}
+        {result.input.strandMode !== 'reverse' ? <span><i className={styles.legendPlus} /> Forward strand</span> : null}
+        {result.input.strandMode !== 'forward' ? <span><i className={styles.legendMinus} /> Reverse strand</span> : null}
         <span><i className={styles.legendBestWindow} /> {PORTAL_TERMS.highestModelScore} anchor</span>
         <span><i className={styles.legendThreshold} /> {result.probabilityThreshold.toFixed(1)} {PORTAL_TERMS.modelThreshold.toLowerCase()}</span>
       </figcaption>
@@ -298,7 +308,7 @@ export default function PredictionResultView({ jobId }: { jobId: string }) {
           <section className={styles.resultSummary} aria-label="Prediction summary" data-testid="prediction-summary">
             <div><span>{PORTAL_TERMS.highestModelScore}</span><strong>{formatScore(result.highestProbability)}</strong><small>Best hit: {result.bestWindow.strand} strand</small></div>
             <div><span>Model classification</span><strong className={result.call === 'model-positive-candidate' ? styles.positive : ''}>{result.call === 'model-positive-candidate' ? 'RAPPTOR-positive candidate' : 'Below model threshold'}</strong><small>Model threshold: &gt; {result.probabilityThreshold.toFixed(1)}</small></div>
-            <div><span>Evaluated strands</span><strong>{result.input.strandMode === 'both' ? 'Both (+/−)' : 'Forward only'}</strong><small>{result.input.strandMode === 'both' ? 'Forward and reverse-complement' : '+ strand only'}</small></div>
+            <div><span>Evaluated strands</span><strong>{strandModeLabel(result.input.strandMode)}</strong><small>{strandModeDetail(result.input.strandMode)}</small></div>
             <div><span>Best promoter window</span><strong>{result.bestWindow.promoterStart.toLocaleString()}–{result.bestWindow.promoterEnd.toLocaleString()}</strong><small>Prediction anchor {predictionAnchorCoordinate(result.bestWindow.promoterStart, result.bestWindow.strand).toLocaleString()} · window base 80</small></div>
           </section>
 

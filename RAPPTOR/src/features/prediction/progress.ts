@@ -116,7 +116,9 @@ function scanDetails(run: Extract<PrototypePredictionRun, { mode: 'genome-scan' 
   const scanEnd = SCAN_TIMELINE[2].end;
   const fraction = Math.max(0, Math.min(1, (elapsed - scanStart) / (scanEnd - scanStart)));
   const contigs = run.input.scanSource.contigs.filter((contig) => contig.length >= 100);
-  const strands = run.parameters.strandMode === 'both' ? (['+', '-'] as const) : (['+'] as const);
+  const strands = run.parameters.strandMode === 'both'
+    ? (['+', '-'] as const)
+    : run.parameters.strandMode === 'reverse' ? (['-'] as const) : (['+'] as const);
   const units = contigs.flatMap((contig) => strands.map((strand) => ({ contig, strand })));
   const unit = units[Math.min(Math.max(0, units.length - 1), Math.floor(fraction * Math.max(1, units.length)))] || null;
   const totalWindows = contigs.reduce((total, contig) => total + Math.max(0, contig.length - 99) * strands.length, 0);

@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import { parseSequenceScores, type FocusedScore } from '../focused-scores';
+import type { PredictionStrandMode } from '../types';
 import { referenceWindow, RESULT_TABLE_FILENAME } from '../live-result';
 import styles from './prediction.module.css';
 
-export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequenceBases = 100, threshold, coordinateSystem, expiresAt }: { jobId: string; bothStrands: boolean; hasScores: boolean; sequenceBases?: number; threshold?: number; coordinateSystem?: string; expiresAt?: string }) {
+export default function FocusedJobResult({ jobId, strandMode, hasScores, sequenceBases = 100, threshold, coordinateSystem, expiresAt }: { jobId: string; strandMode: PredictionStrandMode; hasScores: boolean; sequenceBases?: number; threshold?: number; coordinateSystem?: string; expiresAt?: string }) {
   const [scores, setScores] = useState<FocusedScore[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -20,13 +21,13 @@ export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequen
         const data = await response.json();
         // Older services can return only the forward score despite a both-strand
         // request. Display that validated observation with an explicit failure.
-        const partialForward = bothStrands && Array.isArray(data) && data.length === sequenceBases - 99;
-        const rows = parseSequenceScores(data, sequenceBases, partialForward ? false : bothStrands);
+        const partialForward = strandMode === 'both' && Array.isArray(data) && data.length === sequenceBases - 99;
+        const rows = parseSequenceScores(data, sequenceBases, partialForward ? 'forward' : strandMode);
         if (!controller.signal.aborted) setScores(rows);
       })
       .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Score data unavailable.'); });
     return () => controller.abort();
-  }, [jobId, bothStrands, hasScores, revision, sequenceBases]);
+  }, [jobId, strandMode, hasScores, revision, sequenceBases]);
   const focused = sequenceBases === 100;
   const topScores = scores ? [...scores].sort((left, right) => right.score - left.score).slice(0, 20) : [];
   const passingStrands = focused && scores && threshold !== undefined
@@ -44,7 +45,7 @@ export default function FocusedJobResult({ jobId, bothStrands, hasScores, sequen
     </div>
     {error ? <div role="alert"><p>{error}</p><button type="button" onClick={() => setRevision((value) => value + 1)}>Retry score download</button></div>
       : scores ? <>
-        {bothStrands && !scores.some((row) => row.strand === '-') ? <p role="alert">The service returned only forward-strand scores. The reverse-strand result is missing; two-strand verification did not pass.</p> : null}
+        {strandMode === 'both' && !scores.some((row) => row.strand === '-') ? <p role="alert">The service returned only forward-strand scores. The reverse-strand result is missing; two-strand verification did not pass.</p> : null}
         {focused ? <>
           {passingStrands ? <div className={`${styles.focusedCall} ${passingStrands.length > 0 ? styles.focusedCallPositive : ''}`} role="status" aria-label="Model classification">
             <span>Model classification</span>

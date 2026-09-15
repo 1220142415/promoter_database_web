@@ -217,7 +217,7 @@ def _request_window_count(request_payload: dict) -> int | None:
     window_length = _model_window_length()
     if window_length is None:
         return None
-    reverse = bool(request_payload.get("reverse_complementary", True))
+    strand_mode = request_payload.get("strand_mode")
     if request_payload["mode"] == "predict":
         lengths = (len(request_payload["sequence"]),)
         stride = 1
@@ -232,7 +232,16 @@ def _request_window_count(request_payload: dict) -> int | None:
             return None
         lengths = (len(record.sequence) for record in validated.records)
         stride = int(request_payload["stride"])
-    return count_scan_windows(lengths, window_length, stride, reverse)
+    counts = list(lengths)
+    if strand_mode in ("both", "forward", "reverse"):
+        count = count_scan_windows(counts, window_length, stride, False)
+        return count * (2 if strand_mode == "both" else 1)
+    return count_scan_windows(
+        counts,
+        window_length,
+        stride,
+        bool(request_payload.get("reverse_complementary", True)),
+    )
 
 
 def _workload_snapshot(job_ids: list[str], connection) -> dict:
@@ -463,6 +472,7 @@ def current_model():
             "output_formats": ["bigwig", "parquet", "gff3", "json"],
             "default_output_formats": ["bigwig", "gff3"],
             "reverse_complementary": {"default": True},
+            "strand_mode": {"default": None, "options": ["both", "forward", "reverse"]},
             "batch_size": {
                 "default": SETTINGS.default_batch_size,
                 "minimum": 1,

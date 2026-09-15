@@ -14,7 +14,7 @@ import FocusedJobResult from './focused-job-result';
 import PredictionProgressPanel from './prediction-progress-panel';
 import ResultDownloads from './result-downloads';
 import ResultInformation from './result-information';
-import { windowCoordinateSystem, type JobArtifact, type JobSummary } from '../live-result';
+import { evaluatedStrandsFromSummary, windowCoordinateSystem, type JobArtifact, type JobSummary } from '../live-result';
 import { normalizePredictionProgress, type PredictionQueueStatus } from '../progress';
 import { PORTAL_TERMS } from '@/components/portal-terminology';
 import styles from '../prototype-result.module.css';
@@ -253,8 +253,9 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
   const sequenceBases = summary?.sequence_bases || (entry.mode === 'predict' ? 100 : undefined);
   const focused = mode === 'predict' && sequenceBases === 100;
   const refName = entry.refName || resolvedRefName;
-  const bothStrands = summary?.reverse_complementary ?? (entry.strandMode !== 'forward');
-  const missingBrowserFiles = ['scores.plus.bw', 'input.fasta', 'input.fasta.fai', ...(bothStrands ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((artifact) => artifact.filename === name));
+  const evaluatedStrands = evaluatedStrandsFromSummary(summary, entry);
+  const strandMode = evaluatedStrands.includes('+') && evaluatedStrands.includes('-') ? 'both' : evaluatedStrands.includes('+') ? 'forward' : 'reverse';
+  const missingBrowserFiles = ['input.fasta', 'input.fasta.fai', ...(evaluatedStrands.includes('+') ? ['scores.plus.bw'] : []), ...(evaluatedStrands.includes('-') ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((artifact) => artifact.filename === name));
   const hasReference = missingBrowserFiles.length === 0;
   const reportedProgress = job?.status === 'failed'
     ? job.progress?.last_valid_progress || job.progress
@@ -290,7 +291,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} />
 
       {job?.status === 'succeeded' && summary ? <>
-        {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} bothStrands={bothStrands} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} threshold={entry.cutoff} coordinateSystem={windowCoordinateSystem(summary)} expiresAt={job.artifacts_expires_at ? formatDate(job.artifacts_expires_at) : undefined} /> : <>
+          {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} strandMode={strandMode} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} threshold={entry.cutoff} coordinateSystem={windowCoordinateSystem(summary)} expiresAt={job.artifacts_expires_at ? formatDate(job.artifacts_expires_at) : undefined} /> : <>
           <section className={styles.summary} aria-label="Sequence scan summary">
             <div><span>Sequences</span><strong>{summary.contig_count?.toLocaleString() ?? '—'}</strong><small>Scanned contigs</small></div>
             <div><span>Scored windows</span><strong>{summary.window_count?.toLocaleString() ?? '—'}</strong><small>Model evaluations</small></div>

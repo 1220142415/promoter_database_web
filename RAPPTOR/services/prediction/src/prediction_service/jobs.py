@@ -195,6 +195,18 @@ def _result_metadata(artifacts: list[dict], summary_path: Path, runtime) -> dict
     }
 
 
+def _evaluated_strands(request: dict) -> list[str]:
+    strand_mode = request.get("strand_mode")
+    if strand_mode == "reverse":
+        return ["-"]
+    if strand_mode == "forward":
+        return ["+"]
+    if strand_mode == "both":
+        return ["+", "-"]
+    reverse = bool(request.get("reverse_complementary", True))
+    return ["+", "-"] if reverse else ["+"]
+
+
 def _write_summary(storage: JobStorage, job_id: str, payload: dict) -> Path:
     payload = dict(payload)
     payload["model"] = get_runtime().metadata()
@@ -268,14 +280,19 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
     timings["cgr_load_ms"] = round((time.monotonic() - cgr_started) * 1000, 1)
     timings["cgr_cache"] = cgr_cache
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
+    evaluated_strands = _evaluated_strands(request)
     reverse = bool(request.get("reverse_complementary", True))
-    total_windows = count_scan_windows((len(sequence),), runtime.seq_length, 1, reverse)
+    total_windows = count_scan_windows(
+        (len(sequence),), runtime.seq_length, 1, False,
+    ) * len(evaluated_strands)
     inference_progress = ScanProgress(
         total_windows, _progress, stage="inference", percent_start=45.0, percent_span=45.0,
     )
     scores_by_strand = []
-    strand_sequences = [("+", sequence)]
-    if reverse:
+    strand_sequences = []
+    if evaluated_strands != ["-"]:
+        strand_sequences.append(("+", sequence))
+    if evaluated_strands != ["+"]:
         reverse_sequence = runtime.reverse_complement(sequence)
         strand_sequences.append(("-", reverse_sequence))
     inference_started = time.monotonic()
@@ -325,6 +342,7 @@ def _predict(job_id: str, request: dict, storage: JobStorage, timings: dict | No
         "cgr_source": request["cgr_source"],
         "complete_genome": "submitter_asserted",
         "reverse_complementary": reverse,
+        "evaluated_strands": evaluated_strands,
         "window_count": int(sum(len(scores) for _, scores in scores_by_strand)),
         "max_score": float(max(scores.max() for _, scores in scores_by_strand if len(scores))),
         "score_filename": "scores.json",
@@ -385,6 +403,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         cgr_source = "complete_genome_assembly_fasta"
     stride = int(request.get("stride") or SETTINGS.default_scan_stride)
     batch_size = int(request.get("batch_size") or SETTINGS.default_batch_size)
+    evaluated_strands = _evaluated_strands(request)
     reverse = bool(request.get("reverse_complementary", True))
     output_formats = scan_output_formats(request.get("output_formats"), stride)
     score_cutoff = request.get("score_cutoff")
@@ -397,16 +416,24 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         stride=stride,
         score_cutoff=score_cutoff,
     )
-    scan_progress = ScanProgress(count_scan_windows(
-        (len(record.sequence) for record in validated.records), runtime.seq_length, stride, reverse,
-    ), _progress)
+    scan_progress = ScanProgress(
+        count_scan_windows(
+            (len(record.sequence) for record in validated.records),
+            runtime.seq_length,
+            stride,
+            False,
+        ) * len(evaluated_strands),
+        _progress,
+    )
     total_windows = 0
     artifacts: list[dict] = []
     _progress("scanning", 15.0, **scan_progress.snapshot(), contigs=len(validated.records), stride=stride)
     try:
         for record in validated.records:
-            tasks = [("+", record.sequence)]
-            if reverse:
+            tasks = []
+            if evaluated_strands != ["-"]:
+                tasks.append(("+", record.sequence))
+            if evaluated_strands != ["+"]:
                 tasks.append(("-", runtime.reverse_complement(record.sequence)))
             for strand, sequence in tasks:
                 if len(sequence) < runtime.seq_length:
@@ -463,6 +490,7 @@ def _scan(job_id: str, request: dict, storage: JobStorage) -> dict:
         "stride": stride,
         "batch_size": batch_size,
         "reverse_complementary": reverse,
+        "evaluated_strands": evaluated_strands,
         "window_count": total_windows,
         "scores_written": total_windows,
         "score_cutoff": score_cutoff,

@@ -11,7 +11,7 @@ export const PROTOTYPE_STRIDE_BASES: PrototypeStrideBases = 1;
 export const PROTOTYPE_STRIDE_OPTIONS = [1, 10, 50, 100] as const;
 
 export type PrototypePredictionMode = 'candidate' | 'genome-scan';
-export type PrototypeStrandMode = 'both' | 'forward';
+export type PrototypeStrandMode = 'both' | 'forward' | 'reverse';
 export type PrototypeStrand = '+' | '-';
 
 interface PrototypeBaseParameters {

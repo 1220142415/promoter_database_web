@@ -15,6 +15,7 @@ import {
   type PrototypePredictionFixture,
   type PrototypePredictionRun,
 } from './prototype';
+import type { PrototypeStrandMode } from './prototype';
 import {
   downloadPrototypeResult,
   type PrototypeDownloadFormat,
@@ -38,6 +39,10 @@ function formatLength(value: number | null) {
 function formatCreatedAt(value: string) {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : value;
+}
+
+function strandLabel(mode: PrototypeStrandMode) {
+  return mode === 'both' ? 'Both strands' : mode === 'reverse' ? 'Reverse strand only' : 'Forward strand only';
 }
 
 function focusedWindows(fixture: PrototypePredictionFixture) {
@@ -199,7 +204,7 @@ export default function PrototypePredictionResultView({ runId }: { runId: string
           <dl className={styles.factGrid}>
             <div><dt>Input</dt><dd>{run.mode === 'candidate' ? `${run.input.displayName} · ${run.input.length.toLocaleString()} bp` : run.input.scanSource.fileName || run.input.scanSource.displayName}</dd></div>
             <div><dt>Genome context</dt><dd>{genomeContext.displayName} · {formatLength(genomeContext.totalLength)}</dd></div>
-            <div><dt>Analysis</dt><dd>{run.parameters.strandMode === 'both' ? 'Both strands' : 'Forward strand only'} · {thresholdLabel(run.mode === 'candidate' ? 'candidate' : 'genome-scan').toLowerCase()} {run.parameters.cutoff.toFixed(2)} · stride {run.parameters.strideBases} bp</dd></div>
+            <div><dt>Analysis</dt><dd>{strandLabel(run.parameters.strandMode)} · {thresholdLabel(run.mode === 'candidate' ? 'candidate' : 'genome-scan').toLowerCase()} {run.parameters.cutoff.toFixed(2)} · stride {run.parameters.strideBases} bp</dd></div>
             <div><dt>Model</dt><dd>100 bp window · 80/20 anchor · CGR 128×128 · {run.modelSpec.version}</dd></div>
           </dl>
         </section>

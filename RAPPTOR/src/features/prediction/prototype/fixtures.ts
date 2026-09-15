@@ -107,7 +107,7 @@ function windowsForSequence(
     : requestedStride;
   const starts: number[] = [];
   for (let start = 1; start <= validStarts; start += step) starts.push(start);
-  const strands: PrototypeStrand[] = parameters.strandMode === 'both' ? ['+', '-'] : ['+'];
+  const strands: PrototypeStrand[] = parameters.strandMode === 'both' ? ['+', '-'] : parameters.strandMode === 'reverse' ? ['-'] : ['+'];
   const metadata = windowParameters(parameters);
   const output: PrototypeScoreWindow[] = [];
 

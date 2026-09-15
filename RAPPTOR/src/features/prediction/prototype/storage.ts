@@ -254,7 +254,7 @@ function validStride(value: unknown) {
 
 function hasValidParameters(value: Record<string, unknown>, mode: unknown) {
   const shared = value.mode === mode
-    && (value.strandMode === 'both' || value.strandMode === 'forward')
+    && (value.strandMode === 'both' || value.strandMode === 'forward' || value.strandMode === 'reverse')
     && typeof value.cutoff === 'number'
     && Number.isFinite(value.cutoff)
     && value.cutoff >= 0

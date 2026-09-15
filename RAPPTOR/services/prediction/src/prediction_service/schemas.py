@@ -50,6 +50,10 @@ class JobSubmission(BaseModel):
         ),
     )
     batch_size: int | None = Field(default=None, ge=1, description="Inference tuning parameter bounded by the deployment.")
+    strand_mode: Literal["both", "forward", "reverse"] | None = Field(
+        default=None,
+        description="Preferred strand selector. Omit strand_mode to use the legacy reverse_complementary boolean behavior.",
+    )
     reverse_complementary: bool = Field(default=True, description="Also scan the reverse-complement strand.")
     output_formats: list[OutputFormat] | None = Field(
         default=None,
@@ -84,6 +88,14 @@ class JobSubmission(BaseModel):
                     raise ValueError("output_formats must contain at least one format.")
                 if len(set(self.output_formats)) != len(self.output_formats):
                     raise ValueError("output_formats must not contain duplicates.")
+        if self.strand_mode is None:
+            return self
+        if self.strand_mode == "reverse" and self.reverse_complementary is not True:
+            raise ValueError("strand_mode=reverse requires reverse_complementary=true.")
+        if self.strand_mode == "forward" and self.reverse_complementary is not False:
+            raise ValueError("strand_mode=forward requires reverse_complementary=false.")
+        if self.strand_mode == "both" and self.reverse_complementary is not True:
+            raise ValueError("strand_mode=both requires reverse_complementary=true.")
         return self
 
 

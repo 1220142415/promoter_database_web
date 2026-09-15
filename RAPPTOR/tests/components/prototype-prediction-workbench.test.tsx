@@ -4,16 +4,27 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
-import { REAL_PREDICTION_REFERENCE } from '@/features/prediction/reference-example';
+import { REAL_PREDICTION_REFERENCE, validateReferenceExample } from '@/features/prediction/reference-example';
 
 // These component tests isolate transport/validation; real reference checks run separately.
 vi.mock('@/features/prediction/reference-example', async (original) => ({
   ...await original<typeof import('@/features/prediction/reference-example')>(),
-  validateReferenceExample: vi.fn(async (fasta: string) => ({ fasta, sequence: 'ACGT'.repeat(40), length: 160, sequenceId: 'NC_000913.2' })),
+  validateReferenceExample: vi.fn(async (fasta: string) => ({ fasta, sequence: 'ACGT'.repeat(40), sample: 'ACGT'.repeat(25), length: 160, sequenceId: 'NC_000913.2' })),
 }));
 const push = vi.fn();
 const refresh = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh }) }));
+vi.mock('@/features/prediction/prototype/browser-references', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/prediction/prototype/browser-references')>();
+  return {
+    ...actual,
+    downloadBrowserFasta: vi.fn(async (url: string, onProgress?: (loaded: number, total: number | null) => void, signal?: AbortSignal) => (
+      url === REAL_PREDICTION_REFERENCE.sourceUrl
+        ? `>NC_000913.2\n${'ACGT'.repeat(40)}\n`
+        : actual.downloadBrowserFasta(url, onProgress, signal)
+    )),
+  };
+});
 vi.mock('@/features/prediction/client', () => ({
   predictionApi: vi.fn(async (url: string, init?: RequestInit) => {
     const response = await fetch(url, init);
@@ -47,6 +58,16 @@ async function selectCgrCatalog(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Search catalog' }));
   await user.click(await screen.findByRole('option', { name: /GCF_000012685\.1/ }));
   await waitFor(() => expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument());
+}
+
+function stubGenomeExampleFetch() {
+  vi.mocked(validateReferenceExample).mockResolvedValue({
+    fasta: `>NC_000913.2\n${'ACGT'.repeat(40)}\n`,
+    sequence: 'ACGT'.repeat(40),
+    sample: 'ACGT'.repeat(25),
+    length: 160,
+    sequenceId: 'NC_000913.2',
+  });
 }
 
 describe('prototype prediction workbench', () => {
@@ -195,17 +216,18 @@ describe('prototype prediction workbench', () => {
     expect(JSON.parse(stored)).toMatchObject({ parameters: { strideBases: 50 }, modelSpec: { strideBases: 50 } });
   });
 
-  it('selects the E. coli reference for the genome example and replaces the editor with a compact card', async () => {
+  it('pastes the E. coli reference into the sequence editor for the genome example', async () => {
+    stubGenomeExampleFetch();
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
+    await screen.findAllByText('Sequence scan');
     expect(screen.getAllByText(/Escherichia coli str\. K-12/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Top results')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Stride' })).toHaveValue('1');
     expect(screen.getByText('Bases between consecutive 100 bp windows. Choose 1, 10, 50, 100 bp.')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Raw DNA or FASTA')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Selected genome example')).toHaveTextContent('GCF_000005845.1');
+    const editor = await screen.findByLabelText('Raw DNA or FASTA');
+    expect((editor as HTMLTextAreaElement).value).toContain(`>${REAL_PREDICTION_REFERENCE.sequenceId}`);
     expect(screen.getByRole('group', { name: 'Complete reference source' })).toHaveTextContent('Search reference genomeUpload complete genome FASTA');
     expect(screen.queryByRole('button', { name: 'Use scan FASTA as reference' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search reference genome' })).toHaveAttribute('aria-pressed', 'true');
@@ -213,6 +235,16 @@ describe('prototype prediction workbench', () => {
     expect(screen.queryByRole('combobox', { name: 'Accession, organism, or strain' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Hugging Face|SHA-256/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
+  });
+
+  it('pastes the verified whole-genome example into the sequence editor', async () => {
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench preview />);
+    await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
+    const editor = await screen.findByLabelText('Raw DNA or FASTA');
+    await waitFor(() => expect(editor).toHaveValue(`>NC_000913.2\n${'ACGT'.repeat(40)}\n`));
+    expect((editor as HTMLTextAreaElement).value).toContain(`>${REAL_PREDICTION_REFERENCE.sequenceId}`);
+    await waitFor(() => expect(screen.getByText('Genome context ready: Catalog genome.')).toBeInTheDocument());
   });
 
   it('keeps paste and the compact FASTA upload control in one input card without source tabs or a primary catalog search', () => {
@@ -225,12 +257,12 @@ describe('prototype prediction workbench', () => {
   });
 
   it('uses the most recently provided input after a whole-genome example', async () => {
+    stubGenomeExampleFetch();
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
-    expect(screen.getAllByText('Sequence scan')).not.toHaveLength(0);
+    await screen.findAllByText('Sequence scan');
     expect(screen.getByRole('button', { name: 'Preview illustrative result' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Remove input' }));
     await user.clear(screen.getByLabelText('Raw DNA or FASTA'));
     await user.type(screen.getByLabelText('Raw DNA or FASTA'), 'ACGT'.repeat(25));
     expect(screen.getAllByText('100 bp scoring')).not.toHaveLength(0);
@@ -307,6 +339,7 @@ describe('prototype prediction workbench', () => {
   });
 
   it('offers only the supported scan stride choices', async () => {
+    stubGenomeExampleFetch();
     const user = userEvent.setup();
     render(<PrototypePredictionWorkbench preview />);
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
@@ -509,6 +542,7 @@ describe('prototype prediction workbench', () => {
     expect(jobRequest).toMatchObject({
       mode: 'genome_scan',
       stride: selectedStride,
+      strand_mode: 'forward',
       reverse_complementary: false,
       output_formats: peaks ? ['bigwig', 'gff3'] : ['bigwig', 'parquet'],
     });
@@ -520,6 +554,45 @@ describe('prototype prediction workbench', () => {
     if (!peaks) expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).not.toHaveProperty('cutoff');
     expect(screen.getByText('本地真实预测测试')).toBeInTheDocument();
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
+  });
+
+  it('submits reverse-only scanning with the legacy service compatibility flag', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === REAL_PREDICTION_REFERENCE.sourceUrl) {
+        return new Response(`>${REAL_PREDICTION_REFERENCE.sequenceId}\n${'ACGT'.repeat(40)}\n`);
+      }
+      if (url.includes('/api/prediction-reference/')) {
+        return new Response(`>chromosome\n${'ACGT'.repeat(40)}\n`, { headers: { 'Content-Type': 'text/plain' } });
+      }
+      if (url === '/api/prediction-tickets') return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      if (url === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'e'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
+
+    await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Strands/ }), 'reverse');
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/predict/task/${'e'.repeat(32)}`));
+    expect(jobRequest).toMatchObject({
+      mode: 'genome_scan',
+      stride: 1,
+      strand_mode: 'reverse',
+      reverse_complementary: true,
+      output_formats: ['bigwig', 'parquet'],
+    });
+    expect(jobRequest).not.toHaveProperty('score_cutoff');
+    expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).toMatchObject({ strandMode: 'reverse' });
   });
 
   it('submits an uploaded scan FASTA with a searched reference genome', async () => {

@@ -360,6 +360,20 @@ distinguishes ordinary `JOB_FAILED`, `JOB_PROGRESS_STALLED`, and
 
 ## Local validation
 
+### Strand selection
+
+Web submissions send `strand_mode` (`both`, `forward`, or `reverse`) and the
+compatible `reverse_complementary` boolean (`false` for forward-only, `true`
+otherwise). Legacy clients may omit `strand_mode`. Reverse-only inference
+scores only the reverse complement and exports only minus-strand results;
+window counts and progress use one strand.
+
+Deploy the web application and prediction API/workers together for this
+contract change. Verify that `/v1/models/current` advertises `strand_mode`
+with all three options before submitting reverse-only jobs from the web UI.
+An older API rejects the new field; an older worker cannot provide reverse-only
+inference. Local Python dependencies are not needed to use the remote service.
+
 ```bash
 docker-compose -f services/prediction/compose.yaml config
 python -m pip install -r services/prediction/requirements-test.txt

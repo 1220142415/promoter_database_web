@@ -10,7 +10,7 @@ export type PredictionHistoryEntry = {
   label: string;
   bases: number;
   cutoff?: number;
-  strandMode?: 'both' | 'forward';
+  strandMode?: 'both' | 'forward' | 'reverse';
   strideBases?: number;
 };
 
@@ -31,7 +31,7 @@ function isEntry(value: unknown): value is PredictionHistoryEntry {
     && typeof entry.label === 'string'
     && typeof entry.bases === 'number' && Number.isSafeInteger(entry.bases) && entry.bases >= 0
     && (entry.cutoff === undefined || (typeof entry.cutoff === 'number' && entry.cutoff >= 0 && entry.cutoff <= 1))
-    && (entry.strandMode === undefined || entry.strandMode === 'both' || entry.strandMode === 'forward')
+    && (entry.strandMode === undefined || entry.strandMode === 'both' || entry.strandMode === 'forward' || entry.strandMode === 'reverse')
     && (entry.strideBases === undefined || (Number.isSafeInteger(entry.strideBases) && entry.strideBases > 0));
 }
 

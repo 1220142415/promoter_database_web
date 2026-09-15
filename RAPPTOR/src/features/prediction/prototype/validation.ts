@@ -33,7 +33,7 @@ export function prototypeParameters(
   cutoff: number,
   strideBases: number = PROTOTYPE_STRIDE_BASES,
 ): PrototypePredictionParameters {
-  if (strandMode !== 'both' && strandMode !== 'forward') {
+  if (strandMode !== 'both' && strandMode !== 'forward' && strandMode !== 'reverse') {
     throw new PrototypeValidationError('Choose a supported strand option.');
   }
   if (!Number.isFinite(cutoff) || cutoff < 0 || cutoff > 1) {

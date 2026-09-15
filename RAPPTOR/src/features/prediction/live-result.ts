@@ -29,6 +29,7 @@ export type JobSummary = {
   score_cutoff_operator?: string | null;
   max_score?: number;
   reverse_complementary?: boolean;
+  evaluated_strands?: ('+' | '-')[];
   batch_size?: number;
   completed_at?: string;
   model?: {
@@ -70,6 +71,21 @@ export function exportCutoffLabel(summary: JobSummary) {
   if (summary.mode === 'predict' || summary.score_cutoff === null) return 'No export filtering';
   if (summary.score_cutoff === undefined) return 'Not recorded';
   return `Model score ${summary.score_cutoff_operator || '>'} ${summary.score_cutoff}`;
+}
+
+export function evaluatedStrandsFromSummary(
+  summary: JobSummary | null | undefined,
+  entry?: { strandMode?: 'both' | 'forward' | 'reverse' },
+) {
+  if (summary?.evaluated_strands) {
+    return summary.evaluated_strands.filter((strand) => strand === '+' || strand === '-');
+  }
+  if (summary?.reverse_complementary !== undefined) {
+    return summary.reverse_complementary ? ['+', '-'] : ['+'];
+  }
+  if (entry?.strandMode === 'forward') return ['+'];
+  if (entry?.strandMode === 'reverse') return ['-'];
+  return ['+', '-'];
 }
 
 export function genomeContextLabel(summary: JobSummary) {

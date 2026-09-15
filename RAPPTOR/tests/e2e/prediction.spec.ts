@@ -83,15 +83,30 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
   expect(predictionRequests).toEqual([]);
 });
 
+test('reverse-only focused scoring displays only the reverse result', async ({ page }) => {
+  await page.goto('/predict/preview');
+  await page.getByRole('button', { name: 'Use 100 bp example' }).click();
+  await page.getByRole('button', { name: 'Use this genome' }).click();
+  await page.getByLabel('Strands', { exact: true }).selectOption('reverse');
+  await page.getByRole('button', { name: 'Preview illustrative result' }).click();
+  await expect(page.getByRole('meter', { name: /Reverse strand.*illustrative model score/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('meter', { name: /Forward strand.*illustrative model score/ })).toHaveCount(0);
+  const stored = await storedPrototypeRuns(page);
+  expect(JSON.parse(stored[0].value).parameters.strandMode).toBe('reverse');
+});
+
 test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async ({ page }) => {
+  test.setTimeout(120_000);
   const predictionRequests = capturePredictionApiRequests(page);
 
   await page.goto('/predict/preview');
   await page.getByRole('button', { name: 'Use E. coli K-12 genome example' }).click();
+  await expect(page.getByLabel('Raw DNA or FASTA')).toHaveValue(/NC_000913\.2/, { timeout: 60_000 });
+  expect((await page.getByLabel('Raw DNA or FASTA').inputValue()).length).toBeGreaterThan(4_639_675);
   await expect(page.getByText('Sequence scan').first()).toBeVisible();
   await expect(page.getByText(/Escherichia coli str\. K-12/).first()).toBeVisible();
   await expect(page.getByText('Complete reference genome for 100 bp scoring')).toHaveCount(0);
-  await page.getByLabel('Strands').selectOption('forward');
+  await page.getByLabel('Strands', { exact: true }).selectOption('forward');
   await page.getByLabel('Export cutoff').fill('0.80');
   await page.getByLabel('Stride').fill('10');
   await expect(page.getByLabel('Top results')).toHaveCount(0);
@@ -129,7 +144,7 @@ test('the E. coli K-12 example opens an illustrative JBrowse genome scan', async
     parameters: { strandMode: 'forward', cutoff: 0.8, strideBases: 10 },
     input: {
       kind: 'genome-scan',
-      scanSource: { kind: 'catalog', accession: 'GCF_000005845.1', totalLength: 4_639_675 },
+      scanSource: { kind: 'inline', totalLength: 4_639_675 },
       genomeContext: { kind: 'catalog', accession: 'GCF_000005845.1', totalLength: 4_639_675 },
     },
   });
@@ -233,3 +248,4 @@ test.describe('catalog failure and mobile focused result', () => {
     expect(predictionRequests).toEqual([]);
   });
 });
+

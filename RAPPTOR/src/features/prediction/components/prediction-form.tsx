@@ -10,7 +10,7 @@ import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import type { GenomeSearchResponse } from '@/features/genomes/types';
 import { predictionApi, PredictionClientError, sha256File, sha256Text } from '../client';
-import type { DemoPredictionSubmission, GenomeContext, PredictionCapabilities, PredictionJob, PredictionSubmission, PredictionTicketResponse, PredictionUploadSlot } from '../types';
+import type { DemoPredictionSubmission, GenomeContext, PredictionCapabilities, PredictionJob, PredictionStrandMode, PredictionSubmission, PredictionTicketResponse, PredictionUploadSlot } from '../types';
 import { PREDICTION_CONTRACT_VERSION } from '../types';
 import { parseTargetSequence, PredictionValidationError, validateTargetAgainstCapabilities } from '../validation';
 import TurnstileField from './turnstile-field';
@@ -41,7 +41,7 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
   const targetFileRef = useRef<HTMLInputElement>(null);
   const genomeFileRef = useRef<HTMLInputElement>(null);
   const [sequenceInput, setSequenceInput] = useState('');
-  const [strandMode, setStrandMode] = useState<'both' | 'forward'>('both');
+  const [strandMode, setStrandMode] = useState<PredictionStrandMode>('both');
   const [genomeMode, setGenomeMode] = useState<GenomeMode>('catalog');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState<CatalogSelection[]>([]);
@@ -243,7 +243,11 @@ export default function PredictionForm({ capabilities }: { capabilities: Predict
                 <button type="button" onClick={() => { setSequenceInput(''); setError(null); }} disabled={!sequenceInput}><DeleteOutlineRoundedIcon aria-hidden="true" /> Clear</button>
                 <input ref={targetFileRef} className="sr-only" type="file" accept=".txt,.fa,.fasta,.fna,text/plain" onChange={handleTargetFile} />
               </div>
-              <label className={styles.checkbox}><input type="checkbox" checked={strandMode === 'both'} onChange={(event) => setStrandMode(event.target.checked ? 'both' : 'forward')} /><span><strong>Evaluate both strands</strong><small>Recommended when orientation is unknown.</small></span></label>
+              <div className={styles.strandPicker} role="group" aria-label="Strands to evaluate">
+                <label className={styles.checkbox}><input type="radio" name="prediction-strand-mode" checked={strandMode === 'both'} onChange={() => setStrandMode('both')} /><span><strong>Both strands</strong><small>Recommended when orientation is unknown.</small></span></label>
+                <label className={styles.checkbox}><input type="radio" name="prediction-strand-mode" checked={strandMode === 'forward'} onChange={() => setStrandMode('forward')} /><span><strong>Forward only</strong><small>Score the entered sequence direction.</small></span></label>
+                <label className={styles.checkbox}><input type="radio" name="prediction-strand-mode" checked={strandMode === 'reverse'} onChange={() => setStrandMode('reverse')} /><span><strong>Reverse only</strong><small>Score the reverse-complement direction.</small></span></label>
+              </div>
             </fieldset>
 
             <fieldset className={styles.card}>

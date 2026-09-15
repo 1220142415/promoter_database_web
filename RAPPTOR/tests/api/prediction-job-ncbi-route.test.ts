@@ -49,6 +49,20 @@ describe('Worker NCBI to Docker FASTA bridge', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('forwards reverse-only selection with the legacy compatibility flag', async () => {
+    const reverse = { ...payload, strand_mode: 'reverse' };
+    expect((await POST(request(reverse))).status).toBe(202);
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(new TextDecoder().decode(init?.body as ArrayBuffer))).toEqual({
+      mode: 'predict',
+      sequence: payload.sequence,
+      complete_genome: true,
+      reverse_complementary: true,
+      strand_mode: 'reverse',
+      reference_accession: payload.ncbi_accession,
+    });
+  });
+
   it.each([
     { fasta: '>x\nACGT' }, { genome_context: 'ACGT' }, { reference_accession: 'GCF_000005845.1' },
     { reference_source: { url: 'https://evil.test' } }, { ncbi_accession: 'https://evil.test' },

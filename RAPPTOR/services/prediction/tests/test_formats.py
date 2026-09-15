@@ -99,7 +99,11 @@ def test_all_scan_formats_are_readable(tmp_path):
     assert {artifact["format"] for artifact in artifacts} == {"bigwig", "parquet", "gff3", "json"}
 
 
-def test_single_strand_creates_and_archives_only_plus_bigwig(tmp_path):
+@pytest.mark.parametrize(
+    ("strand", "suffix"),
+    [("+", "plus"), ("-", "minus")],
+)
+def test_single_strand_creates_and_archives_only_its_bigwig(tmp_path, strand, suffix):
     pytest.importorskip("pyBigWig")
     writer = ScanArtifactWriter(
         tmp_path,
@@ -110,14 +114,14 @@ def test_single_strand_creates_and_archives_only_plus_bigwig(tmp_path):
         stride=1,
     )
     writer.add_scores(
-        "contig", 100, "+", np.array([0.5], dtype=np.float32), upstream_len=50, window_length=100,
+        "contig", 100, strand, np.array([0.5], dtype=np.float32), upstream_len=50, window_length=100,
     )
     artifacts = writer.close(success=True)
 
-    assert [item["filename"] for item in artifacts] == ["scores.plus.bw"]
+    assert [item["filename"] for item in artifacts] == [f"scores.{suffix}.bw"]
     metadata = _write_bigwig_zip(tmp_path, artifacts)
     with zipfile.ZipFile(tmp_path / metadata["filename"]) as archive:
-        assert archive.namelist() == ["model-score-tracks/scores.plus.bw"]
+        assert archive.namelist() == [f"model-score-tracks/scores.{suffix}.bw"]
         assert archive.testzip() is None
 
 

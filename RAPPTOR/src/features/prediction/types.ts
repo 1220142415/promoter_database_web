@@ -12,7 +12,7 @@ export function predictionAnchorCoordinate(windowStart: number, strand: '+' | '-
 export type PredictionServiceMode = 'demo' | 'remote';
 export type PredictionServiceStatus = 'demo' | 'ready' | 'unavailable';
 export type PredictionJobState = 'queued' | 'running' | 'succeeded' | 'failed';
-export type PredictionStrandMode = 'both' | 'forward';
+export type PredictionStrandMode = 'both' | 'forward' | 'reverse';
 export type PredictionKind = 'candidate';
 
 export interface PredictionCapabilities {
@@ -147,7 +147,7 @@ export interface PredictionJob {
 
 export interface PredictionScorePoint {
   windowStart: number;
-  plus: number;
+  plus: number | null;
   minus: number | null;
 }
 
@@ -169,7 +169,7 @@ export interface PredictionBrowserAssets {
     gziUrl: string;
   };
   scores: {
-    plusBigWigUrl: string;
+    plusBigWigUrl: string | null;
     minusBigWigUrl: string | null;
   };
   promoters: {

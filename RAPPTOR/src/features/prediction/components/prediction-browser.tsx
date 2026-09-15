@@ -10,8 +10,9 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
   const [annotation, setAnnotation] = useState<{ name: string; url: string } | null>(null);
   const [sequenceLengths, setSequenceLengths] = useState<Record<string, number>>({});
   const base = `/api/predictions/jobs/${jobId}/artifacts`;
-  const missing = artifacts ? ['input.fasta', 'input.fasta.fai', 'scores.plus.bw'].filter((name) => !artifacts.some((item) => item.filename === name)) : [];
+  const hasPlus = !artifacts || artifacts.some((item) => item.filename === 'scores.plus.bw');
   const hasMinus = !artifacts || artifacts.some((item) => item.filename === 'scores.minus.bw');
+  const missing = artifacts ? ['input.fasta', 'input.fasta.fai', ...(hasPlus ? ['scores.plus.bw'] : []), ...(hasMinus ? ['scores.minus.bw'] : [])].filter((name) => !artifacts.some((item) => item.filename === name)) : [];
   const promoterArtifact = artifacts?.find((item) => item.filename === 'promoters.gff3' || item.filename === 'peaks.gff3');
   const hasPromoters = Boolean(promoterArtifact);
   const precomputedScoreSigma = summary?.bigwig_smoothing?.method === 'gaussian'
@@ -69,14 +70,14 @@ export default function PredictionBrowser({ jobId, refName, accessToken, artifac
         fastaGzi: '',
         predictedPromoters: promoterArtifact ? `${base}/${promoterArtifact.filename}` : '',
         predictedPromotersIndex: '',
-        promoterScoresPlus: `${base}/scores.plus.bw`,
+        promoterScoresPlus: hasPlus ? `${base}/scores.plus.bw` : null,
         promoterScoresMinus: hasMinus ? `${base}/scores.minus.bw` : null,
         ncbiAnnotations: annotation?.url || null,
         ncbiAnnotationsIndex: null,
       },
       trackLabels: {
         promoters: 'RAPPtor predicted promoters',
-        scores: `${smoothedScoreTrack ? 'RAPPtor smoothed model scores' : 'RAPPTOR model scores'} (${hasMinus ? '+ / − strands' : '+ strand'})`,
+        scores: `${smoothedScoreTrack ? 'RAPPtor smoothed model scores' : 'RAPPTOR model scores'} (${hasPlus && hasMinus ? '+ / − strands' : hasPlus ? '+ strand' : '− strand'})`,
         annotation: annotation ? `Uploaded annotation · ${annotation.name}` : undefined,
       },
     };

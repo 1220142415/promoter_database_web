@@ -38,7 +38,6 @@ import PredictionVerification from '../components/prediction-verification';
 import { registerPrototypeTransientInput } from './transient-input';
 import { DEFAULT_PREDICTION_MAX_REQUEST_BYTES, formatPredictionMaxRequestBytes } from '../capabilities';
 import { PORTAL_COPY, PORTAL_TERMS, predictionModeLabel, thresholdLabel } from '@/components/portal-terminology';
-import Link from 'next/link';
 import HelpTip from '../components/help-tip';
 import styles from './prototype-workbench.module.css';
 import { downloadBrowserFasta, findBrowserNcbiReference } from './browser-references';
@@ -82,6 +81,7 @@ type ReferenceSearchRow = Pick<GenomeCatalogRow, 'accession' | 'organismName'> &
   source?: 'ncbi' | 'huggingface';
   referenceUrl?: string | null;
   predictionAccession?: string | null;
+  sourceUrl?: string;
 };
 
 const EMPTY_UPLOAD: UploadedInputState = { file: null, parsed: null, loading: false, error: null };
@@ -222,6 +222,10 @@ function parsedGenomeInput(parsed: PrototypeParsedSequenceInput, label: string):
   };
 }
 
+function legacyReverseComplementary(strandMode: PrototypeStrandMode) {
+  return strandMode !== 'forward';
+}
+
 type BrowserDownloadProgress = (loaded: number, total: number | null) => void;
 
 async function catalogGenomeInput(context: PrototypeGenomeContext, onProgress?: BrowserDownloadProgress): Promise<ResolvedGenomeInput> {
@@ -333,6 +337,8 @@ export default function PrototypePredictionWorkbench({
   const [exampleError, setExampleError] = useState<string | null>(null);
   const [browserDownload, setBrowserDownload] = useState<{ loaded: number; total: number | null } | null>(null);
   const verifiedExample = useRef<ResolvedGenomeInput | null>(null);
+  const pastedExampleFasta = useRef<string | null>(null);
+  const pastedExampleNormalizedFasta = useRef<string | null>(null);
   async function loadCatalogGenome(context: PrototypeGenomeContext) {
     try {
       return await catalogGenomeInput(context, (loaded, total) => setBrowserDownload({ loaded, total }));
@@ -351,7 +357,9 @@ export default function PrototypePredictionWorkbench({
     if (!inlineInput.trim()) return { parsed: null, error: null };
     try {
       const parsed = parsePrototypeSequenceInput(inlineInput);
-      validatePrototypeInlineLength(parsed.totalLength, maxSequenceBases);
+      if (pastedExampleNormalizedFasta.current === null || parsed.normalizedForChecksum !== pastedExampleNormalizedFasta.current) {
+        validatePrototypeInlineLength(parsed.totalLength, maxSequenceBases);
+      }
       return { parsed, error: null };
     }
     catch (cause) { return { parsed: null, error: cause instanceof Error ? cause.message : 'Sequence input is invalid.' }; }
@@ -451,17 +459,45 @@ export default function PrototypePredictionWorkbench({
     setReferenceError(null);
   }
 
-  function loadGenomeExample() {
+  async function loadGenomeExample() {
     primaryRevision.current += 1;
-    setPrimaryKind('catalog');
+    const revision = primaryRevision.current;
+    setExampleLoading(true);
+    setExampleError(null);
+    setPrimaryKind('inline');
     setInlineInput('');
     setUploadedInput(EMPTY_UPLOAD);
-    setInputCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
+    setInputCatalog(null);
     clearGenomeContext('catalog');
     setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
-    if (!preview) void prepareExampleReference();
-    setFormError(null);
-    setReferenceError(null);
+    try {
+      let downloaded: string;
+      try {
+        downloaded = await downloadBrowserFasta(REAL_PREDICTION_REFERENCE.sourceUrl, (loaded, total) => setBrowserDownload({ loaded, total }));
+      } catch (directError) {
+        const legacy = await fetch(`/api/prediction-reference/${PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession}`, { cache: 'no-store' });
+        if (!legacy.ok) throw directError;
+        downloaded = await legacy.text();
+      }
+      if (revision !== primaryRevision.current) return;
+      const verified = await validateReferenceExample(downloaded);
+      if (revision !== primaryRevision.current) return;
+      const normalized = parsePrototypeSequenceInput(verified.fasta);
+      pastedExampleFasta.current = verified.fasta;
+      pastedExampleNormalizedFasta.current = normalized.normalizedForChecksum;
+      verifiedExample.current = parsedGenomeInput(normalized, REAL_PREDICTION_REFERENCE.organism);
+      setInlineInput(verified.fasta);
+      clearGenomeContext('catalog');
+      setContextCatalog(PROTOTYPE_CANDIDATE_GENOME_EXAMPLE);
+      setFormError(null);
+      setReferenceError(null);
+    } catch (cause) {
+      if (revision === primaryRevision.current) {
+        setExampleError(cause instanceof Error ? cause.message : 'The genome example is temporarily unavailable.');
+      }
+    } finally {
+      if (revision === primaryRevision.current) setExampleLoading(false);
+    }
   }
 
   async function handlePrimaryFile(event: ChangeEvent<HTMLInputElement>) {
@@ -670,7 +706,8 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             genome_context: context.sequence,
-            reverse_complementary: strandMode === 'both',
+            strand_mode: strandMode,
+            reverse_complementary: legacyReverseComplementary(strandMode),
           };
           bases = sequence.length;
           referenceName = context.referenceName;
@@ -678,7 +715,8 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             ncbi_accession: contextCatalog.accession,
-            reverse_complementary: strandMode === 'both',
+            strand_mode: strandMode,
+            reverse_complementary: legacyReverseComplementary(strandMode),
           };
           bases = sequence.length;
           referenceName = contextCatalog.accession;
@@ -692,7 +730,8 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             reference_accession: referenceAccession,
-            reverse_complementary: strandMode === 'both',
+            strand_mode: strandMode,
+            reverse_complementary: legacyReverseComplementary(strandMode),
           };
           bases = sequence.length;
           referenceName = contextCatalog.accession;
@@ -700,7 +739,8 @@ export default function PrototypePredictionWorkbench({
           const context = await resolveGenomeContextSequence();
           request = {
             mode: 'predict', complete_genome: true, sequence, fasta: context.fasta,
-            reverse_complementary: strandMode === 'both',
+            strand_mode: strandMode,
+            reverse_complementary: legacyReverseComplementary(strandMode),
           };
           bases = sequence.length;
           referenceName = context.referenceName;
@@ -711,7 +751,9 @@ export default function PrototypePredictionWorkbench({
         const genome = await primaryScanSequence();
         request = {
           mode: 'genome_scan', complete_genome: true, fasta: genome.fasta,
-          stride: strideBases, reverse_complementary: strandMode === 'both',
+          stride: strideBases,
+          strand_mode: strandMode,
+          reverse_complementary: legacyReverseComplementary(strandMode),
           ...genomeScanOutputs(strideBases, service, cutoff),
         };
         if (contextKind === 'catalog') {
@@ -788,7 +830,7 @@ export default function PrototypePredictionWorkbench({
   const activeContextLabel = contextKind === 'catalog'
     ? (usesNcbiContext ? 'NCBI external reference' : 'Catalog genome')
     : 'Uploaded complete genome FASTA';
-  const expectedExampleGenome = (primaryKind === 'inline' && inlineInput === PROTOTYPE_CANDIDATE_EXAMPLE)
+  const expectedExampleGenome = (primaryKind === 'inline' && (inlineInput === PROTOTYPE_CANDIDATE_EXAMPLE || inlineInput === pastedExampleFasta.current))
     || (primaryKind === 'catalog' && inputCatalog?.kind === 'catalog' && inputCatalog.accession === PROTOTYPE_CANDIDATE_GENOME_EXAMPLE.accession)
     ? PROTOTYPE_CANDIDATE_GENOME_EXAMPLE
     : null;
@@ -925,7 +967,7 @@ export default function PrototypePredictionWorkbench({
             <fieldset ref={parameterStepRef} className={styles.stepCard} tabIndex={-1}>
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
-                <label><span>Strands<HelpTip label="strands" text="Choose Both strands when the sequence direction is unknown. Choose Forward only when you want to score the entered direction." /></span><select value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option></select><small>Evaluate the forward sequence alone or both orientations.</small></label>
+                  <label><span>Strands<HelpTip label="strands" text="Choose Both strands when the sequence direction is unknown. Choose Forward only to score the entered direction, or Reverse only to score its reverse complement." /></span><select aria-label="Strands" value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option><option value="reverse">Reverse only</option></select><small>Evaluate the forward sequence, its reverse complement, or both orientations.</small></label>
                 <label><span>{automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel}<HelpTip label="cutoff" text="Sets which scan results are shown as promoter predictions. Lower values show more candidates; higher values show fewer." /></span><input type="number" min="0" max="1" step="0.01" aria-label={automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel} disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPromoters ? strideBases === 1 ? 'Smoothed local maxima above this cutoff are reported as promoter predictions.' : `All raw-score windows above this cutoff are reported as promoter predictions at ${strideBases} bp sampling resolution.` : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 promoter predictions with this cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
                 <label><span>{PORTAL_TERMS.stride}<HelpTip label="stride" text="Distance between sampled windows. A larger stride scans faster but can miss narrow signals." /></span><select value={String(strideBases)} aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. Choose a stride from ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Choose ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp.` : `Choose a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES} bp.`}</small></label>
               </div>

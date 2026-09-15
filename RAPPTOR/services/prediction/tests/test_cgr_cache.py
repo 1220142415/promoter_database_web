@@ -121,19 +121,24 @@ class FakeRuntime:
         return {"model_version": "test"}
 
 
-def _predict_with_context(tmp_path, monkeypatch, sequence, *, reverse_complementary):
+def _predict_with_context(
+    tmp_path, monkeypatch, sequence, *, reverse_complementary, strand_mode=None,
+):
     runtime = FakeRuntime()
     monkeypatch.setattr(jobs, "get_runtime", lambda: runtime)
     storage = JobStorage(tmp_path / "data")
     job_id = "4" * 32
     storage.create(job_id)
-    jobs._predict(job_id, {
+    request = {
         "sequence": sequence,
         "genome_context": "ACGT" * 100,
         "cgr_source": "complete_genome_sequence",
         "batch_size": 32,
         "reverse_complementary": reverse_complementary,
-    }, storage)
+    }
+    if strand_mode is not None:
+        request["strand_mode"] = strand_mode
+    jobs._predict(job_id, request, storage)
     rows = storage.read_json(job_id, "scores.json")
     summary = storage.read_json(job_id, "summary.json")
     return runtime, rows, summary
@@ -170,6 +175,32 @@ def test_predict_100bp_can_disable_reverse_complement(tmp_path, monkeypatch):
     assert summary["window_count"] == 1
     assert summary["reverse_complementary"] is False
     assert runtime.scored_sequences == [sequence]
+
+
+def test_predict_100bp_reverse_only_scans_and_counts_one_strand(tmp_path, monkeypatch):
+    sequence = "A" * 99 + "C"
+    progress = []
+    monkeypatch.setattr(
+        jobs,
+        "_progress",
+        lambda stage, percent, **values: progress.append(
+            {"stage": stage, "percent": percent, **values}
+        ),
+    )
+    runtime, rows, summary = _predict_with_context(
+        tmp_path,
+        monkeypatch,
+        sequence,
+        reverse_complementary=True,
+        strand_mode="reverse",
+    )
+    reverse = sequence.translate(str.maketrans("ACGTN", "TGCAN"))[::-1]
+    assert runtime.scored_sequences == [reverse]
+    assert [row["strand"] for row in rows] == ["-"]
+    assert summary["evaluated_strands"] == ["-"]
+    assert summary["reverse_complementary"] is True
+    assert summary["window_count"] == 1
+    assert {event["total_windows"] for event in progress if "total_windows" in event} == {1}
 
 
 def test_reference_accession_completes_predict_without_fasta(tmp_path, monkeypatch):
@@ -278,6 +309,38 @@ def test_reference_accession_supplies_cgr_for_partial_genome_scan(tmp_path, monk
     assert summary["cgr_cache"] == "memory_hit"
     assert summary["genome_context_bases"] is None
     assert not (storage.job_dir(job_id) / "genome_context.fasta").exists()
+
+
+def test_reverse_only_scan_scans_and_counts_one_strand(tmp_path, monkeypatch):
+    runtime = FakeRuntime()
+    progress = []
+    monkeypatch.setattr(jobs, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        jobs,
+        "_progress",
+        lambda stage, percent, **values: progress.append(
+            {"stage": stage, "percent": percent, **values}
+        ),
+    )
+    storage = JobStorage(tmp_path / "data")
+    job_id = "8" * 32
+    storage.create(job_id)
+    jobs._scan(job_id, {
+        "fasta": ">region\n" + "ACGT" * 30,
+        "genome_context": "ACGT" * 100,
+        "stride": 10,
+        "batch_size": 8,
+        "strand_mode": "reverse",
+        "reverse_complementary": True,
+        "output_formats": ["json"],
+    }, storage)
+    rows = storage.read_json(job_id, "scores.json")
+    summary = storage.read_json(job_id, "summary.json")
+    assert len(runtime.scored_sequences) == 1
+    assert {row["strand"] for row in rows} == {"-"}
+    assert summary["evaluated_strands"] == ["-"]
+    assert summary["window_count"] == 3
+    assert {event["total_windows"] for event in progress if "total_windows" in event} == {3}
 
 
 def test_predict_emits_only_non_sensitive_stage_timings(tmp_path, monkeypatch, capsys):

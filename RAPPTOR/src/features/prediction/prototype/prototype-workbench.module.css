@@ -100,6 +100,12 @@
 .inlineActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 9px; }
 .inlineActions a, .catalogError a { min-height: 44px; display: inline-flex; align-items: center; color: var(--teal-dark); font-size: 12px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
 .hiddenInput { position: absolute !important; width: 1px !important; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.selection { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; border: 1px solid #b9d9d2; border-radius: 7px; background: var(--teal-soft); padding: 13px 14px; }
+.selection > div { min-width: 0; display: grid; gap: 3px; }
+.selection strong { font-size: 12px; }
+.selection span { color: var(--muted); font-size: 11px; }
+.selection button { min-height: 34px; border: 1px solid var(--line-strong); border-radius: 5px; background: white; padding: 0 10px; color: var(--ink-soft); font-size: 11px; font-weight: 750; cursor: pointer; }
+.selection button:hover { border-color: var(--teal); color: var(--teal-dark); }
 
 .pasteSource, .catalogSource, .contextUploadSource { min-width: 0; }
 .catalogSource { border-left: 1px solid var(--line); padding-left: 24px; }

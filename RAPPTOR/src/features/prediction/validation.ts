@@ -66,7 +66,7 @@ export function parseDemoPredictionSubmission(value: unknown, capabilities: Pred
   const format = value.target.format;
   if (format !== 'raw' && format !== 'fasta') throw new PredictionValidationError('INVALID_FORMAT', 'Candidate format must be raw or fasta.');
   const strandMode = value.strandMode;
-  if (strandMode !== 'both' && strandMode !== 'forward') throw new PredictionValidationError('INVALID_STRANDS', 'strandMode must be both or forward.');
+  if (strandMode !== 'both' && strandMode !== 'forward' && strandMode !== 'reverse') throw new PredictionValidationError('INVALID_STRANDS', 'strandMode must be both, forward, or reverse.');
   return {
     contractVersion: PREDICTION_CONTRACT_VERSION,
     predictionKind: 'candidate',
@@ -241,7 +241,7 @@ export function parsePredictionSubmission(value: unknown, capabilities: Predicti
   const format = value.target.format;
   if (format !== 'raw' && format !== 'fasta') throw new PredictionValidationError('INVALID_FORMAT', 'Candidate format must be raw or fasta.');
   const strandMode = value.strandMode;
-  if (strandMode !== 'both' && strandMode !== 'forward') throw new PredictionValidationError('INVALID_STRANDS', 'strandMode must be both or forward.');
+  if (strandMode !== 'both' && strandMode !== 'forward' && strandMode !== 'reverse') throw new PredictionValidationError('INVALID_STRANDS', 'strandMode must be both, forward, or reverse.');
   const modelVersion = requiredString(value.modelVersion, 'INVALID_MODEL', 'modelVersion is required.');
   if (modelVersion !== capabilities.modelVersion) throw new PredictionValidationError('INVALID_MODEL', 'The requested model version is not available.');
   const sequence = typeof value.target.sequence === 'string' ? value.target.sequence : undefined;

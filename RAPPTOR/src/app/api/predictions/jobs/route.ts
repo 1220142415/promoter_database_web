@@ -96,18 +96,20 @@ export async function POST(request: Request) {
       const accession = ncbiAccession(submission[referenceField]);
       let bases: number;
       if (mode === 'predict') {
-        const allowed = new Set(['mode', 'sequence', referenceField, 'complete_genome', 'reverse_complementary']);
+        const allowed = new Set(['mode', 'sequence', referenceField, 'complete_genome', 'reverse_complementary', 'strand_mode']);
         if (submission.complete_genome !== true
           || typeof submission.sequence !== 'string' || !/^[ACGT]{100}$/i.test(submission.sequence)
           || (submission.reverse_complementary !== undefined && typeof submission.reverse_complementary !== 'boolean')
+          || (submission.strand_mode !== undefined && submission.strand_mode !== 'both' && submission.strand_mode !== 'forward' && submission.strand_mode !== 'reverse')
           || Object.keys(submission).some((key) => !allowed.has(key))) {
           throw new NcbiReferenceError('INVALID_REQUEST', 'Reference selection requires a single 100 bp sequence and no other reference source.', 400);
         }
         bases = submission.sequence.length;
       } else {
-        const allowed = new Set(['mode', 'fasta', referenceField, 'complete_genome', 'stride', 'score_cutoff', 'batch_size', 'reverse_complementary', 'output_formats']);
+        const allowed = new Set(['mode', 'fasta', referenceField, 'complete_genome', 'stride', 'score_cutoff', 'batch_size', 'reverse_complementary', 'strand_mode', 'output_formats']);
         if (submission.complete_genome !== true
           || (submission.reverse_complementary !== undefined && typeof submission.reverse_complementary !== 'boolean')
+          || (submission.strand_mode !== undefined && submission.strand_mode !== 'both' && submission.strand_mode !== 'forward' && submission.strand_mode !== 'reverse')
           || Object.keys(submission).some((key) => !allowed.has(key))) {
           throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan reference selection requires FASTA and one reference accession.', 400);
         }

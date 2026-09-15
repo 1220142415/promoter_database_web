@@ -37,7 +37,7 @@ describe('real score artifact validation', () => {
   const minus = { strand: '-', score: .62, window_start_0based: 0, anchor_position_0based: 20 };
   it('preserves the supplied scores and orders both strands', () => {
     expect(parseFocusedScores([minus, plus])).toEqual([plus, minus]);
-    expect(parseFocusedScores([plus], false)).toEqual([plus]);
+    expect(parseFocusedScores([plus], 'forward')).toEqual([plus]);
   });
   it.each([[plus], [plus, plus], [plus, { ...minus, score: NaN }], [plus, { ...minus, score: 1.1 }], [plus, { ...minus, window_start_0based: 1 }], [plus, { ...minus, anchor_position_0based: 100 }]])('rejects missing or invalid output: %j', (...rows) => {
     expect(() => parseFocusedScores(rows)).toThrow();

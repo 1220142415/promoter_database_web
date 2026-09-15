@@ -524,9 +524,27 @@ def test_submission_records_stride_and_strand_aware_window_workload(tmp_path, mo
         stride=20,
         reverse_complementary=False,
     ), authorization=None))
+    reverse_prediction = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="predict",
+        complete_genome=True,
+        sequence="A" * 100,
+        genome_context="ACGT" * 100,
+        strand_mode="reverse",
+        reverse_complementary=True,
+    ), authorization=None))
+    reverse_scan = asyncio.run(api.submit_job(api.JobSubmission(
+        mode="genome_scan",
+        complete_genome=True,
+        fasta=">one\n" + "A" * 300 + "\n>two\n" + "C" * 120,
+        stride=20,
+        strand_mode="reverse",
+        reverse_complementary=True,
+    ), authorization=None))
 
     assert api.Job.fetch(prediction.job_id, connection=connection).meta["eta_total_windows"] == 2
     assert api.Job.fetch(scan.job_id, connection=connection).meta["eta_total_windows"] == 13
+    assert api.Job.fetch(reverse_prediction.job_id, connection=connection).meta["eta_total_windows"] == 1
+    assert api.Job.fetch(reverse_scan.job_id, connection=connection).meta["eta_total_windows"] == 13
 
 
 def test_status_separates_load_from_job_polling(tmp_path, monkeypatch):

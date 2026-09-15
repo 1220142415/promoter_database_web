@@ -132,7 +132,13 @@ export async function POST(request: Request) {
         throw new NcbiReferenceError('INVALID_TICKET', 'This ticket is invalid, too close to expiry, or already used for a download. Verify again and resubmit.', 401);
       }
       const timeout = withTimeout(request.signal, 40_000);
-      try { await preparePredictionReference(accession, referenceSource, timeout.signal); }
+      try {
+        await preparePredictionReference(accession, referenceSource, timeout.signal);
+      } catch (cause) {
+        // Docker validates its local CGR again when the job is accepted. A catalog cache
+        // probe outage must not block references that are already present there.
+        if (!(referenceSource === 'catalog' && cause instanceof NcbiReferenceError && cause.code === 'CACHE_SERVICE_UNAVAILABLE')) throw cause;
+      }
       finally { timeout.cleanup(); }
       submission = { ...submission, reference_accession: accession };
       delete submission.ncbi_accession;

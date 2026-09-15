@@ -102,6 +102,23 @@ describe('Worker NCBI to Docker FASTA bridge', () => {
     });
   });
 
+  it('lets Docker use an already-cached catalog reference when the remote cache probe is unavailable', async () => {
+    vi.mocked(preparePredictionReference).mockRejectedValueOnce(new NcbiReferenceError(
+      'CACHE_SERVICE_UNAVAILABLE', 'Reference cache is temporarily unavailable.', 503,
+    ));
+    const ordinary = { mode: 'predict', sequence: payload.sequence, reference_accession: 'GCF_000005845.1', complete_genome: true };
+    expect((await POST(request(ordinary))).status).toBe(202);
+    expect(fetch).toHaveBeenCalledWith('https://docker.test/v1/jobs', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('does not bypass reference preparation for an external NCBI reference', async () => {
+    vi.mocked(preparePredictionReference).mockRejectedValueOnce(new NcbiReferenceError(
+      'CACHE_SERVICE_UNAVAILABLE', 'Reference cache is temporarily unavailable.', 503,
+    ));
+    expect((await POST(request())).status).toBe(503);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['ncbi_accession', 'ncbi'],
     ['reference_accession', 'catalog'],

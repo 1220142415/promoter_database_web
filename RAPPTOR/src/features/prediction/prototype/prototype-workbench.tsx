@@ -886,7 +886,7 @@ export default function PrototypePredictionWorkbench({
           {!preview && serverStatus ? <div className={styles.serverStatus} data-status={serverStatus.status} role="status" aria-live="polite">
             <span aria-hidden="true" />
             <strong>Prediction server: {serverStatus.status === 'idle' ? 'Idle' : serverStatus.status === 'busy' ? 'Busy' : 'Offline'}</strong>
-            <small>{serverStatus.running.genomes + serverStatus.running.shortSequences} running · {serverStatus.waiting.genomes} genome{serverStatus.waiting.genomes === 1 ? '' : 's'} and {serverStatus.waiting.shortSequences} short sequence{serverStatus.waiting.shortSequences === 1 ? '' : 's'} waiting</small>
+            {serverStatus.status === 'busy' ? <small>{serverStatus.running.genomes + serverStatus.running.shortSequences} running · {serverStatus.waiting.genomes} genome{serverStatus.waiting.genomes === 1 ? '' : 's'} and {serverStatus.waiting.shortSequences} short sequence{serverStatus.waiting.shortSequences === 1 ? '' : 's'} waiting</small> : null}
             <button type="button" onClick={() => router.refresh()}>Refresh</button>
           </div> : null}
 

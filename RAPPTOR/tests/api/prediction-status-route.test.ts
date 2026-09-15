@@ -6,11 +6,12 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('public prediction server status', () => {
   it('returns only aggregate queue state', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://docker.test');
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+    const fetchMock = vi.fn(async () => Response.json({
       status: 'ready', worker_ready: true, queues: { predict: 2, genome_scan: 3 },
       workload: { running: { predict: { jobs: 1 }, genome_scan: { jobs: 1 } } },
       workers: { predict: true }, model_version: 'secret-detail',
-    })));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
     expect(await readPredictionServerStatus()).toEqual({
       status: 'busy', waiting: { genomes: 3, shortSequences: 2 }, running: { genomes: 1, shortSequences: 1 },
     });

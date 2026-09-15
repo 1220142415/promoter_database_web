@@ -18,6 +18,14 @@ const error = (code: string, message: string, status: number) => Response.json(
   { status, headers: NO_STORE },
 );
 
+function authProviderError(value: unknown) {
+  if (!value || typeof value !== 'object') return {};
+  const source = value as Record<string, unknown>;
+  return Object.fromEntries(['code', 'error_code', 'msg', 'message']
+    .filter((key) => typeof source[key] === 'string')
+    .map((key) => [key, String(source[key]).slice(0, 200)]));
+}
+
 export async function GET(request: Request) {
   if (predictionAccessMode() === 'ip') return error('AUTH_DISABLED', 'Email sign-in is disabled for this deployment.', 404);
   const settings = readAuthSettings();
@@ -74,7 +82,14 @@ export async function POST(request: Request) {
   try {
     if (action === 'send-code') {
       const result = await supabaseAuth(settings, 'otp', { email, create_user: true });
-      if (!result.response.ok) return error('OTP_SEND_FAILED', 'Verification code could not be sent. Try again shortly.', 400);
+      if (!result.response.ok) {
+        console.error(JSON.stringify({
+          event: 'prediction_auth_otp_failed',
+          providerStatus: result.response.status,
+          providerError: authProviderError(result.parsed),
+        }));
+        return error('OTP_SEND_FAILED', 'Verification code could not be sent. Try again shortly.', 400);
+      }
       return Response.json({ authenticated: false, codeSent: true }, { status: 202, headers: NO_STORE });
     }
 

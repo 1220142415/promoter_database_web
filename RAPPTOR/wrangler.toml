@@ -3,7 +3,6 @@ main = "config/cloudflare-worker.mjs"
 compatibility_date = "2026-08-13"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
-routes = [{ pattern = "rapptor.duolalab.qzz.io", custom_domain = true }]
 
 [assets]
 directory = ".open-next/assets"
@@ -28,7 +27,7 @@ RAPPTOR_CATALOG_BACKEND = "d1"
 RAPPTOR_PREDICTION_ENABLED = "on"
 RAPPTOR_PREDICTION_ACCESS_MODE = "email"
 RAPPTOR_PREDICTION_SERVICE_URL = "https://rapptor_server.duolalab.qzz.io"
-RAPPTOR_PUBLIC_SITE_URL = "https://rapptor.duolalab.qzz.io"
+RAPPTOR_PUBLIC_SITE_URL = "https://rapptor.1052596411.workers.dev"
 RAPPTOR_DEPLOYMENT_ENV = "production"
 RAPPTOR_PREDICTION_LOCAL_TEST = "off"
 NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST = "off"

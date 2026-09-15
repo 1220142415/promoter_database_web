@@ -50,6 +50,10 @@ export function readGenomeScansPerDay() {
   return positiveInteger('RAPPTOR_PREDICTION_GENOME_SCANS_PER_DAY');
 }
 
+export function readPredictionBasesPerDay() {
+  return positiveInteger('RAPPTOR_PREDICTION_BASES_PER_DAY');
+}
+
 export type PredictionTicketIssueSettings = Omit<PredictionTicketSettings, 'turnstileSecret' | 'serviceSecret'>;
 
 export function readPredictionTicketIssueSettings(): PredictionTicketIssueSettings {
@@ -61,7 +65,7 @@ export function readPredictionTicketIssueSettings(): PredictionTicketIssueSettin
     maxBases: positiveInteger('RAPPTOR_PREDICTION_MAX_BASES'),
     ticketsPerMinute: positiveInteger('RAPPTOR_PREDICTION_TICKETS_PER_MINUTE'),
     genomeScansPerDay: readGenomeScansPerDay(),
-    basesPerDay: positiveInteger('RAPPTOR_PREDICTION_BASES_PER_DAY'),
+    basesPerDay: readPredictionBasesPerDay(),
     ttlSeconds: positiveInteger('RAPPTOR_PREDICTION_TICKET_TTL_SECONDS'),
     ipHashSecret: required('RAPPTOR_PREDICTION_IP_HASH_SECRET'),
   };
@@ -292,6 +296,47 @@ export async function claimPredictionReferenceDownload(
     .bind(now.toISOString(), input.accession, await sha256(ticket), modelVersion, input.mode,
       new Date(now.getTime() + 45_000).toISOString(), input.bases).run();
   return changedRows(result) === 1;
+}
+
+export async function reservePredictionBases(
+  database: D1Database,
+  userId: string,
+  bases: number,
+  maxBases: number,
+  now = new Date(),
+) {
+  if (!Number.isSafeInteger(bases) || bases <= 0 || bases > maxBases) return false;
+  const result = await database.prepare(`INSERT INTO prediction_daily_quota
+      (user_id, quota_day, task_kind, used, used_bases, updated_at)
+    VALUES (?, ?, 'genome_scan', 0, ?, ?)
+    ON CONFLICT(user_id, quota_day, task_kind) DO UPDATE SET
+      used_bases = prediction_daily_quota.used_bases + excluded.used_bases,
+      updated_at = excluded.updated_at
+    WHERE prediction_daily_quota.used_bases + excluded.used_bases <= ?`)
+    .bind(userId, beijingQuotaDay(now), bases, now.toISOString(), maxBases)
+    .run();
+  return changedRows(result) === 1;
+}
+
+export async function releasePredictionBases(database: D1Database, userId: string, bases: number, now = new Date()) {
+  await database.prepare(`UPDATE prediction_daily_quota
+    SET used_bases = MAX(0, used_bases - ?), updated_at = ?
+    WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan'`)
+    .bind(bases, now.toISOString(), userId, beijingQuotaDay(now))
+    .run();
+}
+
+export async function readPredictionBaseUsage(database: D1Database, userId: string, now = new Date()) {
+  const totalBases = readPredictionBasesPerDay();
+  const row = await database.prepare(`SELECT used_bases FROM prediction_daily_quota
+    WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan'`)
+    .bind(userId, beijingQuotaDay(now))
+    .first<{ used_bases: number }>();
+  return {
+    usedBases: Math.max(0, Number(row?.used_bases) || 0),
+    totalBases,
+    resetAt: new Date(now.getTime() + secondsUntilBeijingMidnight(now) * 1000).toISOString(),
+  };
 }
 
 export async function hasPreparedPredictionReference(database: D1Database, ticket: string, accession: string, mode: PredictionTaskMode) {

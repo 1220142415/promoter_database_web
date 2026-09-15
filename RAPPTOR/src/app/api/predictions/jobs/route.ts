@@ -3,7 +3,7 @@ import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
-import { claimPredictionReferenceDownload, readGenomeScansPerDay, readPredictionTicketIssueSettings, releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
+import { claimPredictionReferenceDownload, readPredictionBasesPerDay, readPredictionTicketIssueSettings, releasePredictionBases, reservePredictionBases, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
 import { ncbiAccession, ncbiErrorResponse, NcbiReferenceError, withTimeout } from '@/features/prediction/ncbi-reference';
 import { preparePredictionReference } from '@/features/prediction/reference-cache';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
@@ -89,6 +89,8 @@ export async function POST(request: Request) {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction task mode is invalid.' } }, { status: 400 });
   }
 
+  let submissionBases = 0;
+
   if ('ncbi_accession' in submission || ('reference_accession' in submission && !localTest)) {
     try {
       const source = 'ncbi_accession' in submission ? 'ncbi' : 'catalog';
@@ -115,6 +117,7 @@ export async function POST(request: Request) {
         }
         bases = scanFastaBases(submission.fasta);
       }
+      submissionBases = bases;
       const downloadDatabase = usageDatabase();
       if (!downloadDatabase || localTest) throw new NcbiReferenceError('UNAVAILABLE', 'Reference preparation requires the deployed prediction ticket database.', 503);
       let claimed: boolean;
@@ -136,19 +139,24 @@ export async function POST(request: Request) {
       body = encoded.buffer;
     } catch (cause) { return ncbiErrorResponse(cause); }
   }
-
   const now = new Date();
   const database = auth ? usageDatabase() : null;
-  if (mode === 'genome_scan' && auth) {
+  if (auth) {
     if (!database) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota database is unavailable.' } }, { status: 503 });
     try {
-      if (!await reserveGenomeScanQuota(database, auth.id, readGenomeScansPerDay(), now)) {
+      if (!submissionBases) {
+        if (mode === 'genome_scan') submissionBases = scanFastaBases(submission.fasta);
+        else if (typeof submission.sequence === 'string' && submission.sequence.length > 0) submissionBases = submission.sequence.length;
+        else throw new NcbiReferenceError('INVALID_REQUEST', 'Prediction requires a DNA sequence.', 400);
+      }
+      if (!await reservePredictionBases(database, auth.id, submissionBases, readPredictionBasesPerDay(), now)) {
         return Response.json(
-          { error: { code: 'DAILY_GENOME_SCAN_LIMIT', message: 'The daily whole-genome scan quota has been used. Try again after 00:00 Beijing time.' } },
+          { error: { code: 'DAILY_BASE_LIMIT', message: 'The daily prediction-base allowance has been used. Try again after 00:00 Beijing time.' } },
           { status: 429, headers: { 'Retry-After': String(secondsUntilBeijingMidnight(now)), 'Cache-Control': 'no-store' } },
         );
       }
-    } catch {
+    } catch (cause) {
+      if (cause instanceof NcbiReferenceError) return ncbiErrorResponse(cause);
       return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota could not be checked.' } }, { status: 503 });
     }
   }
@@ -161,10 +169,10 @@ export async function POST(request: Request) {
       body,
     });
   } catch {
-    if (mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+    if (database && auth) await releasePredictionBases(database, auth.id, submissionBases, now).catch(() => null);
     return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is unavailable.' } }, { status: 503 });
   }
-  if (!upstream.ok && mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+  if (!upstream.ok && database && auth) await releasePredictionBases(database, auth.id, submissionBases, now).catch(() => null);
 
   if (upstream.ok && auth) {
     // The job is already queued. Notification failures must not discard its access token or refund its quota.

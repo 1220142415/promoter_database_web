@@ -14,8 +14,9 @@ RAPPTOR_PREDICTION_ACCESS_MODE=email
 RAPPTOR_PREDICTION_ACCESS_MODE=ip
 ```
 
-`email` enables Supabase OTP, a per-user daily genome-scan quota, and Resend
-completion notifications. `ip` hides and disables email authentication and
+`email` enables Supabase OTP, a per-user daily prediction-base allowance, and
+Resend completion notifications. The allowance counts both short-sequence and
+whole-genome submissions and resets at 00:00 Beijing. `ip` hides and disables email authentication and
 notification delivery, then uses Turnstile plus a daily rotating IP hash. It
 allows one whole-genome ticket per IP per Beijing day; short-sequence tickets
 remain unlimited by the daily quota and retain the per-minute rate limit.
@@ -131,7 +132,8 @@ $env:HTTPS_PROXY = 'http://127.0.0.1:7997'
 npx wrangler d1 migrations apply RAPPTOR_DB --remote
 ```
 
-Migration `0012_prediction_job_notifications.sql` creates the temporary
+Migration `0017_prediction_daily_bases.sql` adds the per-user daily base usage
+shown on the prediction page. Migration `0012_prediction_job_notifications.sql` creates the temporary
 notification metadata table. Migration `0013_prediction_notification_links.sql`
 adds the encrypted capability and reference name used by result links. Rows
 are retained for seven days and purged by the daily Worker cron.
@@ -179,8 +181,9 @@ their encrypted capabilities cannot be decrypted with the new value.
 1. Request an OTP from `/predict` and confirm it arrives from the verified
    Resend sender.
 2. Verify the code and confirm the HttpOnly session cookie is set.
-3. Submit a short-sequence prediction; it is unlimited after login.
-4. Submit one whole-genome scan; a second scan on the same Beijing day returns
-   the daily-quota response. The quota resets at Beijing 00:00.
+3. Submit a short-sequence prediction and confirm its bases appear in the daily
+   usage bar.
+4. Submit a whole-genome scan and confirm its FASTA base count is added to the
+   same allowance. The quota resets at Beijing 00:00.
 5. Complete a real task and confirm exactly one completion email arrives.
 6. Replay the terminal callback and confirm no second email is sent.

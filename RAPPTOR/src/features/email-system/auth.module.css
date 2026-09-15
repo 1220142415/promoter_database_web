@@ -8,7 +8,8 @@
 .message { margin: 0; border-left: 3px solid var(--gold); background: var(--gold-soft); padding: 10px 12px; color: #71420d; font-size: 13px; line-height: 1.5; }
 .sessionBar { border-bottom: 1px solid var(--line); background: #f7f9f8; }
 .sessionBar > div { min-height: 42px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; color: var(--muted); font-size: 12px; }
-.sessionBar > div > span:first-child { margin-right: auto; }
+.quota { width: min(520px, 55%); margin-right: auto; display: grid; gap: 4px; }
+.quota progress { width: 100%; height: 5px; accent-color: var(--teal-dark); }
 .sessionBar strong { color: var(--ink); font-weight: 700; }
 .sessionBar button { border: 0; background: transparent; color: var(--teal-dark); font-size: 12px; font-weight: 750; cursor: pointer; }
 
@@ -16,5 +17,5 @@
   .panel { padding: 26px 22px; }
   .panel h1 { font-size: 32px; }
   .sessionBar > div { flex-wrap: wrap; justify-content: space-between; padding-block: 8px; }
-  .sessionBar > div > span:first-child { width: 100%; }
+  .quota { width: 100%; }
 }

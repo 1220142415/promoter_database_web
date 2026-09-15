@@ -10,6 +10,7 @@ type AuthPayload = {
   authenticated?: boolean;
   codeSent?: boolean;
   user?: AuthUser;
+  quota?: { usedBases: number; totalBases: number; resetAt: string };
   error?: { message?: string };
 };
 
@@ -81,6 +82,7 @@ export function PredictionAuthForm({ nextPath = '/predict' }: { nextPath?: strin
 export function PredictionAuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>();
+  const [quota, setQuota] = useState<AuthPayload['quota']>();
   const [error, setError] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
@@ -88,11 +90,13 @@ export function PredictionAuthGate({ children }: { children: ReactNode }) {
       const { response, payload } = await authRequest();
       if (response.ok && payload.authenticated && payload.user) {
         setUser(payload.user);
+        setQuota(payload.quota);
         setError(null);
         return;
       }
       if (response.status === 401) {
         setUser(null);
+        setQuota(undefined);
         setError(null);
         return;
       }
@@ -105,7 +109,11 @@ export function PredictionAuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     void loadSession();
     const refresh = window.setInterval(() => void loadSession(), 45 * 60 * 1000);
-    return () => window.clearInterval(refresh);
+    window.addEventListener('rapptor:prediction-submitted', loadSession);
+    return () => {
+      window.clearInterval(refresh);
+      window.removeEventListener('rapptor:prediction-submitted', loadSession);
+    };
   }, [loadSession]);
 
   async function logout() {
@@ -115,13 +123,19 @@ export function PredictionAuthGate({ children }: { children: ReactNode }) {
       body: JSON.stringify({ action: 'logout' }),
     }).catch(() => null);
     setUser(null);
+    setQuota(undefined);
   }
 
   return (
     <>
       <div className={styles.sessionBar}>
         <div className="portal-shell">
-          <span>Daily allowance: 1 whole-genome scan · short sequences unlimited · resets 00:00 Beijing</span>
+          <div className={styles.quota}>
+            <span>{quota
+              ? `Daily prediction bases: ${quota.usedBases.toLocaleString()} / ${quota.totalBases.toLocaleString()} bp`
+              : 'Daily prediction allowance is measured in bases'} · resets 00:00 Beijing</span>
+            {quota ? <progress value={quota.usedBases} max={quota.totalBases} aria-label="Daily prediction base usage" /> : null}
+          </div>
           {error ? <span role="alert">{error} <button type="button" onClick={() => void loadSession()}>Retry</button></span>
             : user ? <><span>Signed in as <strong>{user.email}</strong></span><button type="button" onClick={logout}>Sign out</button></>
               : user === null ? <Link className="portal-text-link" href={`/login?next=${encodeURIComponent(pathname)}`}>Sign in to submit</Link>

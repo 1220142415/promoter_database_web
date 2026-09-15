@@ -787,6 +787,7 @@ export default function PrototypePredictionWorkbench({
         body: JSON.stringify(request),
       });
       if (!created.job_id || !created.access_token) throw new Error('Prediction job response is invalid.');
+      window.dispatchEvent(new Event('rapptor:prediction-submitted'));
       const entry: PredictionHistoryEntry = {
         jobId: created.job_id,
         token: created.access_token,

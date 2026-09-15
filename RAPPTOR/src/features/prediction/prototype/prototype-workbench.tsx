@@ -386,6 +386,11 @@ export default function PrototypePredictionWorkbench({
     && (service.supportsPromoterOutput ?? service.supportsPeakCalling)
     && (strideBases === 1 || service.gff3RequiresStride1 === false);
   const cutoffUnavailable = !preview && inferredMode !== 'candidate' && !service.supportsScoreCutoff;
+  const supportsStrandMode = service.supportsStrandMode !== false;
+  const strandParameters = {
+    reverse_complementary: legacyReverseComplementary(strandMode),
+    ...(supportsStrandMode ? { strand_mode: strandMode } : {}),
+  };
   const cutoffReady = cutoffUnavailable || (Number.isFinite(cutoff) && cutoff >= 0 && cutoff <= 1);
   const strideReady = !inferredMode || (Number.isSafeInteger(strideBases)
     && strideBases >= PROTOTYPE_MIN_STRIDE_BASES && strideBases <= PROTOTYPE_MAX_STRIDE_BASES);
@@ -715,8 +720,7 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             reference_accession: referenceAccession,
-            strand_mode: strandMode,
-            reverse_complementary: legacyReverseComplementary(strandMode),
+            ...strandParameters,
           };
           bases = sequence.length;
           referenceName = contextCatalog?.accession || referenceAccession;
@@ -725,8 +729,7 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             genome_context: context.sequence,
-            strand_mode: strandMode,
-            reverse_complementary: legacyReverseComplementary(strandMode),
+            ...strandParameters,
           };
           bases = sequence.length;
           referenceName = context.referenceName;
@@ -734,8 +737,7 @@ export default function PrototypePredictionWorkbench({
           request = {
             mode: 'predict', complete_genome: true, sequence,
             ncbi_accession: contextCatalog.accession,
-            strand_mode: strandMode,
-            reverse_complementary: legacyReverseComplementary(strandMode),
+            ...strandParameters,
           };
           bases = sequence.length;
           referenceName = contextCatalog.accession;
@@ -743,8 +745,7 @@ export default function PrototypePredictionWorkbench({
           const context = await resolveGenomeContextSequence();
           request = {
             mode: 'predict', complete_genome: true, sequence, fasta: context.fasta,
-            strand_mode: strandMode,
-            reverse_complementary: legacyReverseComplementary(strandMode),
+            ...strandParameters,
           };
           bases = sequence.length;
           referenceName = context.referenceName;
@@ -756,8 +757,7 @@ export default function PrototypePredictionWorkbench({
         request = {
           mode: 'genome_scan', complete_genome: true, fasta: genome.fasta,
           stride: strideBases,
-          strand_mode: strandMode,
-          reverse_complementary: legacyReverseComplementary(strandMode),
+          ...strandParameters,
           ...genomeScanOutputs(strideBases, service, cutoff),
         };
         if (contextKind === 'catalog') {
@@ -978,7 +978,7 @@ export default function PrototypePredictionWorkbench({
             <fieldset ref={parameterStepRef} className={styles.stepCard} tabIndex={-1}>
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
-                  <label><span>Strands<HelpTip label="strands" text="Choose Both strands when the sequence direction is unknown. Choose Forward only to score the entered direction, or Reverse only to score its reverse complement." /></span><select aria-label="Strands" value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option><option value="reverse">Reverse only</option></select><small>Evaluate the forward sequence, its reverse complement, or both orientations.</small></label>
+                  <label><span>Strands<HelpTip label="strands" text="Choose Both strands when the sequence direction is unknown. Choose Forward only to score the entered direction, or Reverse only to score its reverse complement." /></span><select aria-label="Strands" value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option>{supportsStrandMode ? <option value="reverse">Reverse only</option> : null}</select><small>{supportsStrandMode ? 'Evaluate the forward sequence, its reverse complement, or both orientations.' : 'This server version supports Both strands and Forward only. Update the prediction service to enable Reverse only.'}</small></label>
                 <label><span>{automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel}<HelpTip label="cutoff" text="Sets which scan results are shown as promoter predictions. Lower values show more candidates; higher values show fewer." /></span><input type="number" min="0" max="1" step="0.01" aria-label={automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel} disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPromoters ? strideBases === 1 ? 'Smoothed local maxima above this cutoff are reported as promoter predictions.' : `All raw-score windows above this cutoff are reported as promoter predictions at ${strideBases} bp sampling resolution.` : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 promoter predictions with this cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
                 <label><span>{PORTAL_TERMS.stride}<HelpTip label="stride" text="Distance between sampled windows. A larger stride scans faster but can miss narrow signals." /></span><select value={String(strideBases)} aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. Choose a stride from ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Choose ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp.` : `Choose a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES} bp.`}</small></label>
               </div>

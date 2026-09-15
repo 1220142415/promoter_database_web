@@ -119,6 +119,18 @@ describe('Worker NCBI to Docker FASTA bridge', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('translates FastAPI validation details without reflecting submitted DNA', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ detail: [{
+      type: 'extra_forbidden', loc: ['body', 'strand_mode'], msg: 'Extra inputs are not permitted', input: payload.sequence,
+    }] }, { status: 422 }));
+    const ordinary = { mode: 'predict', sequence: payload.sequence, reference_accession: 'GCF_000005845.1', complete_genome: true };
+    const response = await POST(request(ordinary));
+    expect(response.status).toBe(422);
+    const body = await response.text();
+    expect(body).toContain('Prediction field “strand_mode”: Extra inputs are not permitted');
+    expect(body).not.toContain(payload.sequence);
+  });
+
   it.each([
     ['ncbi_accession', 'ncbi'],
     ['reference_accession', 'catalog'],

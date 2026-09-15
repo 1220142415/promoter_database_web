@@ -16,6 +16,37 @@ function serviceUrl(path: string) {
   return base ? `${base}${path}` : null;
 }
 
+async function predictionServiceResponse(upstream: Response) {
+  const responseHeaders: Record<string, string> = { 'Cache-Control': 'no-store' };
+  const retryAfter = upstream.headers.get('retry-after');
+  if (retryAfter) responseHeaders['Retry-After'] = retryAfter;
+  if (upstream.ok) {
+    responseHeaders['Content-Type'] = upstream.headers.get('content-type') || 'application/json';
+    return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  }
+  const payload = await upstream.json().catch(() => null) as {
+    error?: { code?: unknown; message?: unknown };
+    detail?: { code?: unknown; message?: unknown } | Array<{ loc?: unknown; msg?: unknown }>;
+  } | null;
+  if (typeof payload?.error?.code === 'string') {
+    return Response.json({ error: {
+      code: payload.error.code,
+      message: typeof payload.error.message === 'string' ? payload.error.message : 'Prediction service rejected the request.',
+    } }, { status: upstream.status, headers: responseHeaders });
+  }
+  if (payload?.detail && !Array.isArray(payload.detail)
+    && typeof payload.detail.code === 'string' && typeof payload.detail.message === 'string') {
+    return Response.json({ error: { code: payload.detail.code, message: payload.detail.message } }, { status: upstream.status, headers: responseHeaders });
+  }
+  const issue = Array.isArray(payload?.detail) ? payload.detail[0] : null;
+  const location = Array.isArray(issue?.loc) ? issue.loc.filter((value): value is string => typeof value === 'string').at(-1) : null;
+  const message = typeof issue?.msg === 'string' && issue.msg.length <= 300 ? issue.msg : 'The submitted fields are incompatible with the prediction service.';
+  return Response.json({ error: {
+    code: 'INVALID_REQUEST',
+    message: `${location ? `Prediction field “${location}”: ` : ''}${message}`,
+  } }, { status: upstream.status, headers: responseHeaders });
+}
+
 function scanFastaBases(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new NcbiReferenceError('INVALID_REQUEST', 'Genome scan reference selection requires FASTA input.', 400);
@@ -232,8 +263,5 @@ export async function POST(request: Request) {
       console.error(JSON.stringify({ event: 'prediction_notification_registration_failed' }));
     }
   }
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: { 'Content-Type': upstream.headers.get('content-type') || 'application/json', 'Cache-Control': 'no-store' },
-  });
+  return predictionServiceResponse(upstream);
 }

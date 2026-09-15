@@ -7,7 +7,7 @@ describe('queued service capability detection', () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
     vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : {
-      model_version: 'candidate-github-93cf', genome_scan: { gff3_postprocessing: {
+      model_version: 'candidate-github-93cf', genome_scan: { strand_mode: { options: ['both', 'forward', 'reverse'] }, gff3_postprocessing: {
         required_stride: null, smoothing: {
           stride_1: { method: 'gaussian', sigma, mode: 'reflect' },
           stride_gt_1: { method: 'none' },
@@ -21,7 +21,7 @@ describe('queued service capability detection', () => {
           : { distance: 10, cutoff: .9, operator: '>', filename: 'peaks.gff3' },
       } },
     })));
-    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, gff3RequiresStride1: false, supportsPromoterOutput: true, supportsPeakCalling: sigma === 1 });
+    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, supportsStrandMode: true, gff3RequiresStride1: false, supportsPromoterOutput: true, supportsPeakCalling: sigma === 1 });
   });
   it('keeps dense-only peak services compatible during rollout', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
@@ -95,7 +95,7 @@ describe('queued service capability detection', () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
     vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : { model_version: 'candidate-github-93cf', genome_scan: {} })));
-    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, supportsScoreCutoff: false });
+    expect(await queuedPredictionCapabilities()).toMatchObject({ available: true, supportsScoreCutoff: false, supportsStrandMode: false });
   });
   it('reports a service failure instead of offering illustrative predictions', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');

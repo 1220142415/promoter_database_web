@@ -164,6 +164,7 @@ describe('live prediction result layout', () => {
     const result = screen.getByRole('region', { name: '100 bp result' });
     expect(within(result).getByRole('link', { name: 'Download scores (TSV)' })).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/prediction-results.tsv`);
     expect(within(result).getByText(/^Available until/)).toHaveTextContent(new Date('2026-09-08T09:25:25Z').toLocaleString());
+    expect(within(result).getByText('These files are temporary. Download anything you want to keep before the date above.')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Download result' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /GFF3/ })).not.toBeInTheDocument();
     const info = screen.getByRole('region', { name: 'Prediction information' });
@@ -302,6 +303,18 @@ describe('live prediction result layout', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('only invites a queued user to leave when email notification is enabled for the deployment', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      job_id: saved.jobId, status: 'queued', mode: 'genome_scan',
+      queue: { ahead: 1, waiting: 2, running: 1, worker_ready: true },
+    })));
+    const { rerender } = render(<PredictionWorkbench initialJobId={saved.jobId} emailNotification />);
+    expect(await screen.findByRole('region', { name: 'Queue status' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/You can close this page/)).toBeInTheDocument());
+    rerender(<PredictionWorkbench initialJobId={saved.jobId} />);
+    expect(screen.queryByText(/You can close this page/)).not.toBeInTheDocument();
+  });
+
   it('restores the watchdog last-valid scan progress and explains the failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
       job_id: saved.jobId, status: 'failed',
@@ -341,6 +354,7 @@ describe('live prediction result layout', () => {
     const tracks = within(downloads).getByRole('link', { name: /Model score tracks ZIP/ });
     expect(tracks).toHaveAttribute('href', `/api/predictions/jobs/${saved.jobId}/artifacts/model-score-tracks.zip`);
     expect(tracks).toHaveTextContent('Raw forward and reverse BigWig files in one folder');
+    expect(within(downloads).getByText('These files are temporary. Download anything you want to keep before the date above.')).toBeInTheDocument();
     expect(screen.getByText('Exported windows')).toBeInTheDocument();
     expect(screen.queryByText('Run context')).not.toBeInTheDocument();
     expect(screen.queryByText(/private temporary access link/)).not.toBeInTheDocument();

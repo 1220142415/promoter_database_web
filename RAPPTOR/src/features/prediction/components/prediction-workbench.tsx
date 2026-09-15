@@ -113,7 +113,7 @@ function MissingTask({ message }: { message: string }) {
   </div></main>;
 }
 
-export default function PredictionWorkbench({ initialJobId }: { initialJobId: string }) {
+export default function PredictionWorkbench({ initialJobId, emailNotification = false }: { initialJobId: string; emailNotification?: boolean }) {
   const [entry, setEntry] = useState<PredictionHistoryEntry | null>(null);
   const [job, setJob] = useState<JobState | null>(null);
   const [summary, setSummary] = useState<JobSummary | null>(null);
@@ -288,7 +288,7 @@ export default function PredictionWorkbench({ initialJobId }: { initialJobId: st
       </header>
 
       {message && <div className={styles.resultError} role="alert"><ErrorOutlineRoundedIcon aria-hidden="true" /><span>{message}</span></div>}
-      <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} />
+      <PredictionProgressPanel mode={mode === 'predict' ? 'focused' : 'scan'} snapshot={progress} emailNotification={emailNotification} />
 
       {job?.status === 'succeeded' && summary ? <>
           {mode === 'predict' ? <FocusedJobResult jobId={entry.jobId} strandMode={strandMode} hasScores={artifacts.some((item) => item.filename === 'scores.json')} sequenceBases={sequenceBases} threshold={entry.cutoff} coordinateSystem={windowCoordinateSystem(summary)} expiresAt={job.artifacts_expires_at ? formatDate(job.artifacts_expires_at) : undefined} /> : <>

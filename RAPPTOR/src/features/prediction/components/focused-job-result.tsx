@@ -41,6 +41,7 @@ export default function FocusedJobResult({ jobId, strandMode, hasScores, sequenc
           <DownloadRoundedIcon aria-hidden="true" />Download scores (TSV)
         </a>
         {expiresAt ? <small>Available until {expiresAt}</small> : null}
+        {expiresAt ? <small className={styles.downloadExpiryNote}>These files are temporary. Download anything you want to keep before the date above.</small> : null}
       </div> : null}
     </div>
     {error ? <div role="alert"><p>{error}</p><button type="button" onClick={() => setRevision((value) => value + 1)}>Retry score download</button></div>

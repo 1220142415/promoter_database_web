@@ -39,6 +39,7 @@ for (const width of [390, 1024]) {
     await expect(info.getByRole('term')).toHaveCount(3);
     await expect(downloads.getByRole('link', { name: /Prediction results GFF3/ })).toHaveAttribute('href', `/api/predictions/jobs/${jobId}/artifacts/scores.gff3`);
     await expect(downloads.getByRole('link', { name: /Model score tracks ZIP/ })).toHaveAttribute('href', `/api/predictions/jobs/${jobId}/artifacts/model-score-tracks.zip`);
+    await expect(downloads.getByText('These files are temporary. Download anything you want to keep before the date above.')).toBeVisible();
 
     for (const section of [downloads, info]) {
       expect(await section.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);

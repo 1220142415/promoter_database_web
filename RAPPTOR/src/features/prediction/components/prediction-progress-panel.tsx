@@ -45,10 +45,12 @@ export default function PredictionProgressPanel({
   mode,
   snapshot,
   onRetry,
+  emailNotification = false,
 }: {
   mode: PredictionProgressMode;
   snapshot: PredictionProgressSnapshot;
   onRetry?: () => void;
+  emailNotification?: boolean;
 }) {
   const progress = normalizePredictionProgress(snapshot);
   const [now, setNow] = useState<number | null>(null);
@@ -107,6 +109,7 @@ export default function PredictionProgressPanel({
         <div>
           <span>{progress.simulated ? 'Simulated queue preview' : 'Prediction task'}</span>
           <strong>{failed ? 'Prediction failed' : queued ? 'Your task is in the queue' : steps[currentStep].label}</strong>
+          {emailNotification && active ? <p className={styles.emailNote}>You can close this page. We email you when the task finishes, and that link keeps working until the results expire.</p> : null}
         </div>
         <span className={styles.percent}>{failed ? 'Stopped' : queued ? 'Queued' : progress.percent === null ? 'In progress' : `${Math.round(progress.percent)}%`}{showScan && !failed && progress.percent !== null ? <small>overall</small> : null}</span>
       </div>

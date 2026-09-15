@@ -13,6 +13,7 @@ it('labels new BigWigs as smoothed while retaining raw wording for legacy tasks'
   expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveTextContent('Gaussian-smoothed forward and reverse BigWig files in one folder');
   expect(screen.getAllByRole('link')).toHaveLength(2);
   expect(screen.queryByText(/GFF3 is unavailable/)).not.toBeInTheDocument();
+  expect(screen.getByText('These files are temporary. Download anything you want to keep before the date above.')).toBeInTheDocument();
   rerender(<ResultDownloads jobId="a" artifacts={artifacts} mode="genome_scan" expiresAt="tomorrow" />);
   expect(screen.getByRole('link', { name: /Model score tracks/ })).toHaveTextContent('Raw forward and reverse BigWig files in one folder');
 });

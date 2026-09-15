@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { predictionAccessMode } from '@/features/email-system/access-mode';
 import PredictionWorkbench from '@/features/prediction/components/prediction-workbench';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,6 @@ export const metadata: Metadata = {
 export default async function PredictionTaskPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
   return (
-    <PredictionWorkbench initialJobId={jobId} />
+    <PredictionWorkbench initialJobId={jobId} emailNotification={predictionAccessMode() === 'email'} />
   );
 }

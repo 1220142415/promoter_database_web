@@ -130,4 +130,16 @@ describe('prediction progress panel', () => {
     expect(screen.getByText(/no model was run/i)).toBeInTheDocument();
     expect(screen.queryByText(/queue position|estimated/i)).not.toBeInTheDocument();
   });
+
+  it('tells email-mode users they can close the page while the task is still active', () => {
+    const queued = { state: 'queued' as const, stage: 'queued', percent: 0, message: 'Waiting for an available worker.' };
+    const { rerender } = render(<PredictionProgressPanel mode="scan" snapshot={queued} emailNotification />);
+    expect(screen.getByText(/You can close this page\. We email you when the task finishes/)).toBeInTheDocument();
+    rerender(<PredictionProgressPanel mode="scan" snapshot={queued} />);
+    expect(screen.queryByText(/You can close this page/)).not.toBeInTheDocument();
+    rerender(<PredictionProgressPanel mode="scan" snapshot={{ state: 'running', stage: 'scanning', percent: 20, message: 'Scanning.' }} emailNotification />);
+    expect(screen.getByText(/You can close this page/)).toBeInTheDocument();
+    rerender(<PredictionProgressPanel mode="scan" snapshot={{ state: 'succeeded', stage: 'complete', percent: 100, message: 'Result ready.' }} emailNotification />);
+    expect(screen.queryByText(/You can close this page/)).not.toBeInTheDocument();
+  });
 });

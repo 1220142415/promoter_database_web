@@ -10,6 +10,7 @@
 .heading > div { display: grid; gap: 4px; }
 .heading span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .055em; text-transform: uppercase; }
 .heading strong { color: var(--ink); font-size: 14px; }
+.heading .emailNote { margin: 2px 0 0; color: var(--muted); font-size: 10px; font-weight: 500; line-height: 1.5; letter-spacing: 0; text-transform: none; }
 .heading .percent { color: var(--teal-dark); font: 700 22px/1 Georgia, serif; }
 .percent small { display: block; margin-top: 5px; color: var(--muted); font: 650 9px/1.3 Arial, sans-serif; text-align: right; text-transform: uppercase; }
 

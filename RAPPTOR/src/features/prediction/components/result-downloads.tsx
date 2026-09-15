@@ -33,6 +33,7 @@ export default function ResultDownloads({ jobId, artifacts, mode, expiresAt, big
         <DownloadRoundedIcon aria-hidden="true" /><span><strong>Model scores <small>{legacy.format.toUpperCase()}</small></strong><span>Original score file from this task.</span></span>
       </a>}
     </div>
+    <p className={styles.downloadNote}>These files are temporary. Download anything you want to keep before the date above.</p>
     {mode !== 'predict' && !positions && <p className={styles.downloadNote}>GFF3 is unavailable for this task.</p>}
     {mode === 'predict' && !table && !legacy && <p className={styles.downloadNote}>Result files are unavailable for this task.</p>}
   </section>;

@@ -248,6 +248,7 @@
 .focusedDownload a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
 .focusedDownload svg { width: 16px; height: 16px; }
 .focusedDownload small { color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.focusedDownload .downloadExpiryNote { flex: 1 0 100%; text-align: right; }
 .focusedCall { display: grid; gap: 5px; margin-bottom: 10px; border: 1px solid var(--line-strong); border-left: 5px solid #77817d; border-radius: 8px; background: #f7f9f8; padding: 16px 19px; }
 .focusedCall span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .focusedCall strong { color: var(--ink); font: 800 20px/1.2 Inter, sans-serif; }
@@ -369,6 +370,7 @@
 
 @media (max-width: 720px) {
   .focusedDownload { justify-content: flex-start; }
+  .focusedDownload .downloadExpiryNote { text-align: left; }
   .workspace { grid-template-columns: 1fr; }
   .recentPanel { position: static; }
   .downloads a { align-items: flex-start; flex-direction: column; gap: 7px; }

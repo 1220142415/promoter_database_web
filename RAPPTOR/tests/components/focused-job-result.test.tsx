@@ -80,6 +80,16 @@ describe('protected 100 bp result', () => {
     expect(screen.getByRole('meter', { name: 'Reverse strand model score' })).toHaveAttribute('value', '0.9');
   });
 
+  it('warns that the 100 bp download is temporary only when an expiry is recorded', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json([{ strand: '+', score: .37, window_start_0based: 0, anchor_position_0based: 80 }])));
+    const { rerender } = render(<FocusedJobResult jobId="expiry-job" strandMode="forward" hasScores expiresAt="Sep 8, 2026" />);
+    expect(await screen.findByRole('meter', { name: 'Forward strand model score' })).toBeInTheDocument();
+    expect(screen.getByText(/^Available until/)).toHaveTextContent('Sep 8, 2026');
+    expect(screen.getByText('These files are temporary. Download anything you want to keep before the date above.')).toBeInTheDocument();
+    rerender(<FocusedJobResult jobId="expiry-job" strandMode="forward" hasScores />);
+    expect(screen.queryByText('These files are temporary. Download anything you want to keep before the date above.')).not.toBeInTheDocument();
+  });
+
   it('maps reverse windows onto the original input sequence in the ranked table', async () => {
     const scores = ['+', '-'].flatMap((strand) => Array.from({ length: 201 }, (_, index) => ({
       strand, score: strand === '-' && index === 0 ? 1 : 0,

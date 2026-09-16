@@ -371,7 +371,7 @@ describe('prototype prediction workbench', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
     const user = userEvent.setup();
-    const { container } = render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }} />);
+    const { container } = render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, supportsStrandMode: source !== 'cached catalog', siteKey: '' }} />);
 
     if (source === 'example accession') {
       await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
@@ -389,6 +389,10 @@ describe('prototype prediction workbench', () => {
       }
     }
     await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
+    if (source === 'cached catalog') {
+      expect(screen.queryByRole('option', { name: 'Reverse only' })).not.toBeInTheDocument();
+      expect(screen.getByText(/Update the prediction service to enable Reverse only/)).toBeInTheDocument();
+    }
     const threshold = screen.getByRole('spinbutton', { name: /^Model threshold/ });
     expect(threshold).toBeEnabled();
     await user.clear(threshold);
@@ -414,6 +418,7 @@ describe('prototype prediction workbench', () => {
     expect(ticketRequest).toMatchObject({ bases: 100, mode: 'predict' });
     expect(jobRequest).not.toHaveProperty('score_cutoff');
     expect(jobRequest).not.toHaveProperty('stride');
+    if (source === 'cached catalog') expect(jobRequest).not.toHaveProperty('strand_mode');
     expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).toMatchObject({ cutoff: .72, strideBases: 50 });
   });
 

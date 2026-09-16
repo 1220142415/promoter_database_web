@@ -2,9 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, POST } from '@/app/api/prediction-auth/route';
 import { requirePredictionAuth, withSessionCookie, type AuthSession } from '@/features/email-system/supabase';
 
+const quota = vi.hoisted(() => ({ usedBases: 1234 }));
+vi.mock('@/features/usage/store', () => ({ usageDatabase: () => ({
+  prepare: () => ({ bind: () => ({ first: async () => ({ used_bases: quota.usedBases }) }) }),
+}) }));
+
 const originalUrl = process.env.SUPABASE_URL;
 const originalKey = process.env.SUPABASE_ANON_KEY;
 const originalAccessMode = process.env.RAPPTOR_PREDICTION_ACCESS_MODE;
+const originalBasesPerDay = process.env.RAPPTOR_PREDICTION_BASES_PER_DAY;
 
 const session: AuthSession = {
   access_token: 'access-token',
@@ -30,6 +36,8 @@ function cookieFor(value = session) {
 beforeEach(() => {
   process.env.SUPABASE_URL = 'https://project.supabase.co';
   process.env.SUPABASE_ANON_KEY = 'anon-key';
+  process.env.RAPPTOR_PREDICTION_BASES_PER_DAY = '12000000';
+  quota.usedBases = 1234;
 });
 
 afterEach(() => {
@@ -40,6 +48,8 @@ afterEach(() => {
   else process.env.SUPABASE_ANON_KEY = originalKey;
   if (originalAccessMode === undefined) delete process.env.RAPPTOR_PREDICTION_ACCESS_MODE;
   else process.env.RAPPTOR_PREDICTION_ACCESS_MODE = originalAccessMode;
+  if (originalBasesPerDay === undefined) delete process.env.RAPPTOR_PREDICTION_BASES_PER_DAY;
+  else process.env.RAPPTOR_PREDICTION_BASES_PER_DAY = originalBasesPerDay;
 });
 
 describe('prediction authentication', () => {
@@ -72,6 +82,9 @@ describe('prediction authentication', () => {
     const response = await POST(request({ action: 'verify-code', email: 'Person@Example.test', token: '123456' }));
     expect(response.status).toBe(200);
     expect(response.headers.get('set-cookie')).toContain('rapptor_session=');
+    await expect(response.clone().json()).resolves.toMatchObject({
+      quota: { usedBases: 1234, totalBases: 12_000_000 },
+    });
     expect(response.headers.get('set-cookie')).toContain('HttpOnly');
     expect(response.headers.get('set-cookie')).toContain('Max-Age=7776000');
     await expect(response.json()).resolves.toMatchObject({ authenticated: true, user: { email: 'person@example.test' } });

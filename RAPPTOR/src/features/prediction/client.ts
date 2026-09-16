@@ -31,7 +31,7 @@ export async function predictionApi<T>(url: string, init?: RequestInit): Promise
   const payload = await response.json().catch(() => null) as T | PredictionApiError | null;
   if (!response.ok) {
     const error = (payload as PredictionApiError | null)?.error;
-    throw new PredictionClientError(error?.code || 'PREDICTION_REQUEST_FAILED', error?.message || 'Prediction request failed.', Boolean(error?.retryable));
+    throw new PredictionClientError(error?.code || 'PREDICTION_REQUEST_FAILED', error?.message || `Prediction request failed (HTTP ${response.status}).`, Boolean(error?.retryable));
   }
   return payload as T;
 }

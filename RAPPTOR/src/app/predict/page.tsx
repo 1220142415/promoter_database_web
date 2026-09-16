@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import PrototypePredictionWorkbench from '@/features/prediction/prototype/prototype-workbench';
 import { predictionCapabilities } from '@/features/prediction/capabilities';
 import { queuedPredictionCapabilities, queuedPredictionLocalTest } from '@/features/prediction/service-capabilities';
+import { readPredictionServerStatus } from '@/features/prediction/service-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +17,12 @@ export const metadata: Metadata = {
 export default async function PredictPage() {
   const capabilities = predictionCapabilities();
   const localTest = queuedPredictionLocalTest(await headers());
-  const service = await queuedPredictionCapabilities(localTest);
+  const [service, serverStatus] = await Promise.all([queuedPredictionCapabilities(localTest), readPredictionServerStatus()]);
   const accessMode = predictionAccessMode();
   const workbench = <PrototypePredictionWorkbench
     modelVersion={service.modelVersion}
     service={service}
+    serverStatus={serverStatus}
     maxSequenceBases={capabilities.limits.targetMaxBases}
     maxGenomeBytes={capabilities.limits.genomeMaxBytes}
     localTest={localTest}

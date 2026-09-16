@@ -10,6 +10,8 @@ import {
   withSessionCookie,
 } from '@/features/email-system/supabase';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
+import { usageDatabase } from '@/features/usage/store';
+import { readPredictionBaseUsage } from '@/features/prediction/tickets';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +28,12 @@ function authProviderError(value: unknown) {
     .map((key) => [key, String(source[key]).slice(0, 200)]));
 }
 
+async function authenticatedPayload(user: { id: string; email: string; emailConfirmed: boolean }) {
+  const database = usageDatabase();
+  const quota = database ? await readPredictionBaseUsage(database, user.id).catch(() => undefined) : undefined;
+  return { authenticated: true, user, quota };
+}
+
 export async function GET(request: Request) {
   if (predictionAccessMode() === 'ip') return error('AUTH_DISABLED', 'Email sign-in is disabled for this deployment.', 404);
   const settings = readAuthSettings();
@@ -37,7 +45,7 @@ export async function GET(request: Request) {
     const current = await supabaseUser(settings, session.access_token);
     const user = current.response.ok ? publicUser(current.parsed) : null;
     if (user?.emailConfirmed) {
-      return Response.json({ authenticated: true, user }, { headers: NO_STORE });
+      return Response.json(await authenticatedPayload(user), { headers: NO_STORE });
     }
 
     const refreshed = await supabaseAuth(
@@ -50,7 +58,7 @@ export async function GET(request: Request) {
       return withClearedSession(error('AUTH_REQUIRED', 'Sign in to use prediction.', 401));
     }
     return withSessionCookie(
-      Response.json({ authenticated: true, user: nextSession.user }, { headers: NO_STORE }),
+      Response.json(await authenticatedPayload(nextSession.user), { headers: NO_STORE }),
       nextSession,
     );
   } catch {
@@ -108,7 +116,7 @@ export async function POST(request: Request) {
       return withClearedSession(error('EMAIL_CONFIRMATION_REQUIRED', 'Email verification was not completed.', 403));
     }
     return withSessionCookie(
-      Response.json({ authenticated: true, user: session.user }, { headers: NO_STORE }),
+      Response.json(await authenticatedPayload(session.user), { headers: NO_STORE }),
       session,
     );
   } catch {

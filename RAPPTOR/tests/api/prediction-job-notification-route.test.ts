@@ -122,7 +122,7 @@ describe('prediction job notifications', () => {
     });
   });
 
-  it('keeps short prediction submission working when D1 is unavailable', async () => {
+  it('rejects prediction submission when the quota database is unavailable', async () => {
     const { usageDatabase } = await import('@/features/usage/store');
     vi.mocked(usageDatabase).mockReturnValue(null);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId, access_token: 'a'.repeat(43) }, { status: 202 })));
@@ -130,7 +130,7 @@ describe('prediction job notifications', () => {
     const response = await createJob(submissionRequest('predict'));
     await runCallbacks();
 
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(503);
     expect(notification.register).not.toHaveBeenCalled();
     expect(notification.send).not.toHaveBeenCalled();
   });

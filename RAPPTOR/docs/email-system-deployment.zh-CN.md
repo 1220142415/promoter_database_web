@@ -336,10 +336,10 @@ RAPPTOR 不保存密码。第一次请求 OTP 时 Supabase 可以创建未确认
 
 ### 7.2 D1 只保存业务状态
 
-`0011_prediction_daily_quota.sql` 创建：
+`0011_prediction_daily_quota.sql` 和 `0017_prediction_daily_bases.sql` 创建并扩展：
 
-- `prediction_daily_quota`：按 Supabase user ID 和北京时间日期记录一次
-  whole-genome scan；不保存邮箱。
+- `prediction_daily_quota`：按 Supabase user ID 和北京时间日期记录短序列及
+  whole-genome scan 的累计预测碱基数；不保存邮箱。
 
 `0012_prediction_job_notifications.sql` 创建：
 
@@ -500,8 +500,8 @@ Worker scheduled handler
 - 已有邮箱再次登录也收到相同模板。
 - 验证成功后刷新和重开浏览器仍保持登录。
 - 退出后预测提交被拒绝。
-- 短序列预测不受每日次数限制。
-- 同一用户北京时间每天只能提交一次 whole-genome scan。
+- 短序列和 whole-genome scan 均按实际输入碱基数累计。
+- 预测页显示当天已用碱基数/每日总碱基数，并在北京时间 00:00 重置。
 - 真实任务成功或失败后只收到一封通知。
 - 重放终态回调不会重复发信。
 - D1 不含序列、结果、密码或 Supabase token；临时任务 capability 仅以 AES-GCM

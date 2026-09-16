@@ -8,6 +8,7 @@ export type QueuedPredictionCapabilities = {
   available: boolean;
   modelVersion: string;
   supportsScoreCutoff: boolean;
+  supportsStrandMode?: boolean;
   supportsPromoterOutput?: boolean;
   supportsPeakCalling?: boolean;
   gff3RequiresStride1?: boolean;
@@ -35,7 +36,7 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     try { readPredictionTicketSettings(); } catch { missing.push('prediction authorization'); }
   }
   const submissionIssue = localIssue || (missing.length ? `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not configured on this site. Prediction cannot be submitted yet.` : undefined);
-  const initial = { available: false, modelVersion, supportsScoreCutoff: false, siteKey, submissionIssue };
+  const initial = { available: false, modelVersion, supportsScoreCutoff: false, supportsStrandMode: false, siteKey, submissionIssue };
   if (!base) return { ...initial, reason: 'Prediction service is not configured.' };
   try {
     const [metadata, readiness] = await Promise.all([
@@ -45,6 +46,7 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     if (!metadata.ok || !readiness.ok) throw new Error();
     const model = await metadata.json() as { model_version?: string; genome_scan?: {
       score_cutoff?: { operator?: string };
+      strand_mode?: { options?: unknown };
       gff3_postprocessing?: {
         required_stride?: number | null;
         smoothing?: { method?: string; sigma?: number; mode?: string; stride_1?: { method?: string; sigma?: number; mode?: string }; stride_gt_1?: { method?: string } };
@@ -59,6 +61,7 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     if (model.model_version !== modelVersion) return { ...initial, reason: 'The active model does not match this deployment.' };
     if (ready.status !== 'ready') throw new Error();
     const processing = model.genome_scan?.gff3_postprocessing;
+    const strandModes = model.genome_scan?.strand_mode?.options;
     const promoterSelection = processing?.promoter_selection;
     const supportsPromoterOutput = promoterSelection?.stride_1?.method === 'local_maxima'
       && promoterSelection.stride_1.distance_bp === 10
@@ -76,6 +79,8 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
       && processing?.peaks?.operator === '>'
       && (processing?.peaks?.filename === 'promoters.gff3' || processing?.peaks?.filename === 'peaks.gff3');
     return { ...initial, available: true, supportsScoreCutoff: model.genome_scan?.score_cutoff?.operator === '>',
+      supportsStrandMode: Array.isArray(strandModes)
+        && ['both', 'forward', 'reverse'].every((value) => strandModes.includes(value)),
       supportsPromoterOutput,
       gff3RequiresStride1: processing?.required_stride === 1,
       supportsPeakCalling: Boolean(legacyPeakCalling || (supportsPromoterOutput && strideOneSmoothing?.method === 'gaussian'

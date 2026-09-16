@@ -3,7 +3,7 @@ import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
 import { requirePredictionAuth } from '@/features/email-system/supabase';
 import { usageDatabase } from '@/features/usage/store';
-import { claimPredictionReferenceDownload, readGenomeScansPerDay, readPredictionTicketIssueSettings, releaseGenomeScanQuota, reserveGenomeScanQuota, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
+import { claimPredictionReferenceDownload, readPredictionBasesPerDay, readPredictionTicketIssueSettings, releasePredictionBases, reservePredictionBases, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
 import { ncbiAccession, ncbiErrorResponse, NcbiReferenceError, withTimeout } from '@/features/prediction/ncbi-reference';
 import { preparePredictionReference } from '@/features/prediction/reference-cache';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
@@ -14,6 +14,37 @@ export const dynamic = 'force-dynamic';
 function serviceUrl(path: string) {
   const base = process.env.RAPPTOR_PREDICTION_SERVICE_URL?.trim().replace(/\/+$/, '');
   return base ? `${base}${path}` : null;
+}
+
+async function predictionServiceResponse(upstream: Response) {
+  const responseHeaders: Record<string, string> = { 'Cache-Control': 'no-store' };
+  const retryAfter = upstream.headers.get('retry-after');
+  if (retryAfter) responseHeaders['Retry-After'] = retryAfter;
+  if (upstream.ok) {
+    responseHeaders['Content-Type'] = upstream.headers.get('content-type') || 'application/json';
+    return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  }
+  const payload = await upstream.json().catch(() => null) as {
+    error?: { code?: unknown; message?: unknown };
+    detail?: { code?: unknown; message?: unknown } | Array<{ loc?: unknown; msg?: unknown }>;
+  } | null;
+  if (typeof payload?.error?.code === 'string') {
+    return Response.json({ error: {
+      code: payload.error.code,
+      message: typeof payload.error.message === 'string' ? payload.error.message : 'Prediction service rejected the request.',
+    } }, { status: upstream.status, headers: responseHeaders });
+  }
+  if (payload?.detail && !Array.isArray(payload.detail)
+    && typeof payload.detail.code === 'string' && typeof payload.detail.message === 'string') {
+    return Response.json({ error: { code: payload.detail.code, message: payload.detail.message } }, { status: upstream.status, headers: responseHeaders });
+  }
+  const issue = Array.isArray(payload?.detail) ? payload.detail[0] : null;
+  const location = Array.isArray(issue?.loc) ? issue.loc.filter((value): value is string => typeof value === 'string').at(-1) : null;
+  const message = typeof issue?.msg === 'string' && issue.msg.length <= 300 ? issue.msg : 'The submitted fields are incompatible with the prediction service.';
+  return Response.json({ error: {
+    code: 'INVALID_REQUEST',
+    message: `${location ? `Prediction field “${location}”: ` : ''}${message}`,
+  } }, { status: upstream.status, headers: responseHeaders });
 }
 
 function scanFastaBases(value: unknown) {
@@ -89,10 +120,13 @@ export async function POST(request: Request) {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction task mode is invalid.' } }, { status: 400 });
   }
 
+  let submissionBases = 0;
+
   if ('ncbi_accession' in submission || ('reference_accession' in submission && !localTest)) {
+    let referenceSource: 'catalog' | 'ncbi' = 'catalog';
     try {
-      const source = 'ncbi_accession' in submission ? 'ncbi' : 'catalog';
-      const referenceField = source === 'ncbi' ? 'ncbi_accession' : 'reference_accession';
+      referenceSource = 'ncbi_accession' in submission ? 'ncbi' : 'catalog';
+      const referenceField = referenceSource === 'ncbi' ? 'ncbi_accession' : 'reference_accession';
       const accession = ncbiAccession(submission[referenceField]);
       let bases: number;
       if (mode === 'predict') {
@@ -115,6 +149,7 @@ export async function POST(request: Request) {
         }
         bases = scanFastaBases(submission.fasta);
       }
+      submissionBases = bases;
       const downloadDatabase = usageDatabase();
       if (!downloadDatabase || localTest) throw new NcbiReferenceError('UNAVAILABLE', 'Reference preparation requires the deployed prediction ticket database.', 503);
       let claimed: boolean;
@@ -128,27 +163,41 @@ export async function POST(request: Request) {
         throw new NcbiReferenceError('INVALID_TICKET', 'This ticket is invalid, too close to expiry, or already used for a download. Verify again and resubmit.', 401);
       }
       const timeout = withTimeout(request.signal, 40_000);
-      try { await preparePredictionReference(accession, source, timeout.signal); }
+      try {
+        await preparePredictionReference(accession, referenceSource, timeout.signal);
+      } catch (cause) {
+        // Docker validates its local CGR again when the job is accepted. A catalog cache
+        // probe outage must not block references that are already present there.
+        if (!(referenceSource === 'catalog' && cause instanceof NcbiReferenceError && cause.code === 'CACHE_SERVICE_UNAVAILABLE')) throw cause;
+      }
       finally { timeout.cleanup(); }
       submission = { ...submission, reference_accession: accession };
       delete submission.ncbi_accession;
       const encoded = new TextEncoder().encode(JSON.stringify(submission));
       body = encoded.buffer;
-    } catch (cause) { return ncbiErrorResponse(cause); }
+    } catch (cause) {
+      if (cause instanceof NcbiReferenceError || referenceSource === 'ncbi') return ncbiErrorResponse(cause);
+      return Response.json({ error: { code: 'CACHE_SERVICE_UNAVAILABLE', message: 'Reference cache is temporarily unavailable. Please try again.' } }, { status: 503 });
+    }
   }
-
   const now = new Date();
   const database = auth ? usageDatabase() : null;
-  if (mode === 'genome_scan' && auth) {
+  if (auth) {
     if (!database) return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota database is unavailable.' } }, { status: 503 });
     try {
-      if (!await reserveGenomeScanQuota(database, auth.id, readGenomeScansPerDay(), now)) {
+      if (!submissionBases) {
+        if (mode === 'genome_scan') submissionBases = scanFastaBases(submission.fasta);
+        else if (typeof submission.sequence === 'string' && submission.sequence.length > 0) submissionBases = submission.sequence.length;
+        else throw new NcbiReferenceError('INVALID_REQUEST', 'Prediction requires a DNA sequence.', 400);
+      }
+      if (!await reservePredictionBases(database, auth.id, submissionBases, readPredictionBasesPerDay(), now)) {
         return Response.json(
-          { error: { code: 'DAILY_GENOME_SCAN_LIMIT', message: 'The daily whole-genome scan quota has been used. Try again after 00:00 Beijing time.' } },
+          { error: { code: 'DAILY_BASE_LIMIT', message: 'The daily prediction-base allowance has been used. Try again after 00:00 Beijing time.' } },
           { status: 429, headers: { 'Retry-After': String(secondsUntilBeijingMidnight(now)), 'Cache-Control': 'no-store' } },
         );
       }
-    } catch {
+    } catch (cause) {
+      if (cause instanceof NcbiReferenceError) return ncbiErrorResponse(cause);
       return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction quota could not be checked.' } }, { status: 503 });
     }
   }
@@ -161,10 +210,10 @@ export async function POST(request: Request) {
       body,
     });
   } catch {
-    if (mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+    if (database && auth) await releasePredictionBases(database, auth.id, submissionBases, now).catch(() => null);
     return Response.json({ error: { code: 'UNAVAILABLE', message: 'Prediction service is unavailable.' } }, { status: 503 });
   }
-  if (!upstream.ok && mode === 'genome_scan' && database && auth) await releaseGenomeScanQuota(database, auth.id, now).catch(() => null);
+  if (!upstream.ok && database && auth) await releasePredictionBases(database, auth.id, submissionBases, now).catch(() => null);
 
   if (upstream.ok && auth) {
     // The job is already queued. Notification failures must not discard its access token or refund its quota.
@@ -214,8 +263,5 @@ export async function POST(request: Request) {
       console.error(JSON.stringify({ event: 'prediction_notification_registration_failed' }));
     }
   }
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: { 'Content-Type': upstream.headers.get('content-type') || 'application/json', 'Cache-Control': 'no-store' },
-  });
+  return predictionServiceResponse(upstream);
 }

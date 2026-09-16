@@ -36,6 +36,29 @@ describe('cache-first reference transport', () => {
     expect(resolvePredictionReferenceSource).not.toHaveBeenCalled();
   });
 
+  it('retries a transient cache status network failure', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError('network')).mockResolvedValueOnce(state('ready'));
+    vi.stubGlobal('fetch', fetchMock);
+    await preparePredictionReference(accession, 'catalog', new AbortController().signal);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports repeated cache status failures accurately', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network'); }));
+    await expect(preparePredictionReference(accession, 'catalog', new AbortController().signal)).rejects.toMatchObject({
+      code: 'CACHE_SERVICE_UNAVAILABLE', message: 'Reference cache is temporarily unavailable. Please try again.',
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('never retries a failed import POST', async () => {
+    vi.mocked(resolvePredictionReferenceSource).mockResolvedValue({ url: 'https://huggingface.co/datasets/test/ref/resolve/main/reference.fa', sha256: sha(fasta) });
+    const fetchMock = vi.fn().mockResolvedValueOnce(state('missing')).mockResolvedValueOnce(new Response(fasta)).mockRejectedValueOnce(new TypeError('network'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(preparePredictionReference(accession, 'catalog', new AbortController().signal)).rejects.toMatchObject({ code: 'CACHE_SERVICE_UNAVAILABLE' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('imports original NCBI FASTA bytes with their SHA-256, then polls the returned import', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(state('missing'))

@@ -184,6 +184,11 @@
 .verificationRow span { color: var(--teal); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .verificationRow strong { font-size: 13px; }
 .verificationRow small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.notificationOption { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 7px; padding: 11px 13px; background: #f8faf9; cursor: pointer; }
+.notificationOption input { width: 16px; height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--teal-dark); }
+.notificationOption span { display: grid; gap: 3px; }
+.notificationOption strong { color: var(--ink); font-size: 12px; }
+.notificationOption small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 
 .submitBar { display: flex; align-items: center; justify-content: space-between; gap: 25px; border-radius: 8px; padding: 18px 20px; background: #172824; color: white; }
 .submitBar > div { display: grid; gap: 5px; }

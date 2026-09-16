@@ -119,6 +119,15 @@ export async function POST(request: Request) {
   if (mode !== 'predict' && mode !== 'genome_scan') {
     return Response.json({ error: { code: 'INVALID_REQUEST', message: 'Prediction task mode is invalid.' } }, { status: 400 });
   }
+  let notifyByEmail = false;
+  if ('notify_by_email' in submission) {
+    if (typeof submission.notify_by_email !== 'boolean') {
+      return Response.json({ error: { code: 'INVALID_REQUEST', message: 'notify_by_email must be a boolean.' } }, { status: 400 });
+    }
+    notifyByEmail = submission.notify_by_email;
+    delete submission.notify_by_email;
+    body = new TextEncoder().encode(JSON.stringify(submission)).buffer;
+  }
 
   let submissionBases = 0;
 
@@ -215,7 +224,7 @@ export async function POST(request: Request) {
   }
   if (!upstream.ok && database && auth) await releasePredictionBases(database, auth.id, submissionBases, now).catch(() => null);
 
-  if (upstream.ok && auth) {
+  if (upstream.ok && auth && notifyByEmail) {
     // The job is already queued. Notification failures must not discard its access token or refund its quota.
     try {
       const created = await upstream.clone().json() as { job_id?: unknown; access_token?: unknown } | null;

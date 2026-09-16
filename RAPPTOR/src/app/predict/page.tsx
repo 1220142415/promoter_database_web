@@ -23,6 +23,7 @@ export default async function PredictPage() {
     modelVersion={service.modelVersion}
     service={service}
     serverStatus={serverStatus}
+    emailNotifications={accessMode === 'email'}
     maxSequenceBases={capabilities.limits.targetMaxBases}
     maxGenomeBytes={capabilities.limits.genomeMaxBytes}
     localTest={localTest}

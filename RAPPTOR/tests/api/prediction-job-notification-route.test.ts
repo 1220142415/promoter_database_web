@@ -24,11 +24,11 @@ import { requirePredictionAuth } from '@/features/email-system/supabase';
 
 const jobId = '0123456789abcdef0123456789abcdef';
 
-function submissionRequest(mode: 'predict' | 'genome_scan') {
+function submissionRequest(mode: 'predict' | 'genome_scan', notifyByEmail = false) {
   return new Request('http://localhost/api/predictions/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Ticket valid-ticket' },
-    body: JSON.stringify({ mode, sequence: 'A'.repeat(100) }),
+    body: JSON.stringify({ mode, sequence: 'A'.repeat(100), ...(notifyByEmail ? { notify_by_email: true } : {}) }),
   });
 }
 
@@ -105,7 +105,7 @@ describe('prediction job notifications', () => {
     vi.mocked(usageDatabase).mockReturnValue(database as unknown as D1Database);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId, access_token: 'a'.repeat(43) }, { status: 202 })));
 
-    const response = await createJob(submissionRequest('predict'));
+    const response = await createJob(submissionRequest('predict', true));
     await runCallbacks();
 
     expect(response.status).toBe(202);
@@ -120,6 +120,20 @@ describe('prediction job notifications', () => {
       siteUrl: 'https://rapptor.example.test',
       tokenSecret: 'test-service-secret',
     });
+  });
+
+  it('does not register or send email when notification is not requested', async () => {
+    vi.mocked(database.prepare);
+    const { usageDatabase } = await import('@/features/usage/store');
+    vi.mocked(usageDatabase).mockReturnValue(database as unknown as D1Database);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ job_id: jobId, access_token: 'a'.repeat(43) }, { status: 202 })));
+
+    const response = await createJob(submissionRequest('predict'));
+    await runCallbacks();
+
+    expect(response.status).toBe(202);
+    expect(notification.register).not.toHaveBeenCalled();
+    expect(notification.send).not.toHaveBeenCalled();
   });
 
   it('rejects prediction submission when the quota database is unavailable', async () => {

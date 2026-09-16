@@ -165,6 +165,35 @@ describe('prototype prediction workbench', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('not configured');
   });
 
+  it('sends an email notification request only when the option is checked', async () => {
+    let jobRequest: Record<string, unknown> | null = null;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/prediction-tickets') return Response.json({ ticket: 'local-ticket' }, { status: 201 });
+      if (url === '/api/predictions/jobs') {
+        jobRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ job_id: 'n'.repeat(32), access_token: 'job-token' }, { status: 202 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
+    const user = userEvent.setup();
+    render(<PrototypePredictionWorkbench
+      localTest
+      emailNotifications
+      service={{ available: true, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '' }}
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'Use 100 bp example' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
+    const checkbox = screen.getByRole('checkbox', { name: /Email me when this task finishes/ });
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+    await user.click(screen.getByRole('button', { name: 'Queue prediction' }));
+
+    await waitFor(() => expect(jobRequest).toHaveProperty('notify_by_email', true));
+  });
+
   it('shows Turnstile only after the prediction inputs are ready', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async () => new Response(`>NC_000913.2\n${'ACGT'.repeat(40)}\n`)));

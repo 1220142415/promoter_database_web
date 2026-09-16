@@ -301,6 +301,7 @@ export default function PrototypePredictionWorkbench({
   localTest = false,
   preview = false,
   serverStatus,
+  emailNotifications = false,
   service = { available: false, modelVersion: 'candidate-github-93cf', supportsScoreCutoff: false, siteKey: '', reason: 'Prediction service is not configured.' },
 }: {
   modelVersion?: string;
@@ -309,6 +310,7 @@ export default function PrototypePredictionWorkbench({
   localTest?: boolean;
   preview?: boolean;
   serverStatus?: PredictionServerStatus;
+  emailNotifications?: boolean;
   service?: QueuedPredictionCapabilities;
 }) {
   const router = useRouter();
@@ -332,6 +334,7 @@ export default function PrototypePredictionWorkbench({
   const [cutoff, setCutoff] = useState(0.9);
   const [strideBases, setStrideBases] = useState<PrototypeStrideBases>(PROTOTYPE_STRIDE_BASES);
   const [submitting, setSubmitting] = useState(false);
+  const [emailNotification, setEmailNotification] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -778,6 +781,7 @@ export default function PrototypePredictionWorkbench({
         label = genome.label;
         historyMode = 'genome_scan';
       }
+      if (emailNotification) request.notify_by_email = true;
 
       if (!localTest && !turnstileToken) throw new Error('Complete the human verification before submitting.');
       const issued = await predictionApi<PredictionTicket>('/api/prediction-tickets', {
@@ -991,6 +995,7 @@ export default function PrototypePredictionWorkbench({
             <div><span>Final check</span><strong>Human verification</strong><small>Complete this immediately before queuing the task.</small></div>
             <PredictionVerification key={verificationRevision} siteKey={service.siteKey} onToken={setTurnstileToken} />
           </div> : null}
+          {!preview && emailNotifications ? <label className={styles.notificationOption}><input type="checkbox" checked={emailNotification} onChange={(event) => setEmailNotification(event.target.checked)} disabled={submitting} /><span><strong>Email me when this task finishes</strong><small>We will send a link to the result or failure notice. Sequence data is never included.</small></span></label> : null}
           <div className={styles.submitBar}>
             <div><strong>{submitGuidance.title}</strong><span id="prototype-submit-guidance">{submitGuidance.detail}</span></div>
             <button type="submit" aria-describedby="prototype-submit-guidance" disabled={submitting || (needsExampleReference && exampleLoading) || Boolean(submissionBlock) || (!preview && !localTest && !turnstileToken)}>

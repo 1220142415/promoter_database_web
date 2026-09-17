@@ -64,7 +64,7 @@ export default function HomePage() {
           <div className="section-heading">
             <p className="portal-kicker">Interactive prediction</p>
             <h2 id="prediction-entry-heading">Predict promoters from your sequence</h2>
-            <p>Add input. RAPPTOR selects the analysis.</p>
+            <p>Enter a sequence to begin.</p>
           </div>
           <div className="section-heading">
             <p>Set the strand and model threshold, then inspect illustrative output before a live RAPPTOR service is connected.</p>

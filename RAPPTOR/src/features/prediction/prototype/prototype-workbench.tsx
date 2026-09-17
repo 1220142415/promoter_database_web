@@ -849,7 +849,7 @@ export default function PrototypePredictionWorkbench({
     : needsExampleReference && exampleLoading
       ? { title: 'Verifying reference', detail: 'Wait for the reference download and checksum verification.' }
     : !inputReady
-    ? { title: 'Prediction input required', detail: 'Add input in Step 1.' }
+    ? { title: 'Prediction input required', detail: 'Enter a sequence in Step 1.' }
     : !contextReady
       ? { title: 'Reference genome required', detail: 'Choose the complete reference genome used for CGR in Step 2.' }
       : !parametersReady
@@ -880,7 +880,7 @@ export default function PrototypePredictionWorkbench({
   return (
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
-        <div><p className="portal-kicker">{preview ? 'Prediction prototype' : localTest ? '' : 'Queued prediction'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p>{localTest && !preview ? <p> {modelVersion} </p> : null}</div>
+        <div><p className="portal-kicker">{preview ? 'Prediction prototype' : localTest ? '' : 'New prediction'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p>{localTest && !preview ? <p> {modelVersion} </p> : null}</div>
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
@@ -934,7 +934,7 @@ export default function PrototypePredictionWorkbench({
             </div>
 
             <div id="prototype-input-status" className={`${styles.inferenceStatus} ${inputError ? styles.invalid : inferredMode ? styles.valid : ''}`} aria-live="polite">
-              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Selected analysis</span><strong>{inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Add input to select short-sequence prediction or a sequence scan.</span>}
+              {inputError ? <span>{inputError}</span> : inferredMode ? <><span>Selected analysis</span><strong>{inferredLabel(inferredMode)}</strong><small>{activeInputLabel} · {activeInputDescription}</small></> : <span>Enter a sequence to choose short-sequence prediction or a sequence scan.</span>}
             </div>
           </fieldset>
 

@@ -42,8 +42,8 @@ export function thresholdLabel(mode: PortalPredictionMode | 'release') {
 
 export const PORTAL_COPY = {
   homeLead: 'Genome-resolved promoter predictions, reference assemblies, and NCBI annotations.',
-  prototypeHeading: 'Add input. RAPPTOR selects the analysis.',
-  prototypeModeHelp: 'Use exactly 100 bp for one score per strand, or provide longer sequence/FASTA input for an overlapping 100 bp scan.',
+  prototypeHeading: 'Enter a sequence to begin',
+  prototypeModeHelp: 'RAPPTOR automatically selects the appropriate mode: a 100 bp sequence is scored once per strand, while a longer sequence or FASTA file is scanned in overlapping 100 bp windows.',
   predictionRule: 'Promoter predictions use model score > 0.9.',
   demoNotice: 'Demo only: deterministic fixture values; no model was run.',
   focusedThresholdHelp: 'Classifies the result only; the model score is unchanged.',

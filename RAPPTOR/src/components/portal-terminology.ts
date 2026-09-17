@@ -42,8 +42,8 @@ export function thresholdLabel(mode: PortalPredictionMode | 'release') {
 
 export const PORTAL_COPY = {
   homeLead: 'Genome-resolved promoter predictions, reference assemblies, and NCBI annotations.',
-  prototypeHeading: 'Enter a sequence to begin',
-  prototypeModeHelp: 'Enter exactly 100 bp to score each strand once, or submit a longer sequence or FASTA file to scan it in overlapping 100 bp windows.',
+  prototypeHeading: 'Enter your sequence',
+  prototypeModeHelp: 'An input of exactly 100 bp is scored once on each selected strand. Longer inputs are scanned in overlapping 100 bp windows. Paste a sequence or upload a FASTA file.',
   predictionRule: 'Promoter predictions use model score > 0.9.',
   demoNotice: 'Demo only: deterministic fixture values; no model was run.',
   focusedThresholdHelp: 'Classifies the result only; the model score is unchanged.',

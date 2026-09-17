@@ -552,7 +552,7 @@ describe('prototype prediction workbench', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() });
     const user = userEvent.setup();
-    render(<PrototypePredictionWorkbench localTest service={{ available: true, modelVersion: "candidate-github-93cf", supportsScoreCutoff: supportsPeaks, supportsPeakCalling: supportsPeaks, gff3RequiresStride1: requiresStride1, siteKey: "" }} />);
+    render(<PrototypePredictionWorkbench localTest modelVersion="candidate-github-93cf" service={{ available: true, modelVersion: "candidate-github-93cf", supportsScoreCutoff: supportsPeaks, supportsPeakCalling: supportsPeaks, gff3RequiresStride1: requiresStride1, siteKey: "" }} />);
 
     await user.click(screen.getByRole('button', { name: 'Use E. coli K-12 genome example' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Queue prediction' })).toBeEnabled());
@@ -586,7 +586,7 @@ describe('prototype prediction workbench', () => {
     expect(ticketRequest).toMatchObject({ bases: 160, mode: 'genome_scan' });
     expect(ticketRequest).not.toHaveProperty('turnstileToken');
     if (!peaks) expect(JSON.parse(sessionStorage.getItem('rapptor-prediction-job') || 'null')).not.toHaveProperty('cutoff');
-    expect(screen.getByText('本地真实预测测试')).toBeInTheDocument();
+    expect(screen.getByText('candidate-github-93cf')).toBeInTheDocument();
     expect(sessionStorage.getItem('rapptor-prediction-job')).toContain('"token":"job-token"');
   });
 

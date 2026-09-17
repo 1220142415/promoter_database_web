@@ -3,7 +3,7 @@
 .hero {
   border-bottom: 1px solid var(--line);
   background: linear-gradient(135deg, #eaf3f0 0%, #f8f6ec 100%);
-  padding-block: 72px;
+  padding-block: 56px 52px;
 }
 
 .hero h1 {
@@ -83,6 +83,16 @@
 }
 .demoNote p, .interpretation p { margin: 5px 0 0; }
 
+.experimentNote {
+  margin-top: 24px;
+  border-left: 4px solid var(--teal);
+  background: #edf7f3;
+  padding: 18px 20px;
+}
+
+.experimentNote h3 { margin: 0; }
+.experimentNote p { margin: 5px 0 0; }
+
 .cardGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .card { border: 1px solid var(--line); border-radius: 8px; background: white; padding: 22px; }
 .cardLabel { color: var(--teal-dark); font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -125,9 +135,12 @@
 .troubleshooting > div { border-top: 1px solid var(--line-strong); padding-top: 16px; }
 .troubleshooting p { margin: 6px 0 0; }
 .finalLink { margin-top: 30px; }
+.finalLink .portal-button { box-shadow: 0 8px 18px rgba(0, 94, 89, .16); transition: background .15s ease, box-shadow .15s ease, transform .15s ease; }
+.finalLink .portal-button:hover { box-shadow: 0 10px 22px rgba(0, 94, 89, .22); transform: translateY(-1px); }
+.finalLink .portal-button:focus-visible { outline: 3px solid rgba(0, 124, 117, .28); outline-offset: 3px; }
 .finalLink[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; pointer-events: none; }
 
-@media (max-width: 840px) {
+@media (max-width: 960px) {
   .layout { grid-template-columns: 1fr; gap: 36px; padding-top: 36px; }
   .toc { position: static; display: flex; gap: 8px; overflow-x: auto; border-left: 0; padding-bottom: 6px; }
   .toc strong { flex: 0 0 auto; align-self: center; padding: 0 8px 0 0; }

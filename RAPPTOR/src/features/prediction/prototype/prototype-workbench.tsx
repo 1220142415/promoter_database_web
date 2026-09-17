@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded';
 import type { GenomeCatalogRow, GenomeSearchResponse } from '@/features/genomes/types';
@@ -581,10 +582,10 @@ export default function PrototypePredictionWorkbench({
 
   async function resolveGenomeContextMetadata(): Promise<PrototypeGenomeContext> {
     if (contextKind === 'catalog') {
-      if (!contextCatalog) throw new Error('Select the matching genome context.');
+      if (!contextCatalog) throw new Error('Choose a complete genome context.');
       return contextCatalog;
     }
-    if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid matching genome FASTA.');
+    if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid complete genome FASTA.');
     return {
       kind: 'upload', displayName: contextUpload.file.name, fileName: contextUpload.file.name,
       fileSize: contextUpload.file.size, checksum: await sha256File(contextUpload.file),
@@ -594,11 +595,11 @@ export default function PrototypePredictionWorkbench({
 
   async function resolveGenomeContextSequence(): Promise<ResolvedGenomeInput> {
     if (contextKind === 'catalog') {
-      if (!contextCatalog) throw new Error('Select the matching genome context.');
+      if (!contextCatalog) throw new Error('Choose a complete genome context.');
       if (contextCatalog.kind === 'catalog' && contextCatalog.accession === REAL_PREDICTION_REFERENCE.accession && verifiedExample.current) return verifiedExample.current;
       return loadCatalogGenome(contextCatalog);
     }
-    if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid matching genome FASTA.');
+    if (!contextUpload.file || contextUpload.error || contextUpload.loading) throw new Error('Choose a valid complete genome FASTA.');
     return parsedGenomeInput(await readPrototypeSequenceFile(contextUpload.file), contextUpload.file.name);
   }
 
@@ -858,7 +859,7 @@ export default function PrototypePredictionWorkbench({
         : !preview && !localTest && !turnstileToken
           ? { title: 'Human verification required', detail: 'Complete the verification above before queuing the task.' }
         : !preview
-          ? { title: 'Ready to queue', detail: 'The validated input and matching CGR genome will be sent to the configured RAPPTOR prediction service.' }
+          ? { title: 'Ready to queue', detail: 'The validated input and selected complete CGR genome will be sent to the configured RAPPTOR prediction service.' }
           : { title: 'Ready to preview', detail: PORTAL_COPY.demoNotice };
   const submitLabel = submitting
     ? browserDownload ? 'Downloading…'
@@ -879,13 +880,14 @@ export default function PrototypePredictionWorkbench({
   return (
     <main className={styles.page}>
       <section className={`${styles.hero} portal-shell`} aria-labelledby="prototype-heading">
-        <div><p className="portal-kicker">{preview ? 'Prediction prototype' : localTest ? '本地真实预测测试' : 'Queued prediction'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p>{localTest && !preview ? <p>无需邮箱登录或人机验证。使用线上 {modelVersion} 候选模型进行真实推理。</p> : null}</div>
+        <div><p className="portal-kicker">{preview ? 'Prediction prototype' : localTest ? '' : 'Queued prediction'}</p><h1 id="prototype-heading">{PORTAL_COPY.prototypeHeading}</h1><p>{PORTAL_COPY.prototypeModeHelp}</p>{localTest && !preview ? <p> {modelVersion} </p> : null}</div>
       </section>
 
       <section className={`${styles.workspace} portal-shell`} aria-label="Prediction input">
         <form onSubmit={submitPrediction} className={styles.form} noValidate>
           <div className={styles.formHeading}>
             <div><span>Automatic analysis</span><h2>Sequence or genome input</h2></div>
+            <Link className={styles.helpLink} href="/help/prediction">Prediction guide</Link>
           </div>
           {!preview && serverStatus ? <div className={styles.serverStatus} data-status={serverStatus.status} role="status" aria-live="polite">
             <span aria-hidden="true" />
@@ -895,7 +897,7 @@ export default function PrototypePredictionWorkbench({
           </div> : null}
 
           <fieldset ref={primaryStepRef} className={styles.stepCard} tabIndex={-1}>
-            <legend><span>1</span><div>Add a sequence or genome<HelpTip label="analysis type" text="Use a 100 bp sequence for one short-sequence prediction. Use a complete genome FASTA to scan many windows." /><small>Paste raw DNA or FASTA, or choose a FASTA file</small></div></legend>
+            <legend><span>1</span><div>Add a sequence or genome<HelpTip label="analysis type" text="Use exactly 100 bp for one score per selected strand. Longer input is scanned in overlapping 100 bp windows." /><small>Paste raw DNA or FASTA, or choose a FASTA file</small></div></legend>
             <div className={styles.pasteSource}>
               {primaryKind === 'catalog' && inputCatalog ? (
               <div className={styles.selection} aria-label="Selected genome example">
@@ -938,10 +940,10 @@ export default function PrototypePredictionWorkbench({
 
           {inferredMode ? (
             <fieldset ref={contextStepRef} className={styles.stepCard} tabIndex={-1}>
-              <legend><span>2</span><div>{PORTAL_TERMS.genomeContextCgr}<HelpTip label="genome context" text="Choose the complete reference genome that matches your sequence. RAPPTOR uses it as the model's genomic background." /><small>Complete reference genome used to build the CGR</small></div></legend>
+              <legend><span>2</span><div>{PORTAL_TERMS.genomeContextCgr}<HelpTip label="genome context" text="RAPPTOR scores the Step 1 sequence in the context of this complete genome. The result describes how promoter-like the sequence is under the selected genome's CGR background." /><small>Complete reference genome used to build the CGR</small></div></legend>
               <p className={styles.localNote}>{inferredMode === 'candidate'
-                ? 'Select the reference assembly used to build the model\'s CGR context. The site does not verify that the 100 bp sequence belongs to this assembly.'
-                : 'Step 1 defines the sequence region to scan. Choose the complete reference genome used to build its CGR; the scanned region may be shorter than that genome.'}</p>
+                ? 'Step 1 is the sequence to score. Step 2 defines the genomic background under which RAPPTOR evaluates that sequence.'
+                : 'Step 1 defines the sequence region to scan. Step 2 defines its CGR background; the scanned region may be shorter than the selected genome.'}</p>
               <div className={styles.contextKindSwitch} role="group" aria-label="Complete reference source">
                 <button type="button" aria-pressed={contextKind === 'catalog'} onClick={() => selectContextKind('catalog')}>Search reference genome</button>
                 <button type="button" aria-pressed={contextKind === 'upload'} onClick={() => selectContextKind('upload')}>Upload complete genome FASTA</button>
@@ -983,8 +985,8 @@ export default function PrototypePredictionWorkbench({
               <legend><span>3</span><div>Parameters<small>Controls for the selected analysis</small></div></legend>
               <div className={styles.parameterGrid}>
                   <label><span>Strands<HelpTip label="strands" text="Choose Both strands when the sequence direction is unknown. Choose Forward only to score the entered direction, or Reverse only to score its reverse complement." /></span><select aria-label="Strands" value={strandMode} onChange={(event) => setStrandMode(event.target.value as PrototypeStrandMode)}><option value="both">Both strands</option><option value="forward">Forward only</option>{supportsStrandMode ? <option value="reverse">Reverse only</option> : null}</select><small>{supportsStrandMode ? 'Evaluate the forward sequence, its reverse complement, or both orientations.' : 'This server version supports Both strands and Forward only. Update the prediction service to enable Reverse only.'}</small></label>
-                <label><span>{automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel}<HelpTip label="cutoff" text="Sets which scan results are shown as promoter predictions. Lower values show more candidates; higher values show fewer." /></span><input type="number" min="0" max="1" step="0.01" aria-label={automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel} disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPromoters ? strideBases === 1 ? 'Smoothed local maxima above this cutoff are reported as promoter predictions.' : `All raw-score windows above this cutoff are reported as promoter predictions at ${strideBases} bp sampling resolution.` : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 promoter predictions with this cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
-                <label><span>{PORTAL_TERMS.stride}<HelpTip label="stride" text="Distance between sampled windows. A larger stride scans faster but can miss narrow signals." /></span><select value={String(strideBases)} aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. Choose a stride from ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Choose ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp.` : `Choose a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES} bp.`}</small></label>
+                 <label><span>{automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel}{inferredMode !== 'candidate' && !cutoffUnavailable ? <HelpTip label="cutoff" text="Only scan results above this value are exported as promoter predictions. Lower values return more candidates; score tracks keep all scored windows." /> : null}</span><input type="number" min="0" max="1" step="0.01" aria-label={automaticPromoters ? 'Promoter cutoff' : activeThresholdLabel} disabled={cutoffUnavailable} value={Number.isFinite(cutoff) ? cutoff : ''} aria-invalid={!cutoffReady} aria-describedby="prototype-cutoff-help" onChange={(event) => setCutoff(event.target.value === '' ? Number.NaN : Number(event.target.value))} /><small id="prototype-cutoff-help">{automaticPromoters ? strideBases === 1 ? 'Smoothed local maxima above this cutoff are reported as promoter predictions.' : `All raw-score windows above this cutoff are reported as promoter predictions at ${strideBases} bp sampling resolution.` : cutoffUnavailable ? 'This service does not support export filtering. All computed scores are retained.' : cutoffReady ? (inferredMode === 'candidate' ? PORTAL_COPY.focusedThresholdHelp : strideBases === 1 ? 'Filters smoothed GFF3 promoter predictions with this cutoff.' : 'Filters the sparse JSON result; BigWig and Parquet retain all computed scores.') : 'Enter a value from 0 to 1.'}</small></label>
+                 <label><span>{PORTAL_TERMS.stride}<HelpTip label="stride" text={inferredMode === 'candidate' ? 'This 100 bp input contains one window, so changing stride does not change its score.' : 'Moves the 100 bp window by this many bases at each step. Larger values are faster but sample fewer positions.'} /></span><select value={String(strideBases)} aria-label={PORTAL_TERMS.stride} aria-describedby="prototype-stride-help" onChange={(event) => setStrideBases(Number(event.target.value) as PrototypeStrideBases)}>{PROTOTYPE_STRIDE_OPTIONS.map((option) => <option key={option} value={option}>{option} bp</option>)}</select><small id="prototype-stride-help">{inferredMode === 'candidate' ? `A 100 bp input contains one window. Choose a stride from ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp, but it does not change this single score.` : strideReady ? `Bases between consecutive 100 bp windows. Choose ${PROTOTYPE_STRIDE_OPTIONS.join(', ')} bp.` : `Choose a stride from ${PROTOTYPE_MIN_STRIDE_BASES} to ${PROTOTYPE_MAX_STRIDE_BASES} bp.`}</small></label>
               </div>
             </fieldset>
           ) : null}

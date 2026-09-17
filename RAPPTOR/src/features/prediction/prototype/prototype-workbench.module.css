@@ -34,6 +34,7 @@
 .form { padding: 28px; }
 .formHeading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .formHeading > div { display: grid; gap: 4px; }
+.helpLink { flex: 0 0 auto; color: var(--teal-dark); font-size: 11px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
 .formHeading > div > span { color: var(--teal-dark); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .formHeading h2 { margin: 0; font: 600 27px/1.2 Georgia, "Times New Roman", serif; }
 .serverStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 7px; padding: 10px 13px; background: #f8faf9; color: var(--muted); }
@@ -224,8 +225,6 @@
   .expectedContextPrompt button { width: 100%; }
 }
 
-.helpLink { margin: 8px 0 0; font-size: 13px; }
-.helpLink a { color: var(--teal-dark); }
 .inlineHelp { margin: 10px 0; color: var(--ink-soft); font-size: 13px; }
 .inlineHelp summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
 .inlineHelp p { margin: 6px 0 0; line-height: 1.5; }

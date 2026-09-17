@@ -8,10 +8,11 @@ describe('prediction help', () => {
   it('renders the prediction help page', () => {
     const { getByRole, getByText } = render(<PredictionHelpPage />);
     expect(getByRole('heading', { name: 'Prediction help' })).toBeTruthy();
-    expect(getByRole('heading', { name: 'Choose an analysis' })).toBeTruthy();
-    expect(getByRole('heading', { name: 'How to interpret the CGR choice' })).toBeTruthy();
-    expect(getByText(/How promoter-like is this sequence in the context of this genome/)).toBeTruthy();
-    expect(getByText(/Scored windows/)).toBeTruthy();
+    expect(getByRole('heading', { name: 'Prediction workflow' })).toBeTruthy();
+    expect(getByRole('heading', { name: 'Genome context and CGR' })).toBeTruthy();
+    expect(getByText(/CGR is generated automatically/)).toBeTruthy();
+    expect(getByText(/not sufficient by itself to produce a promoter call/)).toBeTruthy();
+    expect(getByText('Sequence and reference requirements')).toBeTruthy();
     expect(getByRole('link', { name: 'Back to prediction' })).toHaveAttribute('href', '/predict');
   });
 });

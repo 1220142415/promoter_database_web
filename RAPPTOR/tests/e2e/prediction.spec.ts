@@ -22,7 +22,7 @@ test('the 100 bp example keeps the focused result compact and metadata-only', as
   const predictionRequests = capturePredictionApiRequests(page);
 
   await page.goto('/predict/preview');
-  await expect(page.getByRole('heading', { name: 'Enter your sequence' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Provide a DNA sequence' })).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByLabel('Raw DNA or FASTA')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Upload FASTA' })).toBeVisible();

@@ -1,198 +1,76 @@
-# RAPPTOR architecture
+# 架构与代码入口
 
-RAPPTOR is a Next.js application deployed to Cloudflare Workers. Runtime code
-lives under `src/`; offline dataset preparation and deployment tooling live
-outside it.
-
-## Directory ownership
+## 组件关系
 
 ```text
-.github/         GitHub dependency and workflow configuration
-config/          Tool-specific configuration inputs
-database/        Cloudflare D1 migrations and standalone database examples
-docs/            Architecture, deployment, and feature design records
-patches/         patch-package changes for third-party dependencies
-public/          Static files copied directly into the web build
-scripts/         Offline and deployment commands, grouped by operational domain
-src/
-├── app/          Next.js pages, layouts, middleware-facing routes, and API endpoints
-├── components/   UI shared by more than one feature
-├── features/     Complete business features: UI, logic, persistence, and local types
-├── generated/    Build-generated release snapshots; do not edit by hand
-└── types/        Contracts shared by multiple features
-tests/            Unit, component, API, and Playwright browser tests
+浏览器 → Cloudflare Worker（Next.js）
+          ├─ D1：目录、认证、票据、额度、任务元数据、通知、访问统计
+          ├─ Hugging Face：参考序列、注释、预测轨道
+          ├─ Resend：验证码与任务通知
+          └─ Docker API → Redis/RQ → 推理 worker → Docker 数据卷
+                          └─ 内部回调 → Worker → D1 / 邮件通知
 ```
 
-Build outputs and installed dependencies (`.next`, `.open-next`, `.wrangler`,
-`node_modules`) are local working directories and are not repository features.
+Better Auth 运行在 Worker 内。Docker 服务位于 `services/prediction/`，已经实现，
+独立于网页构建和发布。模型来源见 [运行时来源](../services/prediction/RUNTIME_PROVENANCE.md)。
 
-`src/app` follows Next.js App Router conventions. A `page.tsx` owns a URL,
-`route.ts` owns an HTTP endpoint, and a directory such as `[accession]` is a
-dynamic URL segment. Route files should parse requests and delegate work; they
-should not contain database or rendering implementations.
+## 按功能找代码
 
-## Feature boundaries
+| 功能 | 入口 |
+| --- | --- |
+| 页面和 HTTP 路由 | `src/app/` |
+| 基因组目录和 D1 查询 | `src/features/genomes/repository.ts` |
+| JBrowse、实验 TSS、统一基因组视图 | `src/features/genome-browser/` |
+| Hugging Face 路径和 Pack 映射 | `src/features/storage/` |
+| 当前预测界面、票据、参考缓存、任务状态 | `src/features/prediction/` |
+| 验证码、会话、发信和通知重试 | `src/features/email-system/` |
+| 访问统计和保留清理 | `src/features/usage/` |
+| Docker HTTP 和 RQ worker | `services/prediction/src/prediction_service/` |
+| 模型推理实现 | `services/prediction/src/rapptor/` |
+| Cloudflare 入口与 Cron | `config/cloudflare-worker.mjs` |
+| D1 表结构变更 | `database/migrations/` |
+| 离线处理、部署和上传工具 | `scripts/` |
 
-New feature-specific code belongs in `src/features/<feature>`. Keep files at
-the feature root until a real grouping exists; add `components/` or another
-subdirectory only when it contains multiple files.
+`src/generated/` 保存生成的目录快照，随数据发布更新。`.data`、`.next`、
+`.open-next`、`.wrangler` 和 `node_modules` 是本地产物。
 
-The current feature boundaries are:
+## 主要请求流程
 
-```text
-src/features/usage/
-├── analytics.ts              request filtering, IP/geo normalization, privacy helpers
-├── retention.ts              daily D1 retention cleanup used by Cloudflare Cron
-├── store.ts                  Cloudflare runtime access and D1 reads/writes
-├── types.ts                  usage collection and report contracts
-└── components/
-    ├── usage-dashboard.tsx
-    ├── usage-trend.tsx
-    └── usage-world-map.tsx
-```
+### 目录与浏览器
 
-```text
-src/features/genomes/
-├── repository.ts             repository contract, JSON/D1 selection, D1 queries
-├── json-catalog.ts           generated JSON fallback reader
-├── search-query.ts           URL search validation and defaults
-├── types.ts                  catalog rows, filters, facets, and result contracts
-└── components/
-    ├── genome-explorer.tsx
-    └── release-state.tsx
-```
+`/genomes` 和 `/api/genomes` 使用目录 repository。生产读取 D1；本地默认读取
+生成的 JSON。详情页根据 exact accession 或已审核的 GCA/GCF 映射组合预测、注释
+和实验 TSS。轨道通过 `/api/remote-data` 或本地数据路由读取，支持 HTTP Range。
 
-```text
-src/features/genome-browser/
-├── components/                embedded browser panels, status, and download UI
-├── plugins/                   RAPPTOR JBrowse renderers and plugins
-├── jbrowse-share.ts           share-state creation and parsing
-├── local-region-export.ts     server-side sequence/annotation export
-├── on-demand-genome-assets.ts browser-side remote asset loading
-└── track-download.ts          download names, regions, and metadata
-```
+### 登录与邮件
 
-```text
-src/features/prediction/
-├── components/                 homepage form, Turnstile and result/status UI
-├── capabilities.ts             public model/input limits and deployment mode
-├── provider.ts                 stable demo/remote provider boundary
-├── demo-provider.ts            metadata-only demo with D1/local-memory storage
-├── remote-provider.ts          future Docker service adapter
-├── runtime.ts                  provider selection and Turnstile verification
-├── types.ts                    versioned public prediction contracts
-└── validation.ts               DNA, FASTA, ticket and job validation
-```
+`/api/prediction-auth` 调用 Better Auth，使用 D1 保存用户、验证码哈希和会话。
+浏览器以 HttpOnly Cookie 保持登录。发码和任务通知共享 D1 日预算；Resend 发信。
+接口字段、会话续期和模板入口见 [邮件系统](email-system-integration.zh-CN.md)。
 
-```text
-src/features/storage/
-├── hf-batch-assets.ts         Hugging Face asset URL planning
-└── storage-layout.ts          packed-release path and offset rules
-```
+### 在线预测
 
-Operational scripts are grouped separately from runtime features:
+1. `/predict` 登录后通过 Turnstile 申请一次性票据。
+2. `/api/predictions/jobs` 验证输入，必要时准备 Docker 参考 CGR 缓存，再转发任务。
+3. Docker 原子消费票据，进入 Redis/RQ 队列；推理 worker 写入数据卷。
+4. 浏览器读取受任务 token 保护的状态和产物；Docker 回调 Worker 更新 D1 元数据。
+5. 选择邮件通知的任务在终态登记发送；每 5 分钟 Cron 重试待发送邮件。
 
-```text
-scripts/
-├── cloudflare/    Cloudflare checks and standalone build preparation
-├── data/          release build, conversion, packing, and validation
-├── database/      D1 import and sample generation
-├── huggingface/   upload planning, upload, verification, and reclamation
-├── shared/        code shared by more than one script group
-└── types.d.ts     TypeScript declarations for scripts imported by tests
-```
+输入模式和端点见 [接口](prediction-service.md)，参考缓存见 [参考处理](prediction-ncbi-reference.md)。
+结果文件由 Docker 保留策略控制，D1 保存业务元数据。
 
-The proposed prediction service will live in `services/prediction/` when its
-Docker API and worker code exist. Its current design remains in
-[`prediction-service.md`](prediction-service.md); no empty service scaffold is
-kept in Git.
+旧 `provider.ts`、`demo-provider.ts`、`remote-provider.ts` 和对应版本化接口仍保留。
+当前 `/predict` 使用上述队列流程；开发预览为 `/predict/preview`。
+旧 Supabase 实现在 `email-system/supabase.ts` 和 `supabase-route.ts`，当前路由不调用。
 
-## Runtime flows
+### 访问统计与定时任务
 
-### Genome catalog
+中间件过滤请求后，后台写入汇总统计。每日 Cron 清理过期记录；每 5 分钟 Cron
+处理通知重试。开关和报表入口见 [访问统计](usage-analytics.md)。
 
-```text
-/genomes or /api/genomes
-  -> genome search/query logic
-  -> catalog repository
-  -> Cloudflare D1 in deployment, generated JSON in local fallback mode
-```
+## 修改代码时
 
-### Genome browser assets
-
-```text
-/genomes/[accession]
-  -> JBrowse components and plugins
-  -> local-data or remote-data API route
-  -> local release files or Hugging Face storage
-```
-
-### Usage and IP recognition
-
-```text
-request
-  -> src/middleware.ts before page/API routing
-  -> src/features/usage/analytics.ts validates and minimizes IP/geo data
-  -> src/features/usage/store.ts schedules aggregate D1 writes
-  -> /usage or /admin/usage reads the aggregate report
-
-daily Cloudflare Cron
-  -> config/cloudflare-worker.mjs
-  -> src/features/usage/retention.ts removes expired aggregate rows and salts
-```
-
-Collection is controlled by `RAPPTOR_ANALYTICS`; the public report is
-independently controlled by `RAPPTOR_USAGE_PUBLIC_PAGE`. These compatibility
-environment names, the `RAPPTOR_DB` D1 binding, existing worker/database names,
-and internal JBrowse identifiers must not be renamed during source cleanup.
-
-### Promoter prediction interface
-
-The primary `/predict` entry now uses the queued service at
-`RAPPTOR_PREDICTION_SERVICE_URL`, with protected `/predict/task/[jobId]` results.
-It loads verified real examples; `/predict/preview` is development-only.
-Local no-login testing uses `local-test.ts` to require development mode, explicit
-configuration, a loopback Host/port and same-origin mutation requests. Its server
-obtains genuine D1 tickets from `/api/internal/prediction-test-tickets` using a
-dedicated Secret. Production requests retain normal authentication; local test
-jobs skip user quota and email registration while retaining model-side ticket
-consumption and protected task tokens. See [prediction-local-test.md](prediction-local-test.md).
-See [prediction-live-acceptance.md](prediction-live-acceptance.md) for the current
-contract and independent online tests. The older versioned provider architecture
-below remains available to its legacy API clients.
-
-```text
-browser -> same-origin prediction routes -> demo provider -> D1 metadata only
-                                  \\-> remote provider -> Docker API (future)
-```
-
-The website implements the versioned contract, one-time demo ticket, direct
-upload slot, protected job status and result UI. Demo mode never sends or
-stores raw sequences; D1 contains only checksums, file metadata, job timing and
-access-token hashes. Local development falls back to process memory.
-
-Prediction contract version 2 reports 1-based inclusive 100 bp promoter
-windows. Candidate submissions declare `predictionKind: "candidate"`, and the
-capabilities response currently advertises only that kind. Live results may
-include expiring reference, BigWig and indexed GFF3 assets; when complete, the
-result page maps them into the same generic JBrowse assembly configuration used
-by catalog genomes. Demo results never offer a sequence browser because the
-Demo provider does not receive candidate sequence data.
-
-The real model/queue/storage implementation boundary, security rules and
-delivery estimate remain recorded in [prediction-service.md](prediction-service.md).
-
-## Placement checklist
-
-- URL or HTTP endpoint: `src/app`
-- Code used by one business feature: `src/features/<feature>`
-- UI genuinely shared by multiple features: `src/components`
-- Contract genuinely shared by multiple features: `src/types`
-- Generated release snapshot: `src/generated`
-- Offline/import/upload command: the matching `scripts/<domain>` directory
-- Independent Docker runtime: `services/<service>` once implementation exists
-- Schema change: a new numbered file in `database/migrations`
-
-Avoid adding generic `utils`, `services`, or `helpers` directories. Name a file
-after the domain operation it owns and move it only when more than one feature
-actually shares it.
+- 页面、HTTP 入口放 `src/app`，业务逻辑放对应 `src/features`。
+- 多功能共享的 UI 放 `src/components`，共有类型放 `src/types`。
+- 模型与队列修改放 `services/prediction`，离线工具放对应 `scripts` 子目录。
+- 表结构变更新增编号迁移，保留已有迁移；生产绑定与普通变量维护在 `wrangler.toml`。

@@ -1,5 +1,7 @@
 # Reference cache integration, 2026-09-10
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 ## Collected updates and merge decisions
 
 | Source | Commit | Included changes |
@@ -23,7 +25,7 @@ the target FASTA or its coordinates.
 
 For catalog/NCBI 100 bp requests, Worker claims a valid ticket, binds its exact accession, checks Docker cache, downloads and imports only on a miss, then submits the accession after readiness. CGR generation/storage remains in Docker. HF sources use the uploaded exact version; NCBI fallback does not silently replace accession versions. Cache preparation has a 40-second bound, import status polling uses 3-second intervals, and failed/expired attempts are not automatically resubmitted.
 
-The detailed contract and required fields are in [prediction-ncbi-reference.md](prediction-ncbi-reference.md). D1 migrations 0015 and 0016 must precede the new Worker. Existing service secrets are reused and must never appear in Git or browser requests.
+The detailed contract and required fields are in [prediction-ncbi-reference.md](../prediction-ncbi-reference.md). D1 migrations 0015 and 0016 must precede the new Worker. Existing service secrets are reused and must never appear in Git or browser requests.
 
 ## Release checks
 

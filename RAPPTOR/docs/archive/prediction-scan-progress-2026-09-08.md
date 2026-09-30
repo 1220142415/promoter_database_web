@@ -1,5 +1,7 @@
 # Online scan progress verification — 2026-09-08
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 The genome-scan worker at `https://rapptor_server.duolalab.qzz.io` now publishes
 batch progress. The local result page consumes the real counts every three
 seconds. No Cloudflare website deployment was performed.

@@ -1,5 +1,7 @@
 # 本地免登录真实预测验收记录 — 2026-09-07
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 ## 授权后当前状态
 
 管理员授权已完成，Wrangler 凭据已保存。测试票据接口及专用 Secret 已部署，本地 `http://127.0.0.1:3000/predict` 实测无需邮箱或 Turnstile，即可提交真实模型任务。
@@ -61,4 +63,4 @@
 - `.codex-runtime/prediction-live/local-boundary-report.json`
 - `.codex-runtime/prediction-build-20260907/check-clean.log`
 
-Cloudflare OAuth 最初被自动审批拦截，Wrangler 又自动追加 `offline_access`；已在浏览器授权前停止该流程。随后用户明确选择“暂不授权，保留本地改动”。未改变生产认证、远端 D1、Worker Secrets 或模型服务。后续若恢复授权，先完成发布构建/预览并核验现有远端配置，再按 [配置说明](prediction-local-test.md) 发布专用 Secret 和接口，最后重新运行独立真实验收器。
+Cloudflare OAuth 最初被自动审批拦截，Wrangler 又自动追加 `offline_access`；已在浏览器授权前停止该流程。随后用户明确选择“暂不授权，保留本地改动”。未改变生产认证、远端 D1、Worker Secrets 或模型服务。后续若恢复授权，先完成发布构建/预览并核验现有远端配置，再按 [配置说明](../prediction-local-test.md) 发布专用 Secret 和接口，最后重新运行独立真实验收器。

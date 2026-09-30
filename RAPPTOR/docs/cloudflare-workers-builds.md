@@ -1,150 +1,109 @@
-# Cloudflare Workers Builds
+# 网页部署与运维
 
-This document records the production deployment path for RAPPTOR. Production
-is deployed with Wrangler from a Linux build. A Cloudflare Workers Builds
-connection may also be used, but its repository settings must be verified in
-the dashboard before relying on an automatic deployment. The locked Wrangler
-toolchain requires Node.js 22 or newer.
+## 当前配置
 
-## Current Configuration
+代码仓库：`1220142415/promoter_database_web`，正式分支：`main`，应用目录：`RAPPTOR/`。
+生产站点：`https://rapptor.xulab.science`。
 
-| Setting | Value |
-| --- | --- |
-| Cloudflare Worker | `rapptor` |
-| Git account | `1220142415` |
-| Repository | `1220142415/promoter_database_web` |
-| Production branch | `main` |
-| Root directory | `/RAPPTOR` |
-| Build command | `npm run build:cf` |
-| Deploy command | `npx @opennextjs/cloudflare deploy` |
-| Non-production builds | Recommended: disabled unless previews are needed; verify in Workers Builds |
-| Build cache | Recommended: enabled; verify in Workers Builds |
-| D1 binding | `RAPPTOR_DB` |
-| D1 database ID | `13173011-d2b9-4763-b379-ecc1562ef497` |
+Cloudflare 账户、Worker、路由、D1 ID、普通变量和 Cron 以
+[`wrangler.toml`](../wrangler.toml) 为准，避免在文档里维护第二份配置。
+当前 Worker 为 `rapptor`，D1 binding 为 `RAPPTOR_DB`，库名为 `seqedge-catalog`。
 
-The D1 database ID is part of `wrangler.toml` and must not be replaced when
-editing the Cloudflare dashboard configuration.
+网页使用 Node.js 22.18+。Cloudflare bundle 在 Linux、WSL 或 Linux CI 构建；
+Windows 可以开发和运行普通 Next.js 构建。
 
-## Build Variables
+## 发布步骤
 
-These are public build-time values, not secrets:
+在 `RAPPTOR/` 执行。先确认发布分支和目标账户，然后安装锁定依赖：
 
-```text
+```bash
+npm ci
+npx wrangler whoami
+```
+
+### 1. 数据库
+
+```bash
+npx wrangler d1 migrations list RAPPTOR_DB --remote
+```
+
+核对迁移记录和实际表结构，确认哪些迁移尚未应用。当前认证依赖 `0018`、`0019`；
+参考缓存依赖 `0015`、`0016`。过去若用 `d1 execute --file` 直接执行过迁移，
+列表可能仍显示待应用：先核实并协调迁移记录，不能重复执行包含 `ALTER TABLE` 的文件。
+对于按 Wrangler 迁移记录管理、尚未应用的迁移，执行：
+
+```bash
+npx wrangler d1 migrations apply RAPPTOR_DB --remote
+```
+
+### 2. 配置
+
+构建环境需要两个公开值。可放在忽略的 `.env.local` 或 CI 构建变量中：
+
+```dotenv
 NEXT_PUBLIC_STORAGE_BASE_URL=/api/remote-data
 NEXT_PUBLIC_RELEASE_ASSET_BASE_URL=https://huggingface.co/datasets/liurulong/bacterial-promoter-genomes/resolve/main
 ```
 
-Do not commit an API token, a Hugging Face write token, or any other secret.
-The dashboard creates and stores the Workers Builds token; its value must never
-be copied into the repository or pasted into build logs.
+这些值必须与已发布的数据集一致。Worker 运行时变量不能代替构建环境变量。
+生产普通变量编辑 `wrangler.toml`；密钥通过交互式 `wrangler secret put` 设置：
 
-## Normal Workflow
+| Secret | 用途 |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | 认证与会话，独立随机值，至少 32 字符 |
+| `RESEND_API_KEY` | 已验证域名的发信权限 |
+| `RAPPTOR_TURNSTILE_SECRET` | 人机验证 |
+| `RAPPTOR_PREDICTION_SERVICE_SECRET` | Docker 回调、票据消费、通知加密 |
+| `RAPPTOR_PREDICTION_IP_HASH_SECRET` | IP 限流哈希 |
 
-1. Run the local checks that do not require a Cloudflare bundle:
-
-   ```bash
-   npm run check
-   ```
-
-2. If the commit adds numbered D1 migrations, list and apply all pending
-   migrations in order before deploying the Worker. Wrangler records applied
-   migrations and skips them on later runs:
-
-   ```bash
-   npx wrangler d1 migrations list RAPPTOR_DB --remote
-   npx wrangler d1 migrations apply RAPPTOR_DB --remote
-   ```
-
-   The prediction reference deployment requires
-   `0015_prediction_reference_download.sql` followed by
-   `0016_prediction_reference_binding.sql`.
-
-3. Push the reviewed commit or merge its PR into `main`.
-4. Deploy from Linux with `npm run deploy:cf`. If Workers Builds is connected,
-   first verify the repository, branch, root directory, and commands above in
-   the dashboard, then use its retry action or push a new commit to trigger it.
-5. Inspect the build and deployment log. The expected sequence is
-   `npm run build:cf`, then `npx @opennextjs/cloudflare deploy`.
-6. Smoke-test `/`, `/genomes`, a genome detail route, `/api/genomes`, and one
-   remote-data route through the configured proxy if Hugging Face is not
-   directly reachable.
-
-Connecting Workers Builds does not necessarily build the already-existing
-commit. Push a new commit after the connection, or use the dashboard's rebuild
-action when available.
-
-## Windows Git Push Troubleshooting
-
-The workstation may have environment overrides intended for an isolated test
-runner. In particular, `GIT_SSH_COMMAND=cmd /c exit 1` deliberately disables
-SSH, and the bundled MSYS2 SSH can fail with `couldn't create signal pipe`.
-The repository and GitHub account are healthy when the following check returns
-the `Hi duolaJohn!` authentication message:
-
-```powershell
-Remove-Item Env:GIT_SSH_COMMAND -ErrorAction SilentlyContinue
-$env:GIT_SSH = 'C:\Windows\System32\OpenSSH\ssh.exe'
-ssh -o BatchMode=yes -T git@github.com
-git push fork feature/genome-resource-db-promoter-v1
+```bash
+npx wrangler secret put BETTER_AUTH_SECRET
 ```
 
-If GitHub is only reachable through the local proxy, set `HTTP_PROXY` and
-`HTTPS_PROXY` to `http://127.0.0.1:7997` for that PowerShell process. Do not
-put a password, personal access token, or proxy credentials in a remote URL or
-in repository files. The HTTPS credential helper is not required when the
-system OpenSSH key is already authenticated.
+其他密钥以相同方式逐项设置。Docker 中的 `RAPPTOR_TICKET_SERVICE_SECRET` 必须与
+Worker 的 `RAPPTOR_PREDICTION_SERVICE_SECRET` 一致；轮换前处理待发送通知。
+邮件配置见 [邮件系统](email-system-integration.zh-CN.md)，统计后台配置见 [访问统计](usage-analytics.md)。
+`.env.deploy.example` 是配置参考；`deployment:email` 和 `deployment:configure` 仍用于旧 Supabase。
 
-## Browser Asset Cache Versioning
+### 3. 构建与发布
 
-Unindexed per-genome FASTA and GFF3 source files are stored in the browser's
-Cache Storage. The cache key contains the release, accession, asset kind, and
-the asset SHA-256 when metadata provides one. Re-importing metadata with a new
-checksum therefore creates a new cache entry automatically; the user does not
-need to clear the browser cache after a file is replaced.
+```bash
+npm run build:cf
+npx @opennextjs/cloudflare deploy
+```
 
-The current GTDB metadata has promoter and NCBI annotation SHA-256 values, but
-does not yet provide a reference FASTA SHA-256. Reference files consequently
-fall back to a release-and-URL-based key until that checksum is added. Changing
-the release ID or asset URL still invalidates the reference cache.
+`build:cf` 顺序执行 ESLint、TypeScript、Vitest、存储环境检查和 OpenNext 构建。
+`npm run deploy:cf` 会重新执行构建后发布；已有当前提交的 bundle 时可用上面的 deploy 命令。
 
-## Troubleshooting
+### 4. 发布后检查
 
-### `NEXT_PUBLIC_STORAGE_BASE_URL is required`
+查看部署版本与日志，确认首页、目录、基因组轨道和登录入口可访问。
+核对 Cookie 登录/登出、代表性文件的 Range 响应和预测服务连通性。
+真实发信或推理验收分别按邮件指南和 [在线验收](prediction-live-acceptance.md) 执行。
 
-The build variables are missing from the Cloudflare **Build** configuration.
-Add both variables above. Runtime Worker variables are a separate section and
-do not satisfy this check.
+## GitHub 自动构建
 
-### `ENOENT ... open-next.config.edge.mjs` on Windows
+如果启用 Workers Builds，在控制台核对以下设置：
 
-This is a known OpenNext Windows bundling failure. Use Node.js 22 or newer in
-WSL, Workers Builds, or another Linux CI runner. Do not downgrade to Node.js 20
-or add a generated `.open-next` file to Git.
+| 设置 | 值 |
+| --- | --- |
+| 仓库 / 分支 | `1220142415/promoter_database_web` / `main` |
+| 根目录 | `/RAPPTOR` |
+| 构建命令 | `npm run build:cf` |
+| 部署命令 | `npx @opennextjs/cloudflare deploy` |
+| Node | 22.18+ |
 
-### Build cannot find `package.json`
+设置构建变量后推送提交或手动重建。是否已连接以控制台为准；仅推送 Git 不等于部署完成。
 
-The repository contains the Next.js app below `RAPPTOR/`. Set the Workers
-Builds root directory to `/RAPPTOR`; leaving it as `/` runs the commands from
-the repository root and fails before the application build starts.
+## 常见故障
 
-### The build uses `main`
+| 现象 | 处理 |
+| --- | --- |
+| 找不到 `package.json` | 把根目录设为 `/RAPPTOR` |
+| 缺少 `NEXT_PUBLIC_STORAGE_BASE_URL` | 配置构建环境变量 |
+| Windows 缺少 `open-next.config.edge.mjs` | 换 Linux / WSL 构建，使用 Node 22.18+ |
+| D1 字段已存在但迁移待执行 | 检查是否曾直接执行 SQL，核对实际结构及迁移记录 |
+| Hugging Face 文件 404 | 检查已上传批次、活动 release 和 URL；不要重建数据库 |
+| 登录或发信失败 | 按邮件指南检查 Secret、D1 表、发件域名和发送日志 |
 
-Select the production branch from the dashboard combobox. Typing a branch name
-without selecting the option can leave the hidden value as `main`.
-
-### Hugging Face assets return 404
-
-The catalog can contain planned links before every batch is uploaded. A 404 for
-an asset that is not uploaded yet is expected; the homepage, catalog API, and
-genome metadata must still return successfully. Verify the release base URL and
-the accession batch mapping before changing D1 data.
-
-## Cost and Safety Notes
-
-- Keep non-production builds disabled unless a preview is needed.
-- Keep build cache enabled to avoid repeating dependency installation work.
-- Do not run bulk D1 imports or release rebuilds from a web request.
-- Keep large FASTA/GFF3 downloads on Hugging Face; the Worker should only proxy
-  allowlisted requests and issue one upstream Range request.
-- Never change the D1 `database_id` or delete the existing database as part of
-  a deployment retry.
+Docker 推理服务的部署、数据卷和模型挂载见 [服务手册](../services/prediction/README.md)。

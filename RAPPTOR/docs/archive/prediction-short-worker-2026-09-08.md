@@ -1,5 +1,7 @@
 # Short-sequence worker recovery — 2026-09-08
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 The online short-sequence worker was updated at **19:20:28 Asia/Shanghai**
 after the user authorized its repair and restart. The original browser task
 `725110dcb1f243f9860812b7763cc2df` now succeeds and returns both strand scores.

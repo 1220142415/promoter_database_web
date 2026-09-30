@@ -1,10 +1,7 @@
 # 本地免登录真实预测
 
-`npm run prediction:local:dev` 仅监听 `127.0.0.1`，页面显示“本地真实预测测试”。本机调用原有在线 `candidate-github-93cf` 模型。生产站保留部署时已有的访问模式和人机验证，模型服务继续校验真实一次性票据。
-
-2026-09-07 管理员授权和测试票据接口部署已完成，本地免邮箱提交已实测连通。当前生产使用原有 `RAPPTOR_PREDICTION_ACCESS_MODE=ip`；本次没有改动该模式或模型服务。真实结果和尚未通过的双链验收见 [验收记录](prediction-local-test-acceptance-2026-09-07.md)。
-
-2026-09-08 已修复线上短序列 worker 的 CGR 卡死，并恢复原任务验证正反链结果均正常返回；见 [短序列修复验收](prediction-short-worker-2026-09-08.md)。
+`npm run prediction:local:dev` 仅监听 `127.0.0.1`，页面显示“本地真实预测测试”。
+生产站使用 `email` 模式；本地开发票据独立于用户登录与额度，模型服务仍校验真实一次性票据。
 
 ## 一次配置
 
@@ -14,30 +11,29 @@
 npm run prediction:local:setup
 ```
 
-该命令在忽略的 `.env.prediction-local` 生成专用 256-bit 密钥，保留已有配置。该文件仅由本地启动命令读取，不会被普通 Next 生产构建自动加载。浏览器、公开报告和模型服务均不会收到开发密钥。
+该命令在忽略的 `.env.prediction-local` 生成专用 256-bit 密钥，保留已有配置。该文件仅由本地启动命令读取。
+编辑此文件，把 `RAPPTOR_LOCAL_TEST_TICKET_ORIGIN` 改为 `https://rapptor.xulab.science`；脚本的旧默认地址仍是 `rapptor.duolalab.qzz.io`。
 
-Cloudflare 管理账号需要对现有 `rapptor` Worker 和 `seqedge-catalog` D1 有权限。先完成网站发布候选的 `npm ci`、检查、构建和预览，再使用现有部署流程发布新接口 `/api/internal/prediction-test-tickets`，保留远端现有变量、Secrets、路由和 D1 绑定。首次使用 Wrangler 时运行 `npx wrangler login`，然后：
+Cloudflare 管理账号需要对 `rapptor` Worker 和 `seqedge-catalog` D1 有权限，并确认当前版本包含 `/api/internal/prediction-test-tickets`。网页发布步骤见 [部署手册](cloudflare-workers-builds.md)。登录 Wrangler 后执行：
 
 ```sh
 npm run prediction:local:publish-key
 npm run prediction:local:dev
 ```
 
-Wrangler OAuth 会自动追加 `offline_access`，用于保存可刷新的管理授权；仅通过 `--scopes` 不能省略。管理员未同意该授权时，保留本地配置并停止远端步骤。本次用户后来明确授权，并完成浏览器确认及 Wrangler 凭据保存。
+`publish-key` 将开发密钥写入 Worker 的 `RAPPTOR_LOCAL_TEST_SECRET`，通过标准输入传递。
+远端需要票据迁移 `0008` 和 `0011`。早期 overlay 发布方式和实测结果保存在
+[历史验收](archive/prediction-local-test-acceptance-2026-09-07.md)。
 
-本次发布采用最小追加方式：下载当前 Worker 模块及设置，将已有内部 route 用 `scripts/prediction/build-ticket-overlay.mjs` 编译为独立模块，以原部署为基础上传新版本，保留原模块字节、资产、绑定和已有 Secrets。该入口复用 `route.ts` 和 `tickets.ts`，没有复制另一套签发 SQL。Cloudflare 版本预览通过鉴权、D1、输入边界及原页面/资产校验后才激活；未用本地整站覆盖已更新的线上源码。后续整站部署前须先同步线上公开提交逻辑。
+配置参考（远端限额以 `wrangler.toml` 为准）：
 
-`publish-key` 仅写入已有 Worker 的 `RAPPTOR_LOCAL_TEST_SECRET`，通过标准输入传递，不写命令行。它不会修改现有 `RAPPTOR_PREDICTION_SERVICE_SECRET`、Docker 配置、Supabase 或 Resend。无需新建用户或发送邮件。上线前核验远端具有原有票据迁移 `0008` 和 `0011`；本功能没有新增 schema migration。
-
-本地文件默认包含：
-
-| 配置 | 默认值 |
+| 配置 | 值 |
 | --- | --- |
 | `RAPPTOR_DEPLOYMENT_ENV` | `local` |
 | `RAPPTOR_PREDICTION_LOCAL_TEST` | `on` |
 | `NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST` | `on` |
 | `RAPPTOR_LOCAL_TEST_ORIGIN` | `http://127.0.0.1:3000` |
-| `RAPPTOR_LOCAL_TEST_TICKET_ORIGIN` | `https://rapptor.duolalab.qzz.io` |
+| `RAPPTOR_LOCAL_TEST_TICKET_ORIGIN` | 改为 `https://rapptor.xulab.science` |
 | `RAPPTOR_LOCAL_TEST_TICKETS_PER_MINUTE` | 远端内部测试专用；当前部署为 `20` |
 | `RAPPTOR_LOCAL_TEST_GENOME_SCANS_PER_DAY` | 远端内部测试专用；当前部署为 `20` |
 | `RAPPTOR_LOCAL_TEST_BASES_PER_DAY` | 远端内部测试专用；当前部署为 `100000000` |
@@ -55,7 +51,8 @@ Wrangler OAuth 会自动追加 `offline_access`，用于保存可刷新的管理
 4. 本地 `/api/predictions/jobs` 将票据和真实输入发送原有模型服务。该服务继续通过既有内部消费接口原子校验过期、重复使用、模型身份和实际输入大小。本地任务不创建用户、预留用户每日配额或登记邮件通知。
 5. 原有访问令牌保护任务状态和产物。独立测试接口 GET 仅检查配置与 D1 表，不生成票据或消耗配额。页面可重新检查可用性而不清除输入。
 
-短序列任务的计费输入包含完整 CGR 基因组，合计 4,641,752 bp。基因组任务为 4,641,652 bp；每次签发基因组票据都会占用开发票据的每日碱基额度，包括签发后未使用的票据。分钟限额遵循现有实现。
+短序列样本的计费输入为目标 100 bp，参考 CGR 不额外计费。完整基因组样本为
+4,641,652 bp。开发票据签发时计入其独立日预算，包括签发后未使用的票据。
 
 ## 真实验收和停用
 

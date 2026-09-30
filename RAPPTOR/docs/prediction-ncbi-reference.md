@@ -1,4 +1,4 @@
-# Prediction: browser-managed NCBI/Hugging Face references
+# Prediction reference lookup and Docker CGR cache
 
 ## Scope and user experience
 
@@ -11,8 +11,10 @@ This fallback supplies the complete-genome **CGR context** for either a single
 silently substituted as the target: the browser still supplies the FASTA
 region or assembly to evaluate, while the selected accession supplies only its
 complete-reference CGR. Preview mode does not offer this fallback. The browser
-downloads, decompresses, and validates the selected FASTA before it requests a
-ticketed prediction; the Worker receives only the resulting sequence payload.
+submits the selected versioned accession with a ticket. On a Docker cache miss,
+the Worker downloads and validates the reference and imports it into Docker.
+The separate complete-FASTA upload/example option sends FASTA as user input;
+it does not use the accession-cache path.
 
 ## Data flow
 
@@ -20,12 +22,13 @@ ticketed prediction; the Worker receives only the resulting sequence payload.
 Browser: existing genome search
   → Worker /api/genomes → local catalog
   → if empty + versioned ID: browser requests NCBI Datasets metadata
-      → browser derives the exact NCBI FTP genomic FASTA URL
-      → browser downloads/decompresses and validates the FASTA
+      → user selects the exact versioned accession
 
-Browser: verify, obtain ticket, submit 100 bp + genome_context
+Browser: verify, obtain ticket, submit target + reference_accession / ncbi_accession
   → Worker /api/predictions/jobs
-      → Docker /v1/jobs: mode=predict + sequence + genome_context
+      → claim ticket preparation and query Docker CGR cache
+      → on a miss: resolve, download, validate and import reference; wait for readiness
+      → Docker /v1/jobs: target + reference_accession
           → existing job ID, token, status and artifact flow
 ```
 

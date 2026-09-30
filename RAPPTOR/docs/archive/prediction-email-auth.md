@@ -1,7 +1,9 @@
 # Legacy Supabase prediction email authentication and notifications
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 > Historical / rollback reference. Production now uses Better Auth + D1 + Resend.
-> Use [the active phased integration guide](email-system-integration.zh-CN.md) for
+> Use [the active phased integration guide](../email-system-integration.zh-CN.md) for
 > OTP, sessions, APIs, deployment and quotas. Daily reset is now 08:00 Beijing;
 > the 90-day Supabase sessions and SMTP instructions below describe the old system.
 

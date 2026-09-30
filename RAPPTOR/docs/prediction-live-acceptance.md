@@ -1,6 +1,6 @@
 # Real sequence and online inference acceptance
 
-`/predict` queues real tasks through the existing authenticated ticket and quota routes. `/predict/preview` is an explicit development-only entry; its scores are illustrative. A failed service request or missing reference never creates substitute scores or bases. Email setup is a separate deployment step; see [prediction-email-auth.md](prediction-email-auth.md).
+`/predict` queues real tasks through the authenticated ticket and quota routes. `/predict/preview` is a development-only entry with illustrative scores. Email setup is described in the [email guide](email-system-integration.zh-CN.md).
 
 Model readiness alone does not enable submission. Production checks sign-in, human verification and ticket configuration. The explicitly configured development mode instead checks the private remote test-ticket issuer. Both explain missing setup beside the disabled queue button and provide **Check availability again** without clearing input. See [local real prediction setup](prediction-local-test.md) for the loopback-only development mode, dedicated Cloudflare Secret and deployment procedure.
 
@@ -34,7 +34,7 @@ The runner submits tasks sequentially:
 1. `predict`: the real 100 bp sample, complete-genome CGR, both strands; exactly two scores.
 2. `genome_scan`: the entire reference as the request's sole FASTA input, stride 1, both strands; exactly **2 × (4,641,652 − 100 + 1) = 9,283,106 windows**. It never submits a separate `genome_context`. Request BigWig and Parquet to retain every window without a huge unfiltered GFF3 export.
 
-The existing service lacks `score_cutoff`. Requests omit it; the normal scan page disables export filtering. Real 100 bp output shows scores without threshold classification. The model is fixed to `candidate-github-93cf`, checkpoint `93cfcbaf74e3a693dfd12406d11ad79fef0933b90913db83c230a3f3a99582ad`, and remains a candidate model. No deployment or model change is made.
+The runner omits `score_cutoff`. The normal scan page enables filtering only if the deployed service advertises support. Real 100 bp output shows scores without threshold classification. The pinned acceptance model is `candidate-github-93cf`, checkpoint `93cfcbaf74e3a693dfd12406d11ad79fef0933b90913db83c230a3f3a99582ad`.
 
 ## Records, recovery and browser checks
 

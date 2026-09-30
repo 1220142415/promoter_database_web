@@ -1,261 +1,111 @@
-# RAPPTOR promoter prediction service
+# 基因组与预测接口
 
-Status: proposed MVP design (2026-08-25)
+以下是当前网页接口。请求发往 RAPPTOR 同源地址；Docker 内部接口单独列出。
+登录、验证码和任务邮件见 [邮件系统](email-system-integration.zh-CN.md)。
 
-For the implemented real-example entry, current candidate service compatibility,
-and the explicit online acceptance command, see
-[prediction-live-acceptance.md](prediction-live-acceptance.md).
-The historical MVP design below predates the current email authentication layer.
+## 基因组目录
 
-This document records the first implementation boundary for running the
-RAPPTOR promoter prediction model as a queued Docker service. It does not
-include model training or a public, anonymous model API.
+`GET /api/genomes` 支持 `q`、`domain`、`phylum`、`class`、`order`、`family`、
+`genus`、`source`、`annotation`、`sort`、`direction`、`limit`、`cursor`。
+`limit` 可取 25、50、100。后续页使用响应返回的游标，游标绑定排序方式。
+`annotation=unavailable` 包括缺失或与 assembly 不兼容的注释。
+返回字段见 `src/features/genomes/types.ts`，查询规则见 `search-query.ts`。
 
-## Goals
+## 预测请求顺序
 
-- Run the existing prediction model reproducibly on CPU or GPU.
-- Let the RAPPTOR website submit work without exposing a reusable service
-  credential to the browser.
-- Limit abusive requests without requiring user accounts.
-- Queue long-running predictions and expose their status and result.
-- Keep enough permanent metadata to audit usage and reproduce a result.
+1. 登录：`/api/prediction-auth`，浏览器保存会话 Cookie。
+2. 完成 Turnstile，申请一次性 Ticket。
+3. 使用 Ticket 创建任务，保存返回的 `job_id` 和私密 `access_token`。
+4. 使用任务 token 查询状态和下载产物。
 
-The MVP will not add accounts, billing, multiple queue priorities, Celery,
-Kubernetes, or automatic GPU scaling. Add those only after measured demand.
-
-## System boundary and flow
-
-```text
-Browser
-  1. POST /api/prediction-tickets + Turnstile token
-     -> Cloudflare Worker applies IP/quota limits
-     <- one-time ticket (60-120 second lifetime)
-
-  2. POST /v1/jobs + ticket + prediction input
-     -> Docker API asks Cloudflare Worker to consume the ticket
-     -> Docker API creates job metadata and enqueues the job in Redis
-     <- job_id and queued status
-
-  3. GET /v1/jobs/{job_id}
-     <- queued | running | succeeded | failed, progress, result URL
-
-Redis queue
-  -> one or more model workers
-  -> prediction output to R2
-  -> permanent job status/result metadata to D1 through an authenticated
-     internal Cloudflare Worker endpoint
-```
-
-The prediction API is internet reachable only through HTTPS and a reverse
-proxy. It must not accept a job until Cloudflare confirms that its ticket was
-consumed. Calls between the model service and Cloudflare use a server-only
-secret; that secret is never sent to the browser.
-
-## One-time ticket
-
-Cloudflare generates 32 cryptographically random bytes and returns their
-URL-safe encoding. D1 stores only a SHA-256 hash of the ticket, never its
-plaintext value.
-
-Each ticket contains or references these constraints:
-
-```text
-ticket_hash
-ip_hash
-scope                 prediction submission
-model_version
-max_bases
-issued_at
-expires_at
-used_at                null until consumed
-```
-
-The consume operation must be one atomic conditional update:
-
-```sql
-UPDATE prediction_tickets
-SET used_at = CURRENT_TIMESTAMP
-WHERE ticket_hash = ?
-  AND used_at IS NULL
-  AND expires_at > CURRENT_TIMESTAMP;
-```
-
-Exactly one changed row means the ticket is valid. Zero changed rows means it
-is unknown, expired, or already used. Validation also checks the requested
-model and input size against the ticket constraints.
-
-A signed JWT alone is insufficient because it can be replayed until expiry.
-D1 atomic consumption is adequate for the MVP; do not add a separate ticket
-service unless D1 becomes a measured bottleneck.
-
-## Limits without login
-
-Apply limits when issuing a ticket, not only when submitting a job. Otherwise
-a client can request unlimited valid tickets.
-
-Initial limits should be configuration, with conservative deployment values:
-
-- tickets issued per IP per minute;
-- submitted bases per IP per day;
-- queued jobs per IP;
-- running jobs per IP;
-- total global queue length;
-- maximum bases and upload bytes per job.
-
-Set `RAPPTOR_MAX_REQUEST_BYTES` to the same positive byte value in the web app
-and Python service. Both default to `12582912` bytes (12 MiB); the web upload
-limit and service request limit must not diverge.
-
-Use Cloudflare Turnstile on ticket requests and store only a salted IP hash in
-D1. Return `Retry-After` for temporary limits. IP limits deter casual abuse,
-but are not identity or a billing boundary; API keys or accounts are required
-if reliable per-user quotas become necessary.
-
-## Queue and process model
-
-Use Redis with RQ for the MVP:
-
-```text
-container/image
-├── API process       validates input, consumes ticket, creates and enqueues job
-└── worker process    loads model, predicts, writes output, reports final state
-```
-
-The API and worker use the same Docker image but run different commands. Start
-one prediction worker per GPU. CPU deployments may increase worker count only
-after memory and throughput testing. A job state follows:
-
-```text
-queued -> running -> succeeded
-                  \-> failed
-```
-
-Workers must make terminal updates idempotent so retrying a callback does not
-duplicate a result. Set job timeouts and retain failed-job diagnostics for a
-short, configured period. Cancellation and priority queues are deferred.
-
-## Storage ownership
-
-| Store | Owns | Must not own |
-| --- | --- | --- |
-| D1 | ticket hashes and consumption, quota counters, permanent job metadata, model version, result location | FASTA, GFF3, BigWig, model artifacts |
-| Redis | queue, locks, transient progress and short-lived failure details | permanent audit history or large files |
-| R2 | uploaded input and generated FASTA/GFF3/BigWig/JSON results | ticket validation or queue state |
-
-R2 objects should use unguessable job IDs and private buckets. The website
-returns short-lived signed download URLs or streams an authorized object.
-Retention rules must be declared before accepting production data.
-
-## API contract
-
-### Website/Cloudflare
+### 申请票据
 
 ```http
 POST /api/prediction-tickets
 Content-Type: application/json
-
-{ "turnstileToken": "...", "modelVersion": "...", "bases": 12345 }
 ```
-
-Success returns the one-time ticket, expiry, and accepted limits. This route
-performs Turnstile verification and quota checks.
-
-```http
-POST /api/internal/prediction-tickets/consume
-Authorization: Bearer <service-secret>
-Content-Type: application/json
-
-{ "ticket": "...", "modelVersion": "...", "bases": 12345 }
-```
-
-This route is server-to-server only. It atomically consumes the ticket and
-returns a minimal allow/deny response.
-
-The model service reports job creation and terminal state through another
-authenticated internal route. That route owns D1 job metadata writes; the
-external Docker host does not receive direct D1 credentials.
-
-### Prediction service
-
-```http
-POST /v1/jobs
-Authorization: Ticket <one-time-ticket>
-```
-
-The request contains a supported sequence input or an R2 upload reference.
-Success returns:
 
 ```json
-{ "job_id": "...", "status": "queued" }
+{"turnstileToken":"<widget token>","modelVersion":"candidate-github-93cf","mode":"predict","bases":100}
 ```
+
+成功返回 201，字段包含 `ticket`、`expiresAt`、`modelVersion`、`maxBases`、
+`inputRequirements`。`predict` 计入目标序列的 100 bp；`genome_scan` 计入目标
+FASTA 的碱基数，参考 CGR 不作为额外扫描输入。票据绑定模式、模型和输入限额，
+只能消费一次。当前 TTL 和额度以 `wrangler.toml` 为准。
+
+### 创建任务
 
 ```http
-GET /v1/jobs/{job_id}
+POST /api/predictions/jobs
+Authorization: Ticket <ticket>
+Content-Type: application/json
 ```
 
-The response contains the state, timestamps, model version, safe progress
-information, and a result reference after success. Access to a job requires an
-unguessable job access token; knowing a sequential ID must never expose data.
+```json
+{
+  "mode": "predict",
+  "sequence": "<exactly 100 A/C/G/T bases>",
+  "reference_accession": "<versioned catalog accession>",
+  "complete_genome": true,
+  "strand_mode": "both",
+  "notify_by_email": true
+}
+```
 
-Common failures:
+尖括号内容是占位值。`predict` 的 CGR 来源选择 `reference_accession`、完整
+`genome_context` 或完整参考 `fasta` 之一。`genome_scan` 用 `fasta` 指定扫描目标；
+可另给参考 accession 或完整 context，省略时用完整目标 FASTA 生成 CGR。
+`complete_genome:true` 表示调用方确认 CGR 来源完整，并不表示部分扫描目标是完整基因组。
 
-| HTTP | Code | Meaning |
-| --- | --- | --- |
-| 400 | `INVALID_INPUT` | Unsupported or malformed sequence/input |
-| 401 | `INVALID_TICKET` | Ticket unknown, expired, reused, or wrong scope |
-| 413 | `INPUT_TOO_LARGE` | Ticket or service input limit exceeded |
-| 429 | `RATE_LIMITED` | Per-IP quota or queue limit reached |
-| 503 | `QUEUE_UNAVAILABLE` | Redis/model capacity temporarily unavailable |
+`strand_mode` 为 `both`、`forward` 或 `reverse`；其他扫描字段如 `stride`、
+`score_cutoff`、`output_formats` 的支持情况和上限以 Docker `/v1/models/current`
+及部署的 schema 为准。完整字段见
+[`schemas.py`](../services/prediction/src/prediction_service/schemas.py)。
 
-## Deployment and security requirements
+Worker 扩展字段 `ncbi_accession` 和参考准备过程见 [参考缓存](prediction-ncbi-reference.md)。
+`notify_by_email` 为可选 boolean，收件人由已验证的登录身份决定。
+Worker 转发前移除该字段，Docker 不处理邮件。
 
-- Pin the Python base image and model dependency versions.
-- Run the container as a non-root user with a read-only model mount where
-  practical.
-- Expose a lightweight `/healthz`; keep model readiness separate if loading is
-  slow.
-- Terminate TLS at the reverse proxy and restrict internal callback routes
-  with a rotated service secret.
-- Validate FASTA content, names, encoding, byte size, and total bases before
-  enqueueing; never execute user-provided filenames or command fragments.
-- Do not log raw sequence data, tickets, service secrets, or full IP addresses.
-- Record model version, container image digest, input checksum, timestamps,
-  and output checksum for reproducibility.
-- Monitor queue depth, wait time, run time, success/failure rate, GPU memory,
-  disk usage, Redis availability, and ticket rejection reasons.
+接受任务后通常返回 202，包含 `job_id`、`status`、`access_token`、`model_version`、
+`queue` 和 `status_url` 等服务字段。任务已接受后的通知登记失败不撤销任务。
 
-## Delivery plan and estimate
+### 状态与产物
 
-Assumptions: a stable pure-Python inference entry point, weights, and a known
-test sample already exist; CPU/GPU target is selected; retraining is excluded.
-One person working full-time is estimated as follows:
+| 请求 | 授权 / 用途 |
+| --- | --- |
+| `GET /api/predictions/jobs/{jobId}` | `X-Job-Token: <access_token>`，读取状态 |
+| `POST /api/predictions/jobs/{jobId}/session` | `X-Job-Token`，换取浏览器产物访问 Cookie |
+| `GET /api/predictions/jobs/{jobId}/artifacts/{filename}` | 任务 token 或已建立的产物会话；支持 Range |
 
-| Phase | Deliverable | Estimate |
-| --- | --- | ---: |
-| 0 | Wrap inference and benchmark memory/runtime | 2-4 person-days |
-| 1 | FastAPI, Docker image, health/readiness checks | 2-3 person-days |
-| 2 | D1 migration, one-time tickets, Turnstile and limits | 3-5 person-days |
-| 3 | Redis/RQ queue, worker lifecycle and job status | 3-5 person-days |
-| 4 | R2 input/output and result format | 3-5 person-days |
-| 5 | RAPPTOR submission/status/result UI and API integration | 3-5 person-days |
-| 6 | Deployment, monitoring, load and failure testing | 3-5 person-days |
-| **MVP total** | End-to-end production candidate | **16-27 person-days** |
+状态为 `queued`、`running`、`succeeded`、`failed`；查不到的任务可返回 `unknown`。
+完成响应包含产物信息与到期时间。任务 token 是访问凭据，不能公开或写入日志。
+页面 `/predict/task/{jobId}` 使用现有浏览器凭据或链接中的 `#access=...` 恢复访问。
+队列字段见 [队列显示](prediction-queue-ui.md)，可复现样本见 [在线验收](prediction-live-acceptance.md)。
 
-The phases partially overlap for two developers, but GPU debugging and final
-integration remain sequential. A practical calendar estimate is 4-6 weeks for
-one developer or 3-4 weeks for two developers, including review and fixes.
+### 错误处理
 
-Add approximately 5-10 person-days if inference is not yet stable, CUDA needs
-target-specific adaptation, or GFF3/BigWig conversion still has to be built.
-Production operations such as high availability, autoscaling, user accounts,
-billing, and multi-tenant isolation are separate work.
+错误通常包含 `error.code` 和 `error.message`。按 HTTP 状态和 code 处理，保留用户输入。
+400 检查输入；401/403 检查登录、票据或 Turnstile；413 减少输入；429 按
+`Retry-After` 等待；503 检查配置、D1 或 Docker 连通性。
+提交超时且结果不明时先确认是否已创建任务，避免重复扫描。
 
-## Acceptance criteria for the MVP
+## Docker 与 Worker 对接
 
-- A valid ticket can create exactly one job; replay and expired tickets fail.
-- Ticket issuance and job submission limits return deterministic errors.
-- Concurrent submissions remain queued and do not over-commit the GPU.
-- A known test sequence produces the expected versioned result after restart.
-- Redis/API/model failure paths end in a visible retryable or terminal state.
-- Input and output are private, expire according to policy, and are not leaked
-  through logs or predictable identifiers.
+| 接口 | 调用者与用途 |
+| --- | --- |
+| Docker `POST /v1/jobs` | Worker 转发任务，使用 Ticket |
+| Docker `GET /v1/jobs/{job_id}` | 任务状态，使用 `X-Job-Token` |
+| Docker `/v1/reference-cache/*` | Worker 或可信同步程序准备参考 CGR，使用服务 Bearer secret |
+| Worker `POST /api/internal/prediction-tickets/consume` | Docker 原子消费票据，使用服务 Bearer secret |
+| Worker `POST /api/internal/prediction-jobs` | Docker 写入任务事件并触发通知，使用服务 Bearer secret |
+
+回调 JSON 和通知重试规则见邮件指南。Docker 部署与缓存 API 见
+[服务手册](../services/prediction/README.md)。结果文件在 Docker 数据卷中；
+D1 保存业务元数据，Redis 保存队列和暂态信息。
+
+## 开发与旧接口
+
+本地免登录真实预测使用 [开发票据流程](prediction-local-test.md)。
+旧 `/api/predictions` 及 `contractVersion` 分支仍保留；新接入使用上面的队列接口。
+早期 R2/MVP 设计保存在 [归档](archive/prediction-service-mvp-2026-08-25.md)。

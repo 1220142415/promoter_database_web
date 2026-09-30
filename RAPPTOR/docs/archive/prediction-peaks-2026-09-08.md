@@ -1,5 +1,7 @@
 # Automatic peak calling at stride 1
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 User confirmed automatic calling with sigma 1, minimum distance 10 bp, and
 smoothed model score strictly greater than 0.9.
 

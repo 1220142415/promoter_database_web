@@ -1,5 +1,7 @@
 # Prediction acceptance record — 2026-09-07
 
+> 已归档：内容描述当时的设计或部署，不代表当前生产状态。现行说明见 [项目入口](../../README.md)。
+
 This is the earlier real-sequence implementation record. The subsequent local no-login implementation and current authorization decision are recorded in [prediction-local-test-acceptance-2026-09-07.md](prediction-local-test-acceptance-2026-09-07.md).
 
 Overall: **implementation verified locally; real model inference blocked by missing service tickets**. No candidate or genome job was created. No model output was mocked for live acceptance. No service/model deployment was changed.
@@ -20,6 +22,6 @@ Overall: **implementation verified locally; real model inference blocked by miss
 
 Tests/build used the current local installation: Node 25.2.1, Next 15.5.21 and React 19.2.4. The visible dev server used bundled Node 24.19.0. Installed Next/React versions differ from the package/lock targets (15.5.24/19.2.8); these observations do not establish a clean lockfile installation or deployment readiness.
 
-The complete reference and resumable run record remain under ignored `.data/prediction-examples/` and `.codex-runtime/prediction-live/20260907-real-sequences/`. The public `report.json` records input hashes, capabilities and the blocker. Access/ticket records are private and are not included here. See [prediction-live-acceptance.md](prediction-live-acceptance.md) for credential-file format and resume instructions. Tickets expire after 60–120 seconds under the existing issuer, so provide a fresh ticket at each submission or resume between tasks.
+The complete reference and resumable run record remain under ignored `.data/prediction-examples/` and `.codex-runtime/prediction-live/20260907-real-sequences/`. The public `report.json` records input hashes, capabilities and the blocker. Access/ticket records are private and are not included here. See [prediction-live-acceptance.md](../prediction-live-acceptance.md) for credential-file format and resume instructions. Tickets expire after 60–120 seconds under the existing issuer, so provide a fresh ticket at each submission or resume between tasks.
 
 The fragment's real genomic provenance does not establish promoter activity, model accuracy or experimental TSS support. The selected model retains its candidate identity throughout acceptance.

@@ -210,7 +210,7 @@ const session = await response.json();
 // 401: 展示登录入口；503: 显示服务暂不可用，不伪装成已登出。
 ```
 
-### 2.3 错误合同
+### 2.3 错误响应
 
 登录接口错误统一形状：
 
@@ -278,7 +278,7 @@ const created = await response.json();
 | 向 Docker 转发 | Worker 移除 `notify_by_email`，Docker 不需增加邮件逻辑 |
 | 返回值 | 任务响应不会等待任务完成或通知发出；登记通知失败不丢弃已接受任务的凭据 |
 
-Ticket 和预测字段详见 [预测服务说明](prediction-service.md) 与
+Ticket 和预测字段详见 [预测接口](prediction-service.md) 与
 [现有在线接入说明](prediction-live-acceptance.md)。必须沿用实际已支持的预测字段，
 不能将上面的 `existingPredictionPayload` 当成新的固定接口模型。
 
@@ -341,20 +341,9 @@ checkpoint / model config 哈希。事件正文最多 80 KiB；artifact manifest
 
 ## 阶段 6：部署、检查和交接
 
-顺序：检查 D1 迁移 → 配置 Secret / 普通变量 → 构建 → 部署 → 由维护者做实际验收。
-
-```bash
-npm ci
-npm run typecheck
-npm run lint
-node scripts/cloudflare/run-opennext-build.mjs
-npx opennextjs-cloudflare deploy
-```
-
-Cloudflare 工具链需 Node.js 22+。上述命令不会主动发送测试邮件。
-自动化检查文件位于 `tests/api/better-auth-d1.test.ts` 和相关通知 / 预测接口测试；
-旧认证测试保留用于回退检查。2026-09-30 这轮发布已通过类型、相关 ESLint 和 Cloudflare
-构建检查，**本轮未运行自动化测试，也未发真实验收邮件**，不能将此记录当作完整验收。
+安装依赖、迁移记录核对、构建变量和发布命令统一见 [部署手册](cloudflare-workers-builds.md)。
+认证相关检查文件包括 `tests/api/better-auth-d1.test.ts` 及通知 / 预测接口测试；
+旧认证测试保留用于回退检查。
 
 维护者实际验收建议：发码与重发冷却、最新码登录、过期 / 错误码、Cookie 续期、登出失败
 重试、08:00 重置、勾选通知后正常完成与失败回调、额度耗尽后的后台等待。
@@ -376,4 +365,4 @@ Cloudflare 工具链需 Node.js 22+。上述命令不会主动发送测试邮件
 - `.env*` 实际文件、用户导出 SQL、部署 token、运行时截图和构建目录保持 Git 忽略。
   新接口对接问题请记录 endpoint、HTTP 状态、错误 code、时间和任务 ID，避免记录秘密。
 
-历史部署过程与 Supabase 回退说明：[email-system-deployment.zh-CN.md](email-system-deployment.zh-CN.md)。
+历史部署过程与 Supabase 回退说明：[email-system-deployment.zh-CN.md](archive/email-system-deployment.zh-CN.md)。

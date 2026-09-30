@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/internal/email-test/route';
 
+vi.mock('@/features/usage/store', () => ({
+  usageDatabase: () => ({ prepare: () => ({ bind: () => ({ first: async () => ({ scope: 'global' }) }) }) }),
+}));
+
 const keys = ['RESEND_API_KEY', 'RESEND_TEST_TO', 'RESEND_FROM', 'RAPPTOR_EMAIL_TEST_TOKEN'] as const;
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 

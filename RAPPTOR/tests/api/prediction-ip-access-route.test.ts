@@ -11,10 +11,10 @@ const database = vi.hoisted(() => ({
 }));
 
 vi.mock('@/features/usage/store', () => ({ usageDatabase: () => database }));
-vi.mock('@/features/email-system/supabase', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue(Response.json({}, { status: 401 })) }));
+vi.mock('@/features/email-system/better-auth', () => ({ requirePredictionAuth: vi.fn().mockResolvedValue(Response.json({}, { status: 401 })) }));
 
 import { POST } from '@/app/api/prediction-tickets/route';
-import { requirePredictionAuth } from '@/features/email-system/supabase';
+import { requirePredictionAuth } from '@/features/email-system/better-auth';
 
 const keys = [
   'RAPPTOR_PREDICTION_ACCESS_MODE', 'RAPPTOR_PREDICTION_ENABLED', 'RAPPTOR_PREDICTION_MODEL_VERSION',

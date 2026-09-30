@@ -6,12 +6,12 @@ vi.mock('@/features/usage/store', () => ({ usageDatabase: vi.fn(() => state.dbAv
     bind: (...values: unknown[]) => { state.bindings.push(values); return { run: async () => ({ meta: { changes: state.changes } }) }; },
   }),
 } : null) }));
-vi.mock('@/features/email-system/supabase', () => ({ requirePredictionAuth: vi.fn(async () => Response.json({ error: { code: 'AUTH_REQUIRED' } }, { status: 401 })) }));
+vi.mock('@/features/email-system/better-auth', () => ({ requirePredictionAuth: vi.fn(async () => Response.json({ error: { code: 'AUTH_REQUIRED' } }, { status: 401 })) }));
 vi.mock('@/features/email-system/prediction-notifications', () => ({ registerPredictionNotification: vi.fn(), sendPredictionNotification: vi.fn() }));
 import { GET as ready, POST as issue } from '@/app/api/internal/prediction-test-tickets/route';
 import { POST as localTicket } from '@/app/api/prediction-tickets/route';
 import { POST as job } from '@/app/api/predictions/jobs/route';
-import { requirePredictionAuth } from '@/features/email-system/supabase';
+import { requirePredictionAuth } from '@/features/email-system/better-auth';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
 import { usageDatabase } from '@/features/usage/store';
 

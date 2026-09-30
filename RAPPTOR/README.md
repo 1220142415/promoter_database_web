@@ -29,6 +29,13 @@ The `/predict` interface submits real queued predictions through the configured
 `RAPPTOR_PREDICTION_SERVICE_URL`, preserving production email authentication, tickets and
 quota checks. A loopback-only, explicitly configured development mode can use a
 dedicated remote test-ticket key without email login; see [local test setup](docs/prediction-local-test.md).
+
+Production email sign-in now runs **Better Auth in the Cloudflare Worker, backed
+by D1, with Resend delivery**. Supabase is retained as a legacy implementation.
+See the [phased email-system and API integration guide](docs/email-system-integration.zh-CN.md)
+for configuration, OTP/session contracts, task callbacks, notification retries,
+quotas, and rollback. Prediction and email daily quotas reset at **08:00 Beijing**;
+OTP and task notifications share the Resend Free daily budget of 100 send attempts.
 The real E. coli examples and explicit `npm run test:prediction:live`
 acceptance command are documented in [prediction-live-acceptance.md](docs/prediction-live-acceptance.md).
 The illustrative UI preview is available only at `/predict/preview` in development.

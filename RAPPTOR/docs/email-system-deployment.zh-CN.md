@@ -1,5 +1,59 @@
 # RAPPTOR 邮箱系统部署与迁移手册
 
+当前新系统的分阶段部署、接口合同和前后端对接请优先阅读
+[新邮件系统对接指南](email-system-integration.zh-CN.md)。本文后半部分保留旧 Supabase 流程。
+
+## 当前线上方案（2026-09-30）
+
+RAPPTOR 已改用运行在 Cloudflare Worker 中的 Better Auth 邮箱验证码。用户、验证码、
+会话和限流记录保存在老板账户的 `seqedge-catalog` D1；Resend 仍负责发送验证码和
+预测完成通知。正式登录路由为 `src/app/api/prediction-auth/route.ts`，配置与数据库
+结构见 `src/features/email-system/better-auth.ts`、`better-auth-schema.ts` 和
+`database/migrations/0018_better_auth.sql`。
+
+验证码邮件由 `src/features/email-system/verification-email.ts` 渲染 HTML 与纯文本两个
+版本，沿用原邮件的绿色卡片排版，有效期为 10 分钟。更新模板后需重新部署 Worker，
+已发送的旧邮件不会改变。在 Cloudflare 中另有 TXT 记录
+`_dmarc.auth.xulab.science = v=DMARC1; p=none;`；它用于发件子域名的 DMARC 策略，
+与已验证的 SPF/DKIM 一同维护。完善认证不保证所有邮箱都将邮件放入收件箱，新发件
+域名仍需积累信誉；用户可将邮件标记为“非垃圾邮件”并将发件人加入白名单。
+
+验证码为一次性，成功验证后不可再次使用；重新申请会让旧验证码失效。登录页会
+识别已有会话并跳转到预测页，同一已登录用户的验证重试不会再次消耗验证码。
+接口分别提示验证码问题、请求限流和服务暂时不可用，不将它们统一显示为验证码错误。
+
+线上 Worker 需要 D1 绑定 `RAPPTOR_DB`、`BETTER_AUTH_SECRET`（至少 32 位随机值）、
+`RESEND_API_KEY`、`RESEND_FROM` 和 `RAPPTOR_PUBLIC_SITE_URL`。域名和普通变量应在
+`wrangler.toml` 中维护，避免下次部署覆盖控制台配置。现有两名用户已保留原用户 ID
+导入 D1，因此历史额度与通知记录仍可关联；旧 Supabase 会话不能迁移，用户首次访问
+需要重新收取验证码登录。
+
+旧版 `supabase.ts` 与 `supabase-route.ts` 已保留，但正式路由不调用。下文关于
+Supabase SMTP、会话和 `deployment:email` 的步骤仅供回退或历史参考，不适用于当前
+Better Auth 部署。当前部署先应用 `0018_better_auth.sql` 与 `0019_auth_email_reliability.sql`，再构建并部署 Worker；
+`deployment:email` 会配置旧 Supabase 流程，不要用于当前方案。
+
+### 验证码与通知可靠性修复
+
+- 验证码按邮箱限流：60 秒冷却，每个邮箱每天默认最多 10 次。
+  全站验证码、任务通知和内部发信测试合计每天最多 100 次发信尝试，对齐 Resend Free
+  每天 100 封的上限。日额度在 UTC 00:00（北京时间 08:00）重置，预测额度也在同一
+  时间重置。失败、重试或结果不确定的发信请求也计入额度。`wrangler.toml` 中
+  `RAPPTOR_EMAILS_PER_DAY` 控制共享发信额度（最多 100），
+  `RAPPTOR_AUTH_EMAILS_PER_ADDRESS_PER_DAY` 控制邮箱验证码额度。
+  Resend 免费方案另有每月 3,000 封的账户额度；同一工作区其他项目的发信和入站邮件
+  也会使用 Resend 账户额度，提供商仍会执行其账户上限。
+  官方说明：<https://resend.com/docs/knowledge-base/resend-sending-limits>。
+- 额度使用 D1 条件更新，跨 Worker 实例共享；邮箱限流键为 HMAC，不额外保存明文邮箱。
+- 登录状态接口将续期 Cookie 返回浏览器；仅检查任务权限的请求不执行无效续期。
+  已有会话验证与登出不依赖 Resend 配置。页面只有确认登出成功后才显示退出。
+- 登录页有重新发送按钮、冷却与验证码有效期倒计时，并提示检查垃圾邮件和使用最新代码。
+- 任务通知在首次发送前加密保存发件人、收件人、正文、模板和结果链接，重试沿用完整
+  快照与同一幂等键。已有未发送快照的历史通知在下次尝试时保存快照。
+  邮件正文和 capability 链接不以明文存入新增字段，仍随通知记录在 7 天后清理。
+
+## 旧版 Supabase 方案（历史参考）
+
 本文档用于两种场景：
 
 1. RAPPTOR 更换域名、Cloudflare Worker 或 Supabase 项目。
@@ -501,7 +555,7 @@ Worker scheduled handler
 - 验证成功后刷新和重开浏览器仍保持登录。
 - 退出后预测提交被拒绝。
 - 短序列和 whole-genome scan 均按实际输入碱基数累计。
-- 预测页显示当天已用碱基数/每日总碱基数，并在北京时间 00:00 重置。
+- 预测页显示当天已用碱基数/每日总碱基数，并在北京时间 08:00 重置。
 - 真实任务成功或失败后只收到一封通知。
 - 重放终态回调不会重复发信。
 - D1 不含序列、结果、密码或 Supabase token；临时任务 capability 仅以 AES-GCM

@@ -1,6 +1,7 @@
 import { serviceSecretMatches } from '@/features/prediction/tickets';
 import { sendRappTorEmail } from '@/features/email-system/resend';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
+import { usageDatabase } from '@/features/usage/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     return Response.json({ accepted: false }, { status: 401, headers: NO_STORE });
   }
 
-  const result = await sendRappTorEmail({ apiKey, from: process.env.RESEND_FROM }, {
+  const result = await sendRappTorEmail({ apiKey, from: process.env.RESEND_FROM, database: usageDatabase() || undefined }, {
     to: recipient,
     subject: 'RAPPtor email delivery test',
     text: 'This is a one-time RAPPtor delivery test through Cloudflare Worker and Resend.',

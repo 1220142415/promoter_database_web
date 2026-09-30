@@ -154,7 +154,7 @@ async function identifyPredictionTicketLimit(
       return new PredictionTicketLimitError(
         'DAILY_BASE_LIMIT_REACHED',
         'The daily submitted-base limit has been reached.',
-        secondsUntilBeijingMidnight(now),
+        secondsUntilPredictionQuotaReset(now),
       );
     }
     if (input.mode === 'genome_scan' && input.anonymousIpLimit
@@ -162,7 +162,7 @@ async function identifyPredictionTicketLimit(
       return new PredictionTicketLimitError(
         'GENOME_SCAN_DAILY_LIMIT_REACHED',
         'The daily genome-scan limit has been reached.',
-        secondsUntilBeijingMidnight(now),
+        secondsUntilPredictionQuotaReset(now),
       );
     }
     if (Number(usage?.minute_tickets || 0) >= settings.ticketsPerMinute) {
@@ -196,8 +196,8 @@ export async function issuePredictionTicket(
 
   const issuedAt = now.toISOString();
   const minuteCutoff = new Date(now.getTime() - 60_000).toISOString();
-  const dayCutoff = new Date(`${beijingQuotaDay(now)}T00:00:00+08:00`).toISOString();
-  const ipHash = await hmac(`${beijingQuotaDay(now)}|${input.address}`, settings.ipHashSecret);
+  const dayCutoff = `${predictionQuotaDay(now)}T00:00:00.000Z`;
+  const ipHash = await hmac(`${predictionQuotaDay(now)}|${input.address}`, settings.ipHashSecret);
   const ticket = randomTicket();
   const expiresAt = new Date(now.getTime() + settings.ttlSeconds * 1000).toISOString();
   const result = await database.prepare(`INSERT INTO prediction_tickets
@@ -232,12 +232,13 @@ export async function issuePredictionTicket(
   };
 }
 
-export function beijingQuotaDay(now = new Date()) {
-  return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+export function predictionQuotaDay(now = new Date()) {
+  // UTC midnight is 08:00 Beijing, shared with the Resend daily quota.
+  return now.toISOString().slice(0, 10);
 }
 
-export function secondsUntilBeijingMidnight(now = new Date()) {
-  const nextMidnight = new Date(`${beijingQuotaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000))}T00:00:00+08:00`);
+export function secondsUntilPredictionQuotaReset(now = new Date()) {
+  const nextMidnight = new Date(`${predictionQuotaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000))}T00:00:00.000Z`);
   return Math.max(1, Math.ceil((nextMidnight.getTime() - now.getTime()) / 1000));
 }
 
@@ -249,7 +250,7 @@ export async function reserveGenomeScanQuota(database: D1Database, userId: strin
       used = prediction_daily_quota.used + 1,
       updated_at = excluded.updated_at
     WHERE prediction_daily_quota.used < ?`)
-    .bind(userId, beijingQuotaDay(now), now.toISOString(), maxScans)
+    .bind(userId, predictionQuotaDay(now), now.toISOString(), maxScans)
     .run();
   return changedRows(result) === 1;
 }
@@ -258,7 +259,7 @@ export async function releaseGenomeScanQuota(database: D1Database, userId: strin
   await database.prepare(`UPDATE prediction_daily_quota
     SET used = used - 1, updated_at = ?
     WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan' AND used > 0`)
-    .bind(now.toISOString(), userId, beijingQuotaDay(now))
+    .bind(now.toISOString(), userId, predictionQuotaDay(now))
     .run();
 }
 
@@ -313,7 +314,7 @@ export async function reservePredictionBases(
       used_bases = prediction_daily_quota.used_bases + excluded.used_bases,
       updated_at = excluded.updated_at
     WHERE prediction_daily_quota.used_bases + excluded.used_bases <= ?`)
-    .bind(userId, beijingQuotaDay(now), bases, now.toISOString(), maxBases)
+    .bind(userId, predictionQuotaDay(now), bases, now.toISOString(), maxBases)
     .run();
   return changedRows(result) === 1;
 }
@@ -322,7 +323,7 @@ export async function releasePredictionBases(database: D1Database, userId: strin
   await database.prepare(`UPDATE prediction_daily_quota
     SET used_bases = MAX(0, used_bases - ?), updated_at = ?
     WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan'`)
-    .bind(bases, now.toISOString(), userId, beijingQuotaDay(now))
+    .bind(bases, now.toISOString(), userId, predictionQuotaDay(now))
     .run();
 }
 
@@ -330,12 +331,12 @@ export async function readPredictionBaseUsage(database: D1Database, userId: stri
   const totalBases = readPredictionBasesPerDay();
   const row = await database.prepare(`SELECT used_bases FROM prediction_daily_quota
     WHERE user_id = ? AND quota_day = ? AND task_kind = 'genome_scan'`)
-    .bind(userId, beijingQuotaDay(now))
+    .bind(userId, predictionQuotaDay(now))
     .first<{ used_bases: number }>();
   return {
     usedBases: Math.max(0, Number(row?.used_bases) || 0),
     totalBases,
-    resetAt: new Date(now.getTime() + secondsUntilBeijingMidnight(now) * 1000).toISOString(),
+    resetAt: new Date(now.getTime() + secondsUntilPredictionQuotaReset(now) * 1000).toISOString(),
   };
 }
 

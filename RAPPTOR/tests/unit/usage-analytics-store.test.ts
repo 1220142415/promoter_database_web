@@ -161,6 +161,7 @@ describe('recording a page view', () => {
       Date.parse(utcDay() + 'T00:00:00.000Z'),
       Date.parse(utcDay() + 'T00:00:00.000Z'),
       Date.parse(utcDay() + 'T00:00:00.000Z') - 7 * 24 * 60 * 60 * 1_000,
+      Date.parse(utcDay() + 'T00:00:00.000Z') - 2 * 24 * 60 * 60 * 1_000,
     ]);
   });
 

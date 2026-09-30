@@ -49,7 +49,7 @@ describe('queued service capability detection', () => {
       NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY: 'test-site-key',
       RAPPTOR_PREDICTION_SERVICE_SECRET: 'test-service-secret',
       RAPPTOR_PREDICTION_IP_HASH_SECRET: 'test-hash-secret',
-      SUPABASE_URL: '',
+      BETTER_AUTH_SECRET: '',
     };
     for (const [key, value] of Object.entries(settings)) vi.stubEnv(key, value);
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : { model_version: 'candidate-github-93cf' })));
@@ -62,7 +62,7 @@ describe('queued service capability detection', () => {
     vi.stubEnv('RAPPTOR_PREDICTION_MODEL_VERSION', 'candidate-github-93cf');
     vi.stubEnv('RAPPTOR_LOCAL_TEST_SECRET', 'a'.repeat(64));
     vi.stubEnv('RAPPTOR_LOCAL_TEST_TICKET_ORIGIN', 'https://tickets.test');
-    vi.stubEnv('SUPABASE_URL', '');
+    vi.stubEnv('BETTER_AUTH_SECRET', '');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.includes('/prediction-test-tickets') ? { available: true, modelVersion: 'candidate-github-93cf' } : url.endsWith('/readyz') ? { status: 'ready' } : { model_version: 'candidate-github-93cf' })));
     const result = await queuedPredictionCapabilities(true);
     expect(result.available).toBe(true);
@@ -77,7 +77,7 @@ describe('queued service capability detection', () => {
   });
   it('reports missing authorization configuration even when the model worker is ready', async () => {
     vi.stubEnv('RAPPTOR_PREDICTION_SERVICE_URL', 'https://service.test');
-    vi.stubEnv('SUPABASE_URL', '');
+    vi.stubEnv('BETTER_AUTH_SECRET', '');
     vi.stubEnv('NEXT_PUBLIC_RAPPTOR_TURNSTILE_SITE_KEY', '');
     vi.stubEnv('RAPPTOR_PREDICTION_ENABLED', '');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('/readyz') ? { status: 'ready' } : { model_version: 'candidate-github-93cf' })));

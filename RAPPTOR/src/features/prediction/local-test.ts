@@ -86,8 +86,8 @@ async function remoteTestTickets(input?: { modelVersion: string; bases: number; 
     const retryAfterSeconds = Number.isSafeInteger(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
     const limitErrors: Record<string, string> = {
       TICKET_RATE_LIMIT_REACHED: `The local development ticket limit has been reached.${retryAfterSeconds ? ` Retry in ${retryAfterSeconds} seconds.` : ' Retry shortly.'}`,
-      GENOME_SCAN_DAILY_LIMIT_REACHED: 'The local development daily genome-scan limit has been reached. Retry after 00:00 Beijing time.',
-      DAILY_BASE_LIMIT_REACHED: 'The local development daily base limit has been reached. Retry after 00:00 Beijing time.',
+      GENOME_SCAN_DAILY_LIMIT_REACHED: 'The local development daily genome-scan limit has been reached. Retry after 08:00 Beijing time.',
+      DAILY_BASE_LIMIT_REACHED: 'The local development daily base limit has been reached. Retry after 08:00 Beijing time.',
     };
     if (response.status === 429 && upstreamCode && limitErrors[upstreamCode]) {
       throw new LocalPredictionTicketError(upstreamCode, limitErrors[upstreamCode], 429, retryAfterSeconds);

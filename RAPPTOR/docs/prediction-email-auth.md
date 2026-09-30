@@ -1,4 +1,9 @@
-# Prediction email authentication and notifications
+# Legacy Supabase prediction email authentication and notifications
+
+> Historical / rollback reference. Production now uses Better Auth + D1 + Resend.
+> Use [the active phased integration guide](email-system-integration.zh-CN.md) for
+> OTP, sessions, APIs, deployment and quotas. Daily reset is now 08:00 Beijing;
+> the 90-day Supabase sessions and SMTP instructions below describe the old system.
 
 This document records the production setup for passwordless prediction access.
 Secrets are intentionally omitted.

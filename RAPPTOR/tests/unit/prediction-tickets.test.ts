@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   consumePredictionTicket,
   claimPredictionReferenceDownload,
-  beijingQuotaDay,
+  predictionQuotaDay,
   issuePredictionTicket,
   PredictionTicketConfigurationError,
   PredictionTicketLimitError,
@@ -376,7 +376,7 @@ describe('one-time prediction tickets', () => {
     expect(serviceSecretMatches('service', 'service-secret')).toBe(false);
   });
 
-  it('allows the configured anonymous whole-genome tickets per IP and resets at Beijing midnight', async () => {
+  it('allows the configured anonymous whole-genome tickets per IP and resets at 08:00 Beijing', async () => {
     const database = new FakeD1();
     const testSettings = { ...settings, ticketsPerMinute: 10, basesPerDay: 5_000 };
     const input = {
@@ -384,11 +384,11 @@ describe('one-time prediction tickets', () => {
       mode: 'genome_scan' as const, anonymousIpLimit: true,
     };
     for (let scan = 0; scan < 5; scan += 1) {
-      await issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T15:59:59.000Z'));
+      await issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T23:59:59.000Z'));
     }
-    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T15:59:59.000Z')))
+    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T23:59:59.000Z')))
       .rejects.toThrow(PredictionTicketLimitError);
-    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-27T16:00:00.000Z')))
+    await expect(issuePredictionTicket(database as unknown as D1Database, testSettings, input, new Date('2026-08-28T00:00:00.000Z')))
       .resolves.toMatchObject({ modelVersion: settings.modelVersion });
   });
 
@@ -414,11 +414,11 @@ describe('one-time prediction tickets', () => {
     expect(database.rows).toHaveLength(4);
   });
 
-  it('resets the configured whole-genome scans per user at Beijing midnight', async () => {
+  it('resets the configured whole-genome scans per user at 08:00 Beijing', async () => {
     const database = new FakeD1();
-    const beforeMidnight = new Date('2026-08-27T15:59:59.000Z');
-    const afterMidnight = new Date('2026-08-27T16:00:00.000Z');
-    expect(beijingQuotaDay(beforeMidnight)).toBe('2026-08-27');
+    const beforeMidnight = new Date('2026-08-27T23:59:59.000Z');
+    const afterMidnight = new Date('2026-08-28T00:00:00.000Z');
+    expect(predictionQuotaDay(beforeMidnight)).toBe('2026-08-27');
     for (let scan = 0; scan < 5; scan += 1) {
       await expect(reserveGenomeScanQuota(database as unknown as D1Database, 'user-1', 5, beforeMidnight)).resolves.toBe(true);
     }

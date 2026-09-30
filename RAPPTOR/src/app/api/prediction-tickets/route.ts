@@ -13,7 +13,7 @@ import {
   verifyTurnstile,
 } from '@/features/prediction/tickets';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
-import { requirePredictionAuth } from '@/features/email-system/supabase';
+import { requirePredictionAuth } from '@/features/email-system/better-auth';
 import { localPredictionTestEnabled, LocalPredictionTicketError, requestLocalPredictionTicket } from '@/features/prediction/local-test';
 
 export const dynamic = 'force-dynamic';

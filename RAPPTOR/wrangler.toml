@@ -1,8 +1,14 @@
 name = "rapptor"
+account_id = "c5ab8272d65fc83ccb4d3aafa05caf8c"
 main = "config/cloudflare-worker.mjs"
 compatibility_date = "2026-08-13"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
+
+[[routes]]
+pattern = "rapptor.xulab.science"
+zone_name = "xulab.science"
+custom_domain = true
 
 [assets]
 directory = ".open-next/assets"
@@ -19,6 +25,9 @@ binding = "CF_VERSION_METADATA"
 crons = ["17 3 * * *", "*/5 * * * *"]
 
 [vars]
+RESEND_FROM = "RAPPTOR <no-reply@auth.xulab.science>"
+RAPPTOR_EMAILS_PER_DAY = "100"
+RAPPTOR_AUTH_EMAILS_PER_ADDRESS_PER_DAY = "10"
 RAPPTOR_ANALYTICS = "on"
 RAPPTOR_ANALYTICS_PRECISION = "city"
 RAPPTOR_USAGE_PUBLIC_PAGE = "on"
@@ -27,7 +36,7 @@ RAPPTOR_CATALOG_BACKEND = "d1"
 RAPPTOR_PREDICTION_ENABLED = "on"
 RAPPTOR_PREDICTION_ACCESS_MODE = "email"
 RAPPTOR_PREDICTION_SERVICE_URL = "https://rapptor_server.duolalab.qzz.io"
-RAPPTOR_PUBLIC_SITE_URL = "https://rapptor.1052596411.workers.dev"
+RAPPTOR_PUBLIC_SITE_URL = "https://rapptor.xulab.science"
 RAPPTOR_DEPLOYMENT_ENV = "production"
 RAPPTOR_PREDICTION_LOCAL_TEST = "off"
 NEXT_PUBLIC_RAPPTOR_PREDICTION_LOCAL_TEST = "off"
@@ -47,5 +56,5 @@ UNIFIED_GENOME_ALIASES_JSON = '[{"canonicalAccession":"GCA_000007325.1","predict
 [[d1_databases]]
 binding = "RAPPTOR_DB"
 database_name = "seqedge-catalog"
-database_id = "13173011-d2b9-4763-b379-ecc1562ef497"
+database_id = "e3b0423c-15d2-49c2-823e-5d6ae330910b"
 migrations_dir = "database/migrations"

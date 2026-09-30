@@ -2,7 +2,7 @@ import { predictionErrorResponse } from '@/features/prediction/api-response';
 import { PredictionProviderError } from '@/features/prediction/provider';
 import { predictionProviderForJob } from '@/features/prediction/runtime';
 import { accessCookieName, readCookie, validJobId } from '@/features/prediction/validation';
-import { requirePredictionAuth } from '@/features/email-system/supabase';
+import { requirePredictionAuth } from '@/features/email-system/better-auth';
 
 type RouteContext = { params: Promise<{ jobId: string }> };
 

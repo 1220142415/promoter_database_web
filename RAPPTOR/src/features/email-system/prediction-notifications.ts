@@ -1,4 +1,4 @@
-import { sendRappTorEmail, type ResendSettings } from './resend';
+import { sendRappTorEmail, type EmailMessage, type ResendSettings } from './resend';
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RETRY_DELAY_MS = 5 * 60 * 1000;
@@ -15,6 +15,7 @@ type Notification = {
   access_token_ciphertext: string | null;
   reference_name: string | null;
   attempts: number;
+  email_payload_ciphertext: string | null;
 };
 
 function base64Url(bytes: Uint8Array) {
@@ -34,22 +35,21 @@ async function tokenKey(secret: string, usage: KeyUsage[]) {
   return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, usage);
 }
 
-async function encryptAccessToken(token: string, secret: string, jobId: string) {
-  if (!/^[A-Za-z0-9_-]{32,200}$/u.test(token)) throw new Error('Prediction access token is invalid.');
+async function encryptValue(value: string, secret: string, purpose: string) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(jobId) },
+    { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(purpose) },
     await tokenKey(secret, ['encrypt']),
-    new TextEncoder().encode(token),
+    new TextEncoder().encode(value),
   );
   return `${base64Url(iv)}.${base64Url(new Uint8Array(encrypted))}`;
 }
 
-async function decryptAccessToken(value: string, secret: string, jobId: string) {
+async function decryptValue(value: string, secret: string, purpose: string) {
   const [iv, encrypted, extra] = value.split('.');
   if (!iv || !encrypted || extra) throw new Error('Prediction notification token is invalid.');
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: fromBase64Url(iv), additionalData: new TextEncoder().encode(jobId) },
+    { name: 'AES-GCM', iv: fromBase64Url(iv), additionalData: new TextEncoder().encode(purpose) },
     await tokenKey(secret, ['decrypt']),
     fromBase64Url(encrypted),
   );
@@ -68,7 +68,8 @@ export async function registerPredictionNotification(
     || user.email.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(user.email)) {
     throw new Error('Invalid prediction notification recipient or job.');
   }
-  const encryptedToken = await encryptAccessToken(access.token, access.tokenSecret, jobId);
+  if (!/^[A-Za-z0-9_-]{32,200}$/u.test(access.token)) throw new Error('Prediction access token is invalid.');
+  const encryptedToken = await encryptValue(access.token, access.tokenSecret, jobId);
   const referenceName = access.referenceName?.trim().slice(0, 200) || null;
   await database.prepare(`INSERT INTO prediction_job_notifications
       (job_id, user_id, email, task_kind, access_token_ciphertext, reference_name, created_at, updated_at)
@@ -115,7 +116,7 @@ function notificationMessage(row: Notification, siteUrl?: string, accessToken?: 
 
 export async function sendPredictionNotification(database: D1Database, jobId: string, settings: ResendSettings, now = new Date()) {
   // Missing configuration must not consume the finite retry budget.
-  if (!settings.apiKey || !settings.tokenSecret) return;
+  if (!settings.apiKey || !settings.from || !settings.siteUrl || !settings.tokenSecret) return;
   const timestamp = now.toISOString();
   // Atomically lease one notification and freeze the payload for retries, even if callbacks arrive out of order.
   const row = await database.prepare(`UPDATE prediction_job_notifications SET
@@ -132,7 +133,7 @@ export async function sendPredictionNotification(database: D1Database, jobId: st
         WHERE j.job_id = prediction_job_notifications.job_id
           AND j.mode = prediction_job_notifications.task_kind AND j.status IN ('succeeded', 'failed'))
     RETURNING job_id, email, task_kind, outcome, artifacts_expires_at,
-      access_token_ciphertext, reference_name, attempts`)
+      access_token_ciphertext, reference_name, attempts, email_payload_ciphertext`)
     .bind(timestamp, timestamp, jobId, jobId, jobId, MAX_ATTEMPTS,
       new Date(now.getTime() - RETENTION_MS).toISOString(),
       new Date(now.getTime() - RETRY_WINDOW_MS).toISOString(),
@@ -140,10 +141,34 @@ export async function sendPredictionNotification(database: D1Database, jobId: st
     .first<Notification>();
   if (!row) return;
 
-  const accessToken = row.access_token_ciphertext
-    ? await decryptAccessToken(row.access_token_ciphertext, settings.tokenSecret, row.job_id)
-    : undefined;
-  const result = await sendRappTorEmail(settings, notificationMessage(row, settings.siteUrl, accessToken));
+  let payloadCiphertext = row.email_payload_ciphertext;
+  if (!payloadCiphertext) {
+    const accessToken = row.access_token_ciphertext
+      ? await decryptValue(row.access_token_ciphertext, settings.tokenSecret, row.job_id)
+      : undefined;
+    const payload = { from: settings.from, ...notificationMessage(row, settings.siteUrl, accessToken) };
+    const encrypted = await encryptValue(JSON.stringify(payload), settings.tokenSecret, `email/${row.job_id}`);
+    // Persist before contacting Resend; a crash or a later deployment must reuse the exact payload.
+    const saved = await database.prepare(`UPDATE prediction_job_notifications
+        SET email_payload_ciphertext = COALESCE(email_payload_ciphertext, ?)
+      WHERE job_id = ? AND status = 'sending' AND attempts = ?
+      RETURNING email_payload_ciphertext`)
+      .bind(encrypted, jobId, row.attempts).first<{ email_payload_ciphertext: string }>();
+    if (!saved) return; // Another retry owns the lease now.
+    payloadCiphertext = saved.email_payload_ciphertext;
+  }
+  const message = JSON.parse(await decryptValue(payloadCiphertext, settings.tokenSecret, `email/${row.job_id}`)) as EmailMessage;
+  const result = await sendRappTorEmail({ ...settings, database }, message);
+  if (!result.ok && result.deferred) {
+    // No provider request was made. Wait for quota reset without exhausting delivery retries.
+    await database.prepare(`UPDATE prediction_job_notifications SET status = 'failed',
+        attempts = attempts - 1,
+        first_attempt_at = CASE WHEN attempts = 1 THEN NULL ELSE first_attempt_at END,
+        updated_at = ?, last_error = ?
+      WHERE job_id = ? AND status = 'sending' AND attempts = ?`)
+      .bind(timestamp, result.error, jobId, row.attempts).run();
+    return;
+  }
   await database.prepare(`UPDATE prediction_job_notifications SET
       status = ?, updated_at = ?, sent_at = ?, last_error = ?
     WHERE job_id = ? AND status = 'sending' AND attempts = ?`)
@@ -160,7 +185,7 @@ export async function retryPredictionNotifications(database: D1Database, setting
       last_error = 'Email delivery could not be confirmed within the retry limit.'
     WHERE status = 'sending' AND updated_at <= ? AND (attempts >= ? OR first_attempt_at <= ?)`)
     .bind(stale, MAX_ATTEMPTS, retryCutoff).run();
-  if (!settings.apiKey || !settings.tokenSecret) return;
+  if (!settings.apiKey || !settings.from || !settings.siteUrl || !settings.tokenSecret) return;
   const rows = await database.prepare(`SELECT n.job_id FROM prediction_job_notifications n
     JOIN prediction_jobs j ON j.job_id = n.job_id AND j.mode = n.task_kind
     WHERE n.status <> 'sent' AND n.attempts < ? AND n.created_at > ?

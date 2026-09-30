@@ -1,9 +1,9 @@
 import { after } from 'next/server';
 import { predictionMaxRequestBytes } from '@/features/prediction/capabilities';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
-import { requirePredictionAuth } from '@/features/email-system/supabase';
+import { requirePredictionAuth } from '@/features/email-system/better-auth';
 import { usageDatabase } from '@/features/usage/store';
-import { claimPredictionReferenceDownload, readPredictionBasesPerDay, readPredictionTicketIssueSettings, releasePredictionBases, reservePredictionBases, secondsUntilBeijingMidnight } from '@/features/prediction/tickets';
+import { claimPredictionReferenceDownload, readPredictionBasesPerDay, readPredictionTicketIssueSettings, releasePredictionBases, reservePredictionBases, secondsUntilPredictionQuotaReset } from '@/features/prediction/tickets';
 import { ncbiAccession, ncbiErrorResponse, NcbiReferenceError, withTimeout } from '@/features/prediction/ncbi-reference';
 import { preparePredictionReference } from '@/features/prediction/reference-cache';
 import { registerPredictionNotification, sendPredictionNotification } from '@/features/email-system/prediction-notifications';
@@ -201,8 +201,8 @@ export async function POST(request: Request) {
       }
       if (!await reservePredictionBases(database, auth.id, submissionBases, readPredictionBasesPerDay(), now)) {
         return Response.json(
-          { error: { code: 'DAILY_BASE_LIMIT', message: 'The daily prediction-base allowance has been used. Try again after 00:00 Beijing time.' } },
-          { status: 429, headers: { 'Retry-After': String(secondsUntilBeijingMidnight(now)), 'Cache-Control': 'no-store' } },
+          { error: { code: 'DAILY_BASE_LIMIT', message: 'The daily prediction-base allowance has been used. Try again after 08:00 Beijing time.' } },
+          { status: 429, headers: { 'Retry-After': String(secondsUntilPredictionQuotaReset(now)), 'Cache-Control': 'no-store' } },
         );
       }
     } catch (cause) {

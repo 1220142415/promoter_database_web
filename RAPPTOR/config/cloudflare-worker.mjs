@@ -98,6 +98,7 @@ const worker = {
         if (predictionAccessMode(env.RAPPTOR_PREDICTION_ACCESS_MODE) === 'email') {
           await retryPredictionNotifications(env.RAPPTOR_DB, {
             apiKey: env.RESEND_API_KEY,
+            emailsPerDay: env.RAPPTOR_EMAILS_PER_DAY,
             from: env.RESEND_FROM,
             siteUrl: env.RAPPTOR_PUBLIC_SITE_URL,
             tokenSecret: env.RAPPTOR_PREDICTION_SERVICE_SECRET,

@@ -9,6 +9,7 @@ describe('prediction completion email', () => {
     const accessToken = 'shared_access_token_1234567890abcdef';
     const tokenSecret = 'notification-secret-with-at-least-32-characters';
     let ciphertext = '';
+    let payloadCiphertext = '';
     const database = {
       prepare: vi.fn((sql: string) => ({
         bind: (...values: unknown[]) => ({
@@ -16,16 +17,23 @@ describe('prediction completion email', () => {
             if (sql.includes('INSERT INTO prediction_job_notifications')) ciphertext = String(values[4]);
             return { success: true };
           },
-          first: async () => ({
-            job_id: jobId,
-            email: 'person@example.test',
-            task_kind: 'genome_scan',
-            outcome: 'succeeded',
-            artifacts_expires_at: '2026-09-08T00:00:00.000Z',
-            access_token_ciphertext: ciphertext,
-            reference_name: 'chr1',
-            attempts: 1,
-          }),
+          first: async () => {
+            if (sql.includes('SET email_payload_ciphertext')) {
+              payloadCiphertext ||= String(values[0]);
+              return { email_payload_ciphertext: payloadCiphertext };
+            }
+            return {
+              job_id: jobId,
+              email: 'person@example.test',
+              task_kind: 'genome_scan',
+              outcome: 'succeeded',
+              artifacts_expires_at: '2026-09-08T00:00:00.000Z',
+              access_token_ciphertext: ciphertext,
+              reference_name: 'chr1',
+              attempts: 1,
+              email_payload_ciphertext: payloadCiphertext || null,
+            };
+          },
         }),
       })),
     };
@@ -39,6 +47,7 @@ describe('prediction completion email', () => {
 
     await sendPredictionNotification(database as unknown as D1Database, jobId, {
       apiKey: 're_test',
+      from: 'RAPPTOR <no-reply@example.test>',
       siteUrl: 'https://rapptor.example.test/',
       tokenSecret,
     });

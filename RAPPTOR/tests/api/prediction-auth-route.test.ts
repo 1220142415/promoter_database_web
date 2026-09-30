@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET, POST } from '@/app/api/prediction-auth/route';
+import { GET, POST } from '@/features/email-system/supabase-route';
 import { requirePredictionAuth, withSessionCookie, type AuthSession } from '@/features/email-system/supabase';
 
 const quota = vi.hoisted(() => ({ usedBases: 1234 }));
@@ -52,7 +52,7 @@ afterEach(() => {
   else process.env.RAPPTOR_PREDICTION_BASES_PER_DAY = originalBasesPerDay;
 });
 
-describe('prediction authentication', () => {
+describe('retained Supabase prediction authentication', () => {
   it('does not expose email authentication in anonymous IP mode', async () => {
     process.env.RAPPTOR_PREDICTION_ACCESS_MODE = 'ip';
     const provider = vi.fn();

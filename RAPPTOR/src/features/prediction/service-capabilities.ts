@@ -1,6 +1,6 @@
 import 'server-only';
 import { predictionAccessMode } from '@/features/email-system/access-mode';
-import { readAuthSettings } from '@/features/email-system/supabase';
+import { readBetterAuthSettings } from '@/features/email-system/better-auth';
 import { readPredictionTicketSettings } from './tickets';
 import { checkLocalPredictionTestAvailability, localPredictionTestEnabled } from './local-test';
 
@@ -31,7 +31,7 @@ export async function queuedPredictionCapabilities(localTest = false): Promise<Q
     try { await checkLocalPredictionTestAvailability(); }
     catch (cause) { localIssue = (cause as Error).message; }
   } else {
-    if (predictionAccessMode() === 'email' && !readAuthSettings()) missing.push('Email sign-in');
+    if (predictionAccessMode() === 'email' && !readBetterAuthSettings()) missing.push('Email sign-in');
     if (!siteKey) missing.push('human verification');
     try { readPredictionTicketSettings(); } catch { missing.push('prediction authorization'); }
   }

@@ -12,5 +12,6 @@ export async function purgeExpiredUsage(database: D1Database, day: string, reten
     database.prepare('DELETE FROM prediction_demo_tickets WHERE expires_at_ms < ?').bind(now),
     database.prepare('DELETE FROM prediction_demo_uploads WHERE expires_at_ms < ?').bind(now),
     database.prepare('DELETE FROM prediction_demo_jobs WHERE created_at_ms < ?').bind(now - 7 * 24 * 60 * 60 * 1_000),
+    database.prepare('DELETE FROM auth_email_limits WHERE updated_at < ?').bind(now - 2 * 24 * 60 * 60 * 1_000),
   ]);
 }
